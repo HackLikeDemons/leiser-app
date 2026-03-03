@@ -132,6 +132,18 @@ body {
   max-width: 260px;
 }
 
+.week-picker-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.week-picker-controls button {
+  min-width: 2.2rem;
+  padding: 0.45rem 0.5rem;
+}
+
 .save-state {
   border-radius: 999px;
   border: 1px solid var(--status-border);

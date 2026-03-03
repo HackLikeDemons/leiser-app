@@ -196,6 +196,16 @@ export function WochenblattPage() {
     setSelectedWeekISO(getMondayISO(parsed))
   }
 
+  const goToPreviousWeek = () => {
+    setMessage('')
+    setSelectedWeekISO((prev) => shiftWeek(prev, -1))
+  }
+
+  const goToNextWeek = () => {
+    setMessage('')
+    setSelectedWeekISO((prev) => shiftWeek(prev, 1))
+  }
+
   const handleSaveClick = () => {
     setMessage('')
     void saveDraft(draft)
@@ -236,11 +246,19 @@ export function WochenblattPage() {
       <div className="week-meta-row">
         <label className="form-field week-picker">
           <span>Woche (Montag)</span>
-          <input
-            type="date"
-            value={selectedWeekISO}
-            onChange={(event) => handleWeekChange(event.target.value)}
-          />
+          <div className="week-picker-controls">
+            <button type="button" aria-label="Vorherige Woche" onClick={goToPreviousWeek}>
+              ←
+            </button>
+            <input
+              type="date"
+              value={selectedWeekISO}
+              onChange={(event) => handleWeekChange(event.target.value)}
+            />
+            <button type="button" aria-label="Nächste Woche" onClick={goToNextWeek}>
+              →
+            </button>
+          </div>
         </label>
 
         <div className="save-state" aria-live="polite">
