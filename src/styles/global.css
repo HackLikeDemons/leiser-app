@@ -242,6 +242,63 @@ button:hover {
   color: var(--warning);
 }
 
+.mode-timeline-block {
+  margin-top: 0.9rem;
+}
+
+.mode-timeline {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(22px, 1fr);
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.mode-pill {
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-subtle);
+  padding: 0;
+}
+
+.mode-pill--stabil {
+  background: color-mix(in srgb, #6fa8ff 18%, var(--surface-card));
+  border-color: color-mix(in srgb, #6fa8ff 45%, var(--border-soft));
+}
+
+.mode-pill--angespannt {
+  background: color-mix(in srgb, #ffd37a 22%, var(--surface-card));
+  border-color: color-mix(in srgb, #ffd37a 45%, var(--border-soft));
+}
+
+.mode-pill--ueberlast {
+  background: color-mix(in srgb, #ffad7f 26%, var(--surface-card));
+  border-color: color-mix(in srgb, #ffad7f 48%, var(--border-soft));
+}
+
+.mode-pill--krise {
+  background: color-mix(in srgb, #f57ea2 28%, var(--surface-card));
+  border-color: color-mix(in srgb, #f57ea2 50%, var(--border-soft));
+}
+
+.mode-timeline-caption {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.mode-timeline-empty {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.mode-distribution {
+  margin: 0.55rem 0 0.15rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
 .history-table {
   display: grid;
   gap: 0.5rem;
@@ -292,5 +349,10 @@ button:hover {
 
   .history-open {
     grid-template-columns: 1fr;
+  }
+
+  .mode-timeline {
+    grid-auto-columns: minmax(18px, 1fr);
+    gap: 0.3rem;
   }
 }

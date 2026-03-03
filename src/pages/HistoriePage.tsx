@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ModeTimeline, formatModeDistribution } from '../components/ModeTimeline'
 import { deleteWeekEntry, listWeekEntries } from '../lib/db/weekEntries'
 import type { WeekEntry } from '../lib/weekEntry'
 
@@ -48,6 +49,9 @@ export function HistoriePage() {
       <p>Die letzten 12 Wochen lokal aus IndexedDB.</p>
 
       {error ? <p className="status-message">{error}</p> : null}
+
+      <ModeTimeline entries={entries} onOpenWeek={(weekStartISO) => navigate(`/?week=${weekStartISO}`)} />
+      {entries.length > 0 ? <p className="mode-distribution">{formatModeDistribution(entries)}</p> : null}
 
       <div className="history-table" role="table" aria-label="Historie">
         {entries.length === 0 ? <p>Noch keine Einträge vorhanden.</p> : null}
