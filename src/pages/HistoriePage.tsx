@@ -1,8 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { ModeTimeline, formatModeDistribution } from '../components/ModeTimeline'
 import { deleteWeekEntry, listWeekEntries } from '../lib/db/weekEntries'
+import {
+  formatTopTokens,
+  getTopBottleneckTokens,
+  getTopIntentionallyNotDoingTokens,
+  runInsightsSelfCheck,
+} from '../lib/insights'
 import type { WeekEntry } from '../lib/weekEntry'
 
 export function HistoriePage() {
@@ -10,6 +16,11 @@ export function HistoriePage() {
   const location = useLocation()
   const [entries, setEntries] = useState<WeekEntry[]>([])
   const [error, setError] = useState<string>('')
+  const bottleneckTopTokens = useMemo(() => getTopBottleneckTokens(entries, 5), [entries])
+  const intentionallyNotDoingTopTokens = useMemo(
+    () => getTopIntentionallyNotDoingTokens(entries, 5),
+    [entries],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -34,6 +45,12 @@ export function HistoriePage() {
     }
   }, [location.search])
 
+  useEffect(() => {
+    if (import.meta.env.DEV && !runInsightsSelfCheck()) {
+      console.warn('Insights self-check failed.')
+    }
+  }, [])
+
   const handleDelete = async (entry: WeekEntry) => {
     const shouldDelete = window.confirm(`Eintrag ${entry.weekStartISO} wirklich löschen?`)
     if (!shouldDelete) {
@@ -54,6 +71,18 @@ export function HistoriePage() {
 
       <ModeTimeline entries={entries} onOpenWeek={(weekStartISO) => navigate(`/?week=${weekStartISO}`)} />
       {entries.length > 0 ? <p className="mode-distribution">{formatModeDistribution(entries)}</p> : null}
+      <p className="insight-line">
+        <strong>Engpass-Spiegel:</strong>{' '}
+        {bottleneckTopTokens.length > 0
+          ? formatTopTokens(bottleneckTopTokens)
+          : 'Noch keine Engpass-Muster erkennbar.'}
+      </p>
+      <p className="insight-line">
+        <strong>Bewusst-nicht-Spiegel:</strong>{' '}
+        {intentionallyNotDoingTopTokens.length > 0
+          ? formatTopTokens(intentionallyNotDoingTopTokens)
+          : "Noch keine Muster im 'bewusst nicht' erkennbar."}
+      </p>
 
       <div className="history-table" role="table" aria-label="Historie">
         {entries.length === 0 ? <p>Noch keine Einträge vorhanden.</p> : null}

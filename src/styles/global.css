@@ -324,6 +324,15 @@ button:hover {
   font-size: 0.95rem;
 }
 
+.insight-line {
+  margin: 0.35rem 0;
+  color: var(--text-secondary);
+}
+
+.insight-line strong {
+  color: var(--text-primary);
+}
+
 .history-table {
   display: grid;
   gap: 0.5rem;
