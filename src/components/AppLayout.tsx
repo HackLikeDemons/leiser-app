@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 
 const links = [
   { to: '/', label: 'Wochenblatt' },
-  { to: '/historie', label: 'Historie' },
+  { to: '/history', label: 'Historie' },
 ]
 
 export function AppLayout() {

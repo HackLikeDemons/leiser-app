@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppLayout } from '../components/AppLayout'
 import { HistoriePage } from '../pages/HistoriePage'
 import { WochenblattPage } from '../pages/WochenblattPage'
@@ -13,8 +13,12 @@ export const router = createBrowserRouter([
         element: <WochenblattPage />,
       },
       {
-        path: 'historie',
+        path: 'history',
         element: <HistoriePage />,
+      },
+      {
+        path: 'historie',
+        element: <Navigate to="/history" replace />,
       },
     ],
   },
