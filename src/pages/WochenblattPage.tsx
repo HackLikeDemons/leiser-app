@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { deleteWeekEntry, getWeekEntryByWeekStart, upsertWeekEntry } from '../lib/db/weekEntries'
+import { getWeekEntryByWeekStart, upsertWeekEntry } from '../lib/db/weekEntries'
 import { DEFAULT_WEEK_DRAFT, type WeekEntryDraft, type WeekMode } from '../lib/weekEntry'
 
 const PRIORITY_SOFT_LIMIT = 120
@@ -131,7 +131,7 @@ export function WochenblattPage() {
   }, [selectedWeekISO])
 
   const saveDraft = useCallback(
-    async (nextDraft: WeekEntryDraft, options?: { forceNewId?: boolean }) => {
+    async (nextDraft: WeekEntryDraft) => {
       setIsSaving(true)
 
       const now = new Date().toISOString()
@@ -139,14 +139,6 @@ export function WochenblattPage() {
       let nextCreatedAt = createdAt ?? now
 
       try {
-        if (options?.forceNewId) {
-          if (entryId) {
-            await deleteWeekEntry(entryId)
-          }
-          nextId = crypto.randomUUID()
-          nextCreatedAt = now
-        }
-
         await upsertWeekEntry({
           id: nextId,
           weekStartISO: selectedWeekISO,
@@ -227,7 +219,7 @@ export function WochenblattPage() {
     }
 
     setDraft(copiedDraft)
-    await saveDraft(copiedDraft, { forceNewId: true })
+    await saveDraft(copiedDraft)
   }
 
   const handleResetWeek = async () => {

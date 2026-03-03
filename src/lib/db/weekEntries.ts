@@ -64,12 +64,35 @@ function runTransaction<T>(
 }
 
 export function upsertWeekEntry(entry: WeekEntry): Promise<void> {
-  return runTransaction(
-    'readwrite',
-    (store) => {
-      store.put(entry)
-    },
-    () => undefined,
+  return openDb().then(
+    (db) =>
+      new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readwrite')
+        const store = transaction.objectStore(STORE_NAME)
+        const index = store.index(WEEK_INDEX)
+
+        transaction.onerror = () => reject(transaction.error)
+        transaction.onabort = () => reject(transaction.error)
+        transaction.oncomplete = () => resolve()
+
+        const getExistingRequest = index.get(entry.weekStartISO)
+        getExistingRequest.onerror = () => reject(getExistingRequest.error)
+        getExistingRequest.onsuccess = () => {
+          const existing = (getExistingRequest.result as WeekEntry | undefined) ?? null
+
+          const mergedEntry: WeekEntry = existing
+            ? {
+                ...entry,
+                id: existing.id,
+                createdAt: existing.createdAt,
+                updatedAt: new Date().toISOString(),
+              }
+            : entry
+
+          const putRequest = store.put(mergedEntry)
+          putRequest.onerror = () => reject(putRequest.error)
+        }
+      }),
   )
 }
 
