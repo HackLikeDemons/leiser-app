@@ -3,6 +3,7 @@ import { AppLayout } from '../components/AppLayout'
 import { HistoriePage } from '../pages/HistoriePage'
 import { MonatPage } from '../pages/MonatPage'
 import { RhythmPage } from '../pages/Rhythm'
+import { SystemPage } from '../pages/SystemPage'
 import { WochenblattPage } from '../pages/WochenblattPage'
 
 export const router = createBrowserRouter([
@@ -21,6 +22,10 @@ export const router = createBrowserRouter([
       {
         path: 'rhythm',
         element: <RhythmPage />,
+      },
+      {
+        path: 'system',
+        element: <SystemPage />,
       },
       {
         path: 'history',

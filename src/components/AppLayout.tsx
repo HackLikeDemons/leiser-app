@@ -6,6 +6,7 @@ const links = [
   { to: '/', label: 'Wochenblatt' },
   { to: '/month', label: 'Monat' },
   { to: '/rhythm', label: 'Rhythmus' },
+  { to: '/system', label: 'Systemblick' },
   { to: '/history', label: 'Historie' },
 ]
 
