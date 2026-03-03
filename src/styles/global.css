@@ -333,6 +333,11 @@ button:hover {
   color: var(--text-primary);
 }
 
+.rhythm-heading {
+  margin: 1rem 0 0.35rem;
+  font-size: 1rem;
+}
+
 .month-overview {
   display: inline-flex;
   gap: 0.4rem;

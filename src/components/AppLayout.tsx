@@ -5,6 +5,7 @@ import { DataControls } from './DataControls'
 const links = [
   { to: '/', label: 'Wochenblatt' },
   { to: '/month', label: 'Monat' },
+  { to: '/rhythm', label: 'Rhythmus' },
   { to: '/history', label: 'Historie' },
 ]
 

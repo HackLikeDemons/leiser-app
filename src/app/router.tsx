@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppLayout } from '../components/AppLayout'
 import { HistoriePage } from '../pages/HistoriePage'
 import { MonatPage } from '../pages/MonatPage'
+import { RhythmPage } from '../pages/Rhythm'
 import { WochenblattPage } from '../pages/WochenblattPage'
 
 export const router = createBrowserRouter([
@@ -16,6 +17,10 @@ export const router = createBrowserRouter([
       {
         path: 'month',
         element: <MonatPage />,
+      },
+      {
+        path: 'rhythm',
+        element: <RhythmPage />,
       },
       {
         path: 'history',
