@@ -21,7 +21,10 @@ function runTransaction<T>(
   )
 }
 
-export function upsertMonthEntry(entry: MonthEntry): Promise<void> {
+type MonthEntryUpsertInput = Omit<MonthEntry, 'id' | 'createdAt' | 'updatedAt'> &
+  Partial<Pick<MonthEntry, 'id' | 'createdAt' | 'updatedAt'>>
+
+export function upsertMonthEntryByMonthISO(entry: MonthEntryUpsertInput): Promise<void> {
   return openDb().then(
     (db) =>
       new Promise((resolve, reject) => {
@@ -37,21 +40,31 @@ export function upsertMonthEntry(entry: MonthEntry): Promise<void> {
         getExistingRequest.onerror = () => reject(getExistingRequest.error)
         getExistingRequest.onsuccess = () => {
           const existing = (getExistingRequest.result as MonthEntry | undefined) ?? null
+          const now = new Date().toISOString()
 
           const mergedEntry: MonthEntry = existing
             ? {
                 ...entry,
                 id: existing.id,
                 createdAt: existing.createdAt,
-                updatedAt: new Date().toISOString(),
+                updatedAt: now,
               }
-            : entry
+            : {
+                ...entry,
+                id: entry.id ?? crypto.randomUUID(),
+                createdAt: entry.createdAt ?? now,
+                updatedAt: now,
+              }
 
           const putRequest = store.put(mergedEntry)
           putRequest.onerror = () => reject(putRequest.error)
         }
       }),
   )
+}
+
+export function upsertMonthEntry(entry: MonthEntry): Promise<void> {
+  return upsertMonthEntryByMonthISO(entry)
 }
 
 export function getMonthEntryByMonthISO(monthISO: string): Promise<MonthEntry | null> {

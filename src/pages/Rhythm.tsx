@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { ModeTimeline, formatModeDistribution } from '../components/ModeTimeline'
 import { listMonthEntries } from '../lib/db/monthEntries'
@@ -25,6 +26,7 @@ function clipNote(note: string, limit = 40) {
 
 export function RhythmPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [weekEntries, setWeekEntries] = useState<WeekEntry[]>([])
   const [monthEntries, setMonthEntries] = useState<MonthEntry[]>([])
   const [error, setError] = useState('')
@@ -58,7 +60,7 @@ export function RhythmPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [location.search])
 
   useEffect(() => {
     if (import.meta.env.DEV && !runRhythmSummarySelfCheck()) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useSearchParams } from 'react-router-dom'
-import { getMonthEntryByMonthISO, upsertMonthEntry } from '../lib/db/monthEntries'
+import { getMonthEntryByMonthISO, upsertMonthEntryByMonthISO } from '../lib/db/monthEntries'
 import { DEFAULT_MONTH_DRAFT, type MonthEntryDraft, type MonthMode } from '../lib/monthEntry'
 
 const MONTH_MODES: MonthMode[] = ['', 'STABIL', 'ANGESPANNT', 'UEBERLAST', 'KRISE']
@@ -47,6 +48,7 @@ function cloneDraft(draft: MonthEntryDraft): MonthEntryDraft {
 }
 
 export function MonatPage() {
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialMonth = searchParams.get('m')
   const parsedInitialMonth = initialMonth ? parseMonthISO(initialMonth) : null
@@ -57,6 +59,7 @@ export function MonatPage() {
   const [savedDraft, setSavedDraft] = useState<MonthEntryDraft>(cloneDraft(DEFAULT_MONTH_DRAFT))
   const [entryId, setEntryId] = useState<string | null>(null)
   const [createdAt, setCreatedAt] = useState<string | null>(null)
+  const [hasEntry, setHasEntry] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -83,6 +86,7 @@ export function MonatPage() {
           const emptyDraft = cloneDraft(DEFAULT_MONTH_DRAFT)
           setEntryId(null)
           setCreatedAt(null)
+          setHasEntry(false)
           setDraft(emptyDraft)
           setSavedDraft(emptyDraft)
           return
@@ -95,6 +99,7 @@ export function MonatPage() {
 
         setEntryId(entry.id)
         setCreatedAt(entry.createdAt)
+        setHasEntry(true)
         setDraft(loadedDraft)
         setSavedDraft(loadedDraft)
       } catch {
@@ -109,7 +114,7 @@ export function MonatPage() {
     return () => {
       cancelled = true
     }
-  }, [selectedMonthISO])
+  }, [location.search, selectedMonthISO])
 
   const saveDraft = useCallback(
     async (nextDraft: MonthEntryDraft) => {
@@ -119,17 +124,17 @@ export function MonatPage() {
       const nextCreatedAt = createdAt ?? now
 
       try {
-        await upsertMonthEntry({
+        await upsertMonthEntryByMonthISO({
           id: nextId,
           monthISO: selectedMonthISO,
           dominantMode: nextDraft.dominantMode,
           reflection: nextDraft.reflection,
           createdAt: nextCreatedAt,
-          updatedAt: now,
         })
 
         setEntryId(nextId)
         setCreatedAt(nextCreatedAt)
+        setHasEntry(true)
         setSavedDraft(cloneDraft(nextDraft))
       } catch {
         setMessage('Speichern fehlgeschlagen.')
@@ -174,6 +179,7 @@ export function MonatPage() {
     <section>
       <h2>Monat</h2>
       <p>Ein ruhiger Blick auf den Monat, ohne Bewertung.</p>
+      {!hasEntry ? <p className="mode-distribution">Für diesen Monat gibt es noch keinen Eintrag.</p> : null}
 
       <div className="week-meta-row">
         <label className="form-field week-picker">
