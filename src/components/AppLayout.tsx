@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { DataControls } from './DataControls'
 
 const links = [
   { to: '/', label: 'Wochenblatt' },
@@ -55,6 +56,8 @@ export function AppLayout() {
       <main className="app-main">
         <Outlet />
       </main>
+
+      <DataControls />
     </div>
   )
 }

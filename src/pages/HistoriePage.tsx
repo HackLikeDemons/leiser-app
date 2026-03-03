@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { ModeTimeline, formatModeDistribution } from '../components/ModeTimeline'
 import { deleteWeekEntry, listWeekEntries } from '../lib/db/weekEntries'
@@ -6,6 +7,7 @@ import type { WeekEntry } from '../lib/weekEntry'
 
 export function HistoriePage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [entries, setEntries] = useState<WeekEntry[]>([])
   const [error, setError] = useState<string>('')
 
@@ -30,7 +32,7 @@ export function HistoriePage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [location.search])
 
   const handleDelete = async (entry: WeekEntry) => {
     const shouldDelete = window.confirm(`Eintrag ${entry.weekStartISO} wirklich löschen?`)

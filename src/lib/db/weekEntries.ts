@@ -141,3 +141,13 @@ export function deleteWeekEntry(id: string): Promise<void> {
     () => undefined,
   )
 }
+
+export function clearAllWeekEntries(): Promise<void> {
+  return runTransaction(
+    'readwrite',
+    (store) => {
+      store.clear()
+    },
+    () => undefined,
+  )
+}

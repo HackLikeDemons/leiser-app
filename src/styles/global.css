@@ -120,6 +120,31 @@ body {
   padding: 1.2rem;
 }
 
+.data-controls {
+  margin-top: 1rem;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+}
+
+.data-controls h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+}
+
+.data-controls-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.data-controls-status {
+  margin: 0.55rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
 .week-meta-row {
   display: flex;
   justify-content: space-between;
