@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Fragment } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { ModeTimeline, formatModeDistribution } from '../components/ModeTimeline'
+import { listMonthEntries } from '../lib/db/monthEntries'
 import { deleteWeekEntry, listWeekEntries } from '../lib/db/weekEntries'
 import {
   formatTopTokens,
@@ -10,11 +12,13 @@ import {
   runInsightsSelfCheck,
 } from '../lib/insights'
 import type { WeekEntry } from '../lib/weekEntry'
+import type { MonthEntry } from '../lib/monthEntry'
 
 export function HistoriePage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [entries, setEntries] = useState<WeekEntry[]>([])
+  const [monthEntries, setMonthEntries] = useState<MonthEntry[]>([])
   const [error, setError] = useState<string>('')
   const bottleneckTopTokens = useMemo(() => getTopBottleneckTokens(entries, 5), [entries])
   const intentionallyNotDoingTopTokens = useMemo(
@@ -27,9 +31,10 @@ export function HistoriePage() {
 
     const loadEntries = async () => {
       try {
-        const nextEntries = await listWeekEntries(12)
+        const [nextEntries, nextMonthEntries] = await Promise.all([listWeekEntries(12), listMonthEntries(6)])
         if (!cancelled) {
           setEntries(nextEntries)
+          setMonthEntries(nextMonthEntries)
         }
       } catch {
         if (!cancelled) {
@@ -71,6 +76,27 @@ export function HistoriePage() {
 
       <ModeTimeline entries={entries} onOpenWeek={(weekStartISO) => navigate(`/?week=${weekStartISO}`)} />
       {entries.length > 0 ? <p className="mode-distribution">{formatModeDistribution(entries)}</p> : null}
+      <p className="insight-line">
+        <strong>Monatsübersicht:</strong>{' '}
+        {monthEntries.length > 0 ? (
+          <span className="month-overview">
+            {monthEntries.map((entry, index) => (
+              <Fragment key={entry.id}>
+                <button
+                  type="button"
+                  className="month-overview-link"
+                  onClick={() => navigate(`/month?m=${entry.monthISO}`)}
+                >
+                  {entry.monthISO}: {entry.dominantMode || '—'}
+                </button>
+                {index < monthEntries.length - 1 ? <span className="month-overview-sep">·</span> : null}
+              </Fragment>
+            ))}
+          </span>
+        ) : (
+          'Noch keine Monatseinträge.'
+        )}
+      </p>
       <p className="insight-line">
         <strong>Engpass-Spiegel:</strong>{' '}
         {bottleneckTopTokens.length > 0

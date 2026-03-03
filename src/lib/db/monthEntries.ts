@@ -1,5 +1,5 @@
-import type { WeekEntry } from '../weekEntry'
-import { WEEK_INDEX_NAME, WEEK_STORE_NAME, openDb } from './db'
+import type { MonthEntry } from '../monthEntry'
+import { MONTH_INDEX_NAME, MONTH_STORE_NAME, openDb } from './db'
 
 function runTransaction<T>(
   mode: IDBTransactionMode,
@@ -9,8 +9,8 @@ function runTransaction<T>(
   return openDb().then(
     (db) =>
       new Promise((resolve, reject) => {
-        const transaction = db.transaction(WEEK_STORE_NAME, mode)
-        const store = transaction.objectStore(WEEK_STORE_NAME)
+        const transaction = db.transaction(MONTH_STORE_NAME, mode)
+        const store = transaction.objectStore(MONTH_STORE_NAME)
 
         transaction.onerror = () => reject(transaction.error)
         transaction.onabort = () => reject(transaction.error)
@@ -21,24 +21,24 @@ function runTransaction<T>(
   )
 }
 
-export function upsertWeekEntry(entry: WeekEntry): Promise<void> {
+export function upsertMonthEntry(entry: MonthEntry): Promise<void> {
   return openDb().then(
     (db) =>
       new Promise((resolve, reject) => {
-        const transaction = db.transaction(WEEK_STORE_NAME, 'readwrite')
-        const store = transaction.objectStore(WEEK_STORE_NAME)
-        const index = store.index(WEEK_INDEX_NAME)
+        const transaction = db.transaction(MONTH_STORE_NAME, 'readwrite')
+        const store = transaction.objectStore(MONTH_STORE_NAME)
+        const index = store.index(MONTH_INDEX_NAME)
 
         transaction.onerror = () => reject(transaction.error)
         transaction.onabort = () => reject(transaction.error)
         transaction.oncomplete = () => resolve()
 
-        const getExistingRequest = index.get(entry.weekStartISO)
+        const getExistingRequest = index.get(entry.monthISO)
         getExistingRequest.onerror = () => reject(getExistingRequest.error)
         getExistingRequest.onsuccess = () => {
-          const existing = (getExistingRequest.result as WeekEntry | undefined) ?? null
+          const existing = (getExistingRequest.result as MonthEntry | undefined) ?? null
 
-          const mergedEntry: WeekEntry = existing
+          const mergedEntry: MonthEntry = existing
             ? {
                 ...entry,
                 id: existing.id,
@@ -54,35 +54,35 @@ export function upsertWeekEntry(entry: WeekEntry): Promise<void> {
   )
 }
 
-export function getWeekEntryByWeekStart(weekStartISO: string): Promise<WeekEntry | null> {
-  let result: WeekEntry | null = null
+export function getMonthEntryByMonthISO(monthISO: string): Promise<MonthEntry | null> {
+  let result: MonthEntry | null = null
 
   return runTransaction(
     'readonly',
     (store) => {
-      const request = store.index(WEEK_INDEX_NAME).get(weekStartISO)
+      const request = store.index(MONTH_INDEX_NAME).get(monthISO)
       request.onsuccess = () => {
-        result = (request.result as WeekEntry | undefined) ?? null
+        result = (request.result as MonthEntry | undefined) ?? null
       }
     },
     () => result,
   )
 }
 
-export function listWeekEntries(limit = 12): Promise<WeekEntry[]> {
-  const entries: WeekEntry[] = []
+export function listMonthEntries(limit = 6): Promise<MonthEntry[]> {
+  const entries: MonthEntry[] = []
 
   return runTransaction(
     'readonly',
     (store) => {
-      const request = store.index(WEEK_INDEX_NAME).openCursor(null, 'prev')
+      const request = store.index(MONTH_INDEX_NAME).openCursor(null, 'prev')
       request.onsuccess = () => {
         const cursor = request.result
         if (!cursor || entries.length >= limit) {
           return
         }
 
-        entries.push(cursor.value as WeekEntry)
+        entries.push(cursor.value as MonthEntry)
         cursor.continue()
       }
     },
@@ -90,17 +90,7 @@ export function listWeekEntries(limit = 12): Promise<WeekEntry[]> {
   )
 }
 
-export function deleteWeekEntry(id: string): Promise<void> {
-  return runTransaction(
-    'readwrite',
-    (store) => {
-      store.delete(id)
-    },
-    () => undefined,
-  )
-}
-
-export function clearAllWeekEntries(): Promise<void> {
+export function clearAllMonthEntries(): Promise<void> {
   return runTransaction(
     'readwrite',
     (store) => {

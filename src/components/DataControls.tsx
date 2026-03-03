@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { clearAllMonthEntries } from '../lib/db/monthEntries'
 import { clearAllWeekEntries } from '../lib/db/weekEntries'
 import { seedDemoData } from '../lib/demo/seedDemoData'
 
@@ -31,7 +32,7 @@ export function DataControls() {
     setIsBusy(true)
     setStatus('')
     try {
-      await clearAllWeekEntries()
+      await Promise.all([clearAllWeekEntries(), clearAllMonthEntries()])
       setStatus('Alle lokalen Daten gelöscht')
       navigate(`/history?refresh=${Date.now()}`)
     } catch {
