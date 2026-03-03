@@ -2,9 +2,54 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #1f2e2a;
-  background: #eff3f1;
+  --text-primary: #1f2e2a;
+  --text-secondary: #4d635b;
+  --text-muted: #60756d;
+  --surface-page-top: #eff3f1;
+  --surface-page-bottom: #e6ece9;
+  --surface-card: #ffffff;
+  --surface-subtle: #f7fbf9;
+  --surface-accent: #f1f7f4;
+  --surface-input: #f8fcfa;
+  --surface-button: #f5fbf8;
+  --surface-button-hover: #e9f5f0;
+  --border-strong: #2f4a57;
+  --border-default: #d6e0db;
+  --border-soft: #bccdc8;
+  --border-input: #c7d4ce;
+  --status-bg: #f4faf7;
+  --status-border: #c9d9d2;
+  --warning: #b13e0a;
+  --nav-text: #2f4a57;
+  --nav-active-text: #f0f5f2;
+  --nav-active-bg: #2f4a57;
+  color: var(--text-primary);
+  background: var(--surface-page-top);
   text-rendering: optimizeLegibility;
+}
+
+:root[data-theme='dark'] {
+  --text-primary: #e3ecf7;
+  --text-secondary: #b2c2d8;
+  --text-muted: #8a9cb4;
+  --surface-page-top: #111826;
+  --surface-page-bottom: #0d1422;
+  --surface-card: #171f30;
+  --surface-subtle: #1e273a;
+  --surface-accent: #243048;
+  --surface-input: #1b2538;
+  --surface-button: #253149;
+  --surface-button-hover: #2f3d59;
+  --border-strong: #9eb4d6;
+  --border-default: #2f3c55;
+  --border-soft: #3d4d69;
+  --border-input: #435474;
+  --status-bg: #1d273b;
+  --status-border: #374760;
+  --warning: #ff9f73;
+  --nav-text: #d4e0f2;
+  --nav-active-text: #101826;
+  --nav-active-bg: #9eb4d6;
 }
 
 * {
@@ -15,7 +60,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: linear-gradient(180deg, #eff3f1 0%, #e6ece9 100%);
+  background: linear-gradient(180deg, var(--surface-page-top) 0%, var(--surface-page-bottom) 100%);
+  color: var(--text-primary);
 }
 
 #root {
@@ -33,9 +79,16 @@ body {
   font-size: 2rem;
 }
 
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
 .app-header p {
   margin-top: 0.4rem;
-  color: #4d635b;
+  color: var(--text-secondary);
 }
 
 .app-nav {
@@ -46,23 +99,23 @@ body {
 
 .nav-link {
   text-decoration: none;
-  color: #2f4a57;
-  border: 1px solid #bccdc8;
+  color: var(--nav-text);
+  border: 1px solid var(--border-soft);
   padding: 0.5rem 0.8rem;
   border-radius: 999px;
   font-weight: 600;
-  background: #f7fbf9;
+  background: var(--surface-subtle);
 }
 
 .nav-link--active {
-  background: #2f4a57;
-  color: #f0f5f2;
-  border-color: #2f4a57;
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text);
+  border-color: var(--nav-active-bg);
 }
 
 .app-main section {
-  background: #ffffff;
-  border: 1px solid #d6e0db;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
   border-radius: 12px;
   padding: 1.2rem;
 }
@@ -81,11 +134,11 @@ body {
 
 .save-state {
   border-radius: 999px;
-  border: 1px solid #c9d9d2;
+  border: 1px solid var(--status-border);
   padding: 0.35rem 0.75rem;
-  background: #f4faf7;
+  background: var(--status-bg);
   font-size: 0.9rem;
-  color: #2f4a57;
+  color: var(--text-primary);
 }
 
 .week-form {
@@ -101,28 +154,28 @@ body {
 
 .form-field span {
   font-size: 0.9rem;
-  color: #3d5149;
+  color: var(--text-secondary);
 }
 
 .form-field input,
 .form-field textarea {
   width: 100%;
-  border: 1px solid #c7d4ce;
+  border: 1px solid var(--border-input);
   border-radius: 8px;
   padding: 0.55rem 0.65rem;
-  background: #f8fcfa;
-  color: #1f2e2a;
+  background: var(--surface-input);
+  color: var(--text-primary);
   font-family: inherit;
 }
 
 .mode-fieldset {
-  border: 1px solid #cfdbd5;
+  border: 1px solid var(--border-default);
   border-radius: 10px;
   padding: 0.7rem 0.8rem;
 }
 
 .mode-fieldset legend {
-  color: #3d5149;
+  color: var(--text-secondary);
   padding: 0 0.3rem;
 }
 
@@ -140,11 +193,11 @@ body {
 
 .hint {
   font-size: 0.82rem;
-  color: #60756d;
+  color: var(--text-muted);
 }
 
 .warning {
-  color: #b13e0a;
+  color: var(--warning);
 }
 
 .action-row {
@@ -154,9 +207,9 @@ body {
 }
 
 button {
-  border: 1px solid #b7c8c1;
-  background: #f5fbf8;
-  color: #1f2e2a;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-button);
+  color: var(--text-primary);
   border-radius: 8px;
   padding: 0.5rem 0.8rem;
   cursor: pointer;
@@ -164,12 +217,17 @@ button {
 }
 
 button:hover {
-  background: #e9f5f0;
+  background: var(--surface-button-hover);
+}
+
+.theme-toggle {
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
 }
 
 .status-message {
   margin: 0;
-  color: #b13e0a;
+  color: var(--warning);
 }
 
 .history-table {
@@ -190,7 +248,7 @@ button:hover {
   grid-template-columns: minmax(120px, 170px) minmax(110px, 150px) 1fr;
   text-align: left;
   width: 100%;
-  background: #f1f7f4;
+  background: var(--surface-accent);
 }
 
 .history-cell {
@@ -202,6 +260,11 @@ button:hover {
 }
 
 @media (max-width: 640px) {
+  .header-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .week-meta-row {
     flex-direction: column;
     align-items: stretch;
