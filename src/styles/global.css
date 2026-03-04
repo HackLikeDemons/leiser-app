@@ -665,23 +665,50 @@ button:hover {
   flex-direction: column;
   align-items: flex-start;
   min-width: 0;
-  gap: 0.16rem;
+  position: relative;
+  padding-right: 1.5rem;
+}
+
+.note-text-wrap--collapsed::after {
+  content: '';
+  position: absolute;
+  right: 1.4rem;
+  bottom: 0.08rem;
+  width: 2rem;
+  height: 1.15rem;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--surface-card-soft) 0%, transparent),
+    color-mix(in srgb, var(--surface-card-soft) 88%, transparent)
+  );
 }
 
 .note-text-toggle-btn {
+  position: absolute;
+  right: 0;
+  bottom: 0.02rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  display: inline-grid;
+  place-items: center;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 0.74rem;
   padding: 0;
-  line-height: 1.2;
-  opacity: 0.82;
+  line-height: 1;
+  opacity: 0.6;
   cursor: pointer;
+}
+
+.note-text-toggle-btn svg {
+  width: 0.9rem;
+  height: 0.9rem;
 }
 
 .note-text-toggle-btn:hover,
 .note-text-toggle-btn:focus-visible {
-  opacity: 1;
+  opacity: 0.95;
   color: var(--text-primary);
 }
 

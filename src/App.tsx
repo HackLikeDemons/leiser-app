@@ -154,7 +154,7 @@ function ExpandableNoteText({ text }: { text: string }) {
   }, [expanded, text])
 
   return (
-    <span className="note-text-wrap">
+    <span className={canExpand && !expanded ? 'note-text-wrap note-text-wrap--collapsed' : 'note-text-wrap'}>
       <span ref={textRef} className={expanded ? 'note-text note-text--expanded' : 'note-text'}>
         {text}
       </span>
@@ -164,8 +164,30 @@ function ExpandableNoteText({ text }: { text: string }) {
           className="note-text-toggle-btn"
           onClick={() => setExpanded((prev) => !prev)}
           aria-expanded={expanded}
+          aria-label={expanded ? 'Text einklappen' : 'Text ausklappen'}
+          title={expanded ? 'Weniger anzeigen' : 'Mehr anzeigen'}
         >
-          {expanded ? 'Weniger' : 'Mehr'}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            {expanded ? (
+              <path
+                d="m7 14 5-5 5 5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ) : (
+              <path
+                d="m7 10 5 5 5-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+          </svg>
         </button>
       ) : null}
     </span>
