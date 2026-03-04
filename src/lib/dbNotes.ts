@@ -336,6 +336,38 @@ export async function listProcessNotes(limit = 200): Promise<Note[]> {
   })
 }
 
+export async function listTodoNotes(limit = 200): Promise<Note[]> {
+  const db = await openDb()
+
+  return new Promise<Note[]>((resolve, reject) => {
+    const notes: Note[] = []
+    const transaction = db.transaction(NOTES_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_STORE)
+    const index = store.index(STATUS_INDEX)
+    const request = index.openCursor(IDBKeyRange.only('TODO'), 'next')
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => {
+      notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      resolve(notes)
+    }
+
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor || notes.length >= limit) {
+        return
+      }
+      const note = asActiveNote(cursor.value)
+      if (note) {
+        notes.push(note)
+      }
+      cursor.continue()
+    }
+  })
+}
+
 export async function countInboxNotes(): Promise<number> {
   const db = await openDb()
 

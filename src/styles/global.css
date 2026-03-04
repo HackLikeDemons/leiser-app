@@ -110,6 +110,8 @@ body {
 
 .mode-tabs {
   display: flex;
+  justify-content: flex-start;
+  flex: 1 1 auto;
   gap: 0.5rem;
   margin: 0;
   min-width: 0;
@@ -286,6 +288,19 @@ button:hover {
   grid-template-columns: 64px 1fr;
 }
 
+.note-item--todo {
+  grid-template-columns: 64px 1fr auto;
+  align-items: center;
+  padding: 0.5rem 0.65rem;
+}
+
+.todo-actions {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .note-time {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
@@ -331,10 +346,28 @@ button:hover {
   padding: 0.35rem 0.6rem;
 }
 
+.review-actions-inline--compact {
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
 .review-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.review-btn--icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+
+.review-btn--icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .review-btn--todo {
@@ -355,6 +388,16 @@ button:hover {
 .review-btn--merge {
   background: color-mix(in srgb, #7e6ea8 15%, var(--surface-button));
   border-color: color-mix(in srgb, #7e6ea8 40%, var(--border-default));
+}
+
+.review-btn--done {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface-button));
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border-default));
+}
+
+.review-btn--back {
+  background: color-mix(in srgb, #8892a8 14%, var(--surface-button));
+  border-color: color-mix(in srgb, #8892a8 40%, var(--border-default));
 }
 
 .merge-label {
@@ -394,6 +437,15 @@ button:focus {
   .note-item {
     grid-template-columns: 1fr;
     gap: 0.35rem;
+  }
+
+  .note-item--todo {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .todo-actions {
+    justify-content: flex-start;
   }
 
   .note-actions {

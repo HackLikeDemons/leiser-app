@@ -6,6 +6,7 @@ import {
   listInboxNotes,
   listNotesByDay,
   listProcessNotes,
+  listTodoNotes,
   updateNoteText,
   updateNoteStatus,
 } from './lib/dbNotes'
@@ -13,7 +14,7 @@ import { buildBackupData, importBackupJson, type ImportMode, type ImportReport }
 import { getLocalDayISO } from './lib/date'
 import type { Note, NoteStatus } from './lib/types'
 
-type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING'
+type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO'
 const SOFT_CHAR_LIMIT = 200
 const THEME_KEY = 'leiser:theme'
 
@@ -42,6 +43,7 @@ export function App() {
   const [todayNotes, setTodayNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [processNotes, setProcessNotes] = useState<Note[]>([])
+  const [todoNotes, setTodoNotes] = useState<Note[]>([])
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
   const [showDataPanel, setShowDataPanel] = useState(false)
   const [showImportPanel, setShowImportPanel] = useState(false)
@@ -54,14 +56,16 @@ export function App() {
 
   const refreshAll = async () => {
     try {
-      const [today, inbox, process] = await Promise.all([
+      const [today, inbox, process, todo] = await Promise.all([
         listNotesByDay(todayISO, 500),
         listInboxNotes(200),
         listProcessNotes(200),
+        listTodoNotes(200),
       ])
       setTodayNotes(today)
       setInboxNotes(inbox)
       setProcessNotes(process)
+      setTodoNotes(todo)
     } catch {
       setError('Daten konnten nicht geladen werden.')
     }
@@ -147,7 +151,7 @@ export function App() {
     }
   }
 
-  const handleReviewDecision = async (id: string, status: Exclude<NoteStatus, 'INBOX'>) => {
+  const handleReviewDecision = async (id: string, status: NoteStatus) => {
     setError('')
     try {
       await updateNoteStatus(id, status)
@@ -244,6 +248,13 @@ export function App() {
               onClick={() => setActiveTab('THINKING')}
             >
               Denken
+            </button>
+            <button
+              type="button"
+              className={activeTab === 'TODO' ? 'tab-button tab-button--active' : 'tab-button'}
+              onClick={() => setActiveTab('TODO')}
+            >
+              To-Do
             </button>
           </div>
 
@@ -504,6 +515,59 @@ export function App() {
                 <li key={note.id} className="note-item">
                   <span className="note-time">{toClockLabel(note.createdAt)}</span>
                   <span className="note-text">{note.text}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+
+        {activeTab === 'TODO' ? (
+          <>
+            <h2>To-Do ({todoNotes.length})</h2>
+            {todoNotes.length === 0 ? <p className="empty-text">Keine offenen To-Dos.</p> : null}
+            <ul className="notes-list" aria-label="To-Do Notizen">
+              {todoNotes.map((note) => (
+                <li key={note.id} className="note-item note-item--todo">
+                  <span className="note-time">{toClockLabel(note.createdAt)}</span>
+                  <span className="note-text">{note.text}</span>
+                  <div className="todo-actions">
+                    <button
+                      type="button"
+                      className="review-btn review-btn--done review-btn--icon"
+                      onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
+                      aria-label="Als erledigt markieren"
+                      title="Erledigt"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M5 12.5 10 17l9-10"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className="review-btn review-btn--back review-btn--icon"
+                      onClick={() => void handleReviewDecision(note.id, 'INBOX')}
+                      aria-label="Zurück in Inbox"
+                      title="Zurück"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M10 7 5 12l5 5M6 12h13"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
