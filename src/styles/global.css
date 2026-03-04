@@ -146,6 +146,43 @@ button:hover {
   color: #4d635b;
 }
 
+.review-groups {
+  margin: 0.3rem 0 0.6rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.review-group-line {
+  margin: 0 0 0.25rem;
+  color: #4d635b;
+}
+
+.review-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.review-list-item {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 0.2rem;
+  background: #f7fbf9;
+}
+
+.review-list-item--active {
+  border-color: #2f4a57;
+  background: #edf6f2;
+}
+
+.review-list-badge {
+  font-size: 0.75rem;
+  color: #4d635b;
+}
+
 .review-card {
   border: 1px solid #d7e2dc;
   border-radius: 10px;
@@ -165,11 +202,59 @@ button:hover {
   word-break: break-word;
 }
 
+.fresh-badge {
+  margin: 0.35rem 0 0;
+  color: #4d635b;
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: baseline;
+  border: 1px solid #c9d9d2;
+  background: #f1f7f4;
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.85rem;
+}
+
 .review-actions {
   margin-top: 0.75rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.review-status-line {
+  margin: 0 0 0.2rem;
+}
+
+.status-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  font-size: 0.74rem;
+  border: 1px solid #b7c8c1;
+  background: #eef6f2;
+}
+
+.status-badge--todo {
+  background: #e8f3ff;
+  border-color: #b4cbe9;
+}
+
+.status-badge--process {
+  background: #fff6e9;
+  border-color: #e5d3aa;
+}
+
+.status-badge--discard {
+  background: #f5efef;
+  border-color: #d8c4c4;
+}
+
+.section-toggle {
+  margin-top: 1rem;
+  width: 100%;
+  text-align: left;
+  background: #f7fbf9;
 }
 
 @media (max-width: 640px) {

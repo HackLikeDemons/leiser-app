@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
-import { addNote, deleteNote, listInboxNotes, listNotesByDay, updateNoteStatus } from './lib/dbNotes'
+import {
+  addNote,
+  deleteNote,
+  listDecidedNotesByDay,
+  listInboxNotes,
+  listNotesByDay,
+  updateNoteStatus,
+} from './lib/dbNotes'
 import { getLocalDayISO } from './lib/date'
 import type { Note, NoteStatus } from './lib/types'
+
+const REVIEW_FRESH_HOURS = 12
 
 function toClockLabel(isoTimestamp: string) {
   const date = new Date(isoTimestamp)
@@ -11,12 +20,24 @@ function toClockLabel(isoTimestamp: string) {
   return `${hours}:${minutes}`
 }
 
+function isFreshNote(note: Note, now = new Date()) {
+  const createdAtMs = Date.parse(note.createdAt)
+  if (Number.isNaN(createdAtMs)) {
+    return false
+  }
+  const freshWindowMs = REVIEW_FRESH_HOURS * 60 * 60 * 1000
+  return now.getTime() - createdAtMs <= freshWindowMs
+}
+
 export function App() {
   const [mode, setMode] = useState<'BRAINDUMP' | 'REVIEW'>('BRAINDUMP')
   const [text, setText] = useState('')
   const [notes, setNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
+  const [todayDecidedNotes, setTodayDecidedNotes] = useState<Note[]>([])
+  const [showDecidedToday, setShowDecidedToday] = useState(false)
   const [reviewSessionTotal, setReviewSessionTotal] = useState(0)
+  const [reviewCurrentId, setReviewCurrentId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
@@ -36,15 +57,26 @@ export function App() {
       setInboxNotes(openNotes)
       if (options?.resetProgress) {
         setReviewSessionTotal(openNotes.length)
+        setReviewCurrentId(null)
       }
     } catch {
       setError('Review konnte nicht geladen werden.')
     }
   }
 
+  const loadTodayDecidedNotes = async () => {
+    try {
+      const decided = await listDecidedNotesByDay(todayISO)
+      setTodayDecidedNotes(decided)
+    } catch {
+      setError('Entschiedene Notizen konnten nicht geladen werden.')
+    }
+  }
+
   useEffect(() => {
     void loadTodayNotes()
     void loadInboxNotes()
+    void loadTodayDecidedNotes()
   }, [todayISO])
 
   const handleSubmit = async (event?: FormEvent) => {
@@ -58,7 +90,7 @@ export function App() {
     try {
       await addNote(trimmed)
       setText('')
-      await Promise.all([loadTodayNotes(), loadInboxNotes()])
+      await Promise.all([loadTodayNotes(), loadInboxNotes(), loadTodayDecidedNotes()])
     } catch {
       setError('Notiz konnte nicht gespeichert werden.')
     }
@@ -80,32 +112,67 @@ export function App() {
     setError('')
     try {
       await deleteNote(id)
-      await loadTodayNotes()
+      await Promise.all([loadTodayNotes(), loadInboxNotes(), loadTodayDecidedNotes()])
     } catch {
       setError('Notiz konnte nicht gelöscht werden.')
     }
   }
 
-  const handleReviewDecision = async (status: Exclude<NoteStatus, 'INBOX'>) => {
-    const current = inboxNotes[0]
-    if (!current) {
+  const handleReviewDecision = async (noteId: string, status: Exclude<NoteStatus, 'INBOX'>) => {
+    if (!noteId) {
       return
     }
 
     setError('')
     try {
-      await updateNoteStatus(current.id, status)
-      await Promise.all([loadInboxNotes(), loadTodayNotes()])
+      await updateNoteStatus(noteId, status)
+      setReviewCurrentId(null)
+      await Promise.all([loadInboxNotes(), loadTodayNotes(), loadTodayDecidedNotes()])
     } catch {
       setError('Status konnte nicht aktualisiert werden.')
     }
   }
 
-  const handleSkip = () => {
-    if (inboxNotes.length <= 1) {
+  const handleReturnToInbox = async (noteId: string) => {
+    setError('')
+    try {
+      await updateNoteStatus(noteId, 'INBOX')
+      setReviewCurrentId(null)
+      await Promise.all([loadInboxNotes(), loadTodayNotes(), loadTodayDecidedNotes()])
+    } catch {
+      setError('Notiz konnte nicht zurückgesetzt werden.')
+    }
+  }
+
+  const readyNotes = useMemo(() => inboxNotes.filter((note) => !isFreshNote(note)), [inboxNotes])
+  const freshNotes = useMemo(() => inboxNotes.filter((note) => isFreshNote(note)), [inboxNotes])
+  const reviewSequence = useMemo(() => [...readyNotes, ...freshNotes], [readyNotes, freshNotes])
+
+  useEffect(() => {
+    if (mode !== 'REVIEW') {
       return
     }
-    setInboxNotes((prev) => [...prev.slice(1), prev[0]])
+
+    if (reviewSequence.length === 0) {
+      setReviewCurrentId(null)
+      return
+    }
+
+    const exists = reviewSequence.some((note) => note.id === reviewCurrentId)
+    if (!exists) {
+      setReviewCurrentId(reviewSequence[0].id)
+    }
+  }, [mode, reviewCurrentId, reviewSequence])
+
+  const currentReviewNote = reviewSequence.find((note) => note.id === reviewCurrentId) ?? null
+
+  const handleSkip = () => {
+    if (!currentReviewNote || reviewSequence.length <= 1) {
+      return
+    }
+    const currentIndex = reviewSequence.findIndex((note) => note.id === currentReviewNote.id)
+    const nextIndex = (currentIndex + 1) % reviewSequence.length
+    setReviewCurrentId(reviewSequence[nextIndex].id)
   }
 
   useEffect(() => {
@@ -124,15 +191,19 @@ export function App() {
       }
 
       const key = event.key.toLowerCase()
+      if (!currentReviewNote) {
+        return
+      }
+
       if (key === 't') {
         event.preventDefault()
-        void handleReviewDecision('TODO')
+        void handleReviewDecision(currentReviewNote.id, 'TODO')
       } else if (key === 'p') {
         event.preventDefault()
-        void handleReviewDecision('PROCESS')
+        void handleReviewDecision(currentReviewNote.id, 'PROCESS')
       } else if (key === 'd') {
         event.preventDefault()
-        void handleReviewDecision('DISCARD')
+        void handleReviewDecision(currentReviewNote.id, 'DISCARD')
       } else if (key === 's') {
         event.preventDefault()
         handleSkip()
@@ -141,11 +212,10 @@ export function App() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [mode, inboxNotes])
+  }, [currentReviewNote, mode, reviewSequence])
 
   const reviewTotal = reviewSessionTotal
   const reviewedCount = Math.max(0, reviewSessionTotal - inboxNotes.length)
-  const currentReviewNote = inboxNotes[0]
 
   return (
     <main className="daily-shell">
@@ -207,6 +277,65 @@ export function App() {
           </>
         ) : (
           <>
+            <h2>Offen</h2>
+            {inboxNotes.length === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
+            {readyNotes.length === 0 && freshNotes.length > 0 ? (
+              <p className="empty-text">Keine älteren Gedanken. Nur frische Einträge.</p>
+            ) : null}
+
+            {inboxNotes.length > 0 ? (
+              <div className="review-groups">
+                <div>
+                  <p className="review-group-line">Bereit ({readyNotes.length})</p>
+                  {readyNotes.length > 0 ? (
+                    <ul className="review-list">
+                      {readyNotes.map((note) => (
+                        <li key={note.id}>
+                          <button
+                            type="button"
+                            className={
+                              currentReviewNote?.id === note.id
+                                ? 'review-list-item review-list-item--active'
+                                : 'review-list-item'
+                            }
+                            onClick={() => setReviewCurrentId(note.id)}
+                          >
+                            <span>{toClockLabel(note.createdAt)}</span>
+                            <span>{note.text}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+
+                <div>
+                  <p className="review-group-line">Frisch ({freshNotes.length})</p>
+                  {freshNotes.length > 0 ? (
+                    <ul className="review-list">
+                      {freshNotes.map((note) => (
+                        <li key={note.id}>
+                          <button
+                            type="button"
+                            className={
+                              currentReviewNote?.id === note.id
+                                ? 'review-list-item review-list-item--active'
+                                : 'review-list-item'
+                            }
+                            onClick={() => setReviewCurrentId(note.id)}
+                          >
+                            <span>{toClockLabel(note.createdAt)}</span>
+                            <span>{note.text}</span>
+                            <span className="review-list-badge">FRISCH</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             {currentReviewNote ? (
               <>
                 <p className="review-progress">
@@ -216,15 +345,29 @@ export function App() {
                   <p className="review-meta">
                     {currentReviewNote.dayISO} · {toClockLabel(currentReviewNote.createdAt)}
                   </p>
+                  {isFreshNote(currentReviewNote) ? (
+                    <p className="fresh-badge">
+                      <strong>FRISCH</strong> <span>Gerade erfasst.</span>
+                    </p>
+                  ) : null}
                   <p className="review-text">{currentReviewNote.text}</p>
                   <div className="review-actions">
-                    <button type="button" onClick={() => void handleReviewDecision('TODO')}>
+                    <button
+                      type="button"
+                      onClick={() => void handleReviewDecision(currentReviewNote.id, 'TODO')}
+                    >
                       To-Do
                     </button>
-                    <button type="button" onClick={() => void handleReviewDecision('PROCESS')}>
+                    <button
+                      type="button"
+                      onClick={() => void handleReviewDecision(currentReviewNote.id, 'PROCESS')}
+                    >
                       Weiterdenken
                     </button>
-                    <button type="button" onClick={() => void handleReviewDecision('DISCARD')}>
+                    <button
+                      type="button"
+                      onClick={() => void handleReviewDecision(currentReviewNote.id, 'DISCARD')}
+                    >
                       Verwerfen
                     </button>
                     <button type="button" onClick={handleSkip}>
@@ -233,9 +376,44 @@ export function App() {
                   </div>
                 </article>
               </>
-            ) : (
-              <p className="empty-text">Keine offenen Gedanken.</p>
-            )}
+            ) : null}
+
+            <button
+              type="button"
+              className="section-toggle"
+              onClick={() => setShowDecidedToday((prev) => !prev)}
+              aria-expanded={showDecidedToday}
+            >
+              Heute entschieden ({todayDecidedNotes.length})
+            </button>
+            {showDecidedToday ? (
+              todayDecidedNotes.length === 0 ? (
+                <p className="empty-text">Heute noch nichts entschieden.</p>
+              ) : (
+                <ul className="notes-list" aria-label="Heute entschiedene Notizen">
+                  {todayDecidedNotes.map((note) => (
+                    <li key={note.id} className="note-item">
+                      <span className="note-time">{toClockLabel(note.createdAt)}</span>
+                      <div className="note-text">
+                        <p className="review-status-line">
+                          <span className={`status-badge status-badge--${note.status.toLowerCase()}`}>
+                            {note.status}
+                          </span>
+                        </p>
+                        <span>{note.text}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="note-delete"
+                        onClick={() => void handleReturnToInbox(note.id)}
+                      >
+                        Zurück in Inbox
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : null}
           </>
         )}
 
