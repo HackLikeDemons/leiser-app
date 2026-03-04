@@ -46,6 +46,22 @@ body {
   color: #4d635b;
 }
 
+.mode-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+
+.tab-button {
+  border-radius: 999px;
+}
+
+.tab-button--active {
+  background: #2f4a57;
+  border-color: #2f4a57;
+  color: #f0f5f2;
+}
+
 .capture-form {
   display: grid;
   gap: 0.6rem;
@@ -123,6 +139,37 @@ button:hover {
 
 .note-delete {
   padding: 0.3rem 0.6rem;
+}
+
+.review-progress {
+  margin: 0.3rem 0 0.6rem;
+  color: #4d635b;
+}
+
+.review-card {
+  border: 1px solid #d7e2dc;
+  border-radius: 10px;
+  background: #f7fbf9;
+  padding: 0.7rem;
+}
+
+.review-meta {
+  margin: 0;
+  color: #4d635b;
+  font-size: 0.9rem;
+}
+
+.review-text {
+  margin: 0.45rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.review-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 @media (max-width: 640px) {

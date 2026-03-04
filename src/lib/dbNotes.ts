@@ -114,6 +114,35 @@ export async function listNotesByDay(dayISO: string): Promise<Note[]> {
   })
 }
 
+export async function listInboxNotes(): Promise<Note[]> {
+  const db = await openDb()
+
+  return new Promise<Note[]>((resolve, reject) => {
+    const notes: Note[] = []
+    const transaction = db.transaction(NOTES_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_STORE)
+    const index = store.index(STATUS_INDEX)
+    const request = index.openCursor(IDBKeyRange.only('INBOX'), 'next')
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => {
+      notes.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      resolve(notes)
+    }
+
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        return
+      }
+      notes.push(cursor.value as Note)
+      cursor.continue()
+    }
+  })
+}
+
 export async function deleteNote(id: string): Promise<void> {
   const db = await openDb()
 
