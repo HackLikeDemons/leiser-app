@@ -68,36 +68,63 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow: hidden;
   background: linear-gradient(180deg, var(--surface-page-top) 0%, var(--surface-page-bottom) 100%);
   color: var(--text-primary);
 }
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
-.daily-shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: start center;
-  padding: 1.1rem 0.8rem 1.6rem;
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.daily-card {
-  width: min(820px, 100%);
-  background: var(--surface-card);
-  border: 1px solid var(--border-default);
-  border-radius: 14px;
-  padding: 0.85rem;
-  box-shadow: var(--shadow-soft);
+.app-main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.7rem 0.75rem 1rem;
+}
+
+.app-main--with-footer {
+  padding-bottom: calc(11.5rem + env(safe-area-inset-bottom));
 }
 
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--surface-card) 96%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-default) 88%, transparent);
+  padding: 0.55rem 0.75rem;
+}
+
+.app-header-inner {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.9rem;
-  margin-bottom: 0.45rem;
+}
+
+.app-content {
+  width: min(920px, 100%);
+  margin: 0 auto;
+}
+
+.app-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 19;
+  background: color-mix(in srgb, var(--surface-card) 98%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--border-default) 88%, transparent);
+  padding: 0.15rem 0.75rem calc(env(safe-area-inset-bottom) + 0.2rem);
 }
 
 .header-actions {
@@ -235,27 +262,12 @@ button:hover {
   gap: 0.42rem;
 }
 
-.braindump-flow {
-  display: flex;
-  flex-direction: column;
-  min-height: 460px;
-}
-
-.braindump-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding-right: 0.1rem;
-}
-
 .braindump-composer {
-  position: sticky;
-  bottom: 0;
-  background: var(--surface-card);
-  border-top: 1px solid color-mix(in srgb, var(--border-default) 85%, transparent);
-  padding-top: 0.45rem;
-  padding-bottom: calc(0.35rem + env(safe-area-inset-bottom));
-  margin-top: 0.35rem;
+  background: transparent;
+  border-top: none;
+  padding-top: 0.35rem;
+  padding-bottom: 0;
+  margin-top: 0;
 }
 
 .capture-form textarea {
@@ -703,19 +715,11 @@ button:focus {
 }
 
 @media (max-width: 640px) {
-  .daily-shell {
-    padding-top: 1rem;
-  }
-
-  .daily-card {
-    padding: 1rem;
+  .app-main {
+    padding: 0.45rem 0.45rem 0.75rem;
   }
 
   .tab-content {
-    min-height: 340px;
-  }
-
-  .braindump-flow {
     min-height: 340px;
   }
 

@@ -163,7 +163,7 @@ export function App() {
   const [error, setError] = useState('')
   const captureInputRef = useRef<HTMLTextAreaElement | null>(null)
   const undoTimeoutRef = useRef<number | null>(null)
-  const braindumpScrollRef = useRef<HTMLDivElement | null>(null)
+  const mainScrollRef = useRef<HTMLElement | null>(null)
   const braindumpEndRef = useRef<HTMLDivElement | null>(null)
   const shouldAutoScrollRef = useRef(true)
 
@@ -234,7 +234,7 @@ export function App() {
   }, [orderedInbox, reviewIndex])
 
   const isNearBottom = () => {
-    const container = braindumpScrollRef.current
+    const container = mainScrollRef.current
     if (!container) {
       return true
     }
@@ -450,6 +450,7 @@ export function App() {
   }
 
   const isSearchMode = searchQuery.trim().length > 0
+  const showBraindumpComposer = activeTab === 'BRAINDUMP' && !isSearchMode
   const currentReviewNote = orderedInbox[effectiveReviewIndex] ?? null
   const currentReviewCategory = currentReviewNote ? getReviewAgeCategory(currentReviewNote) : null
   const braindumpGroups = useMemo(() => {
@@ -568,10 +569,9 @@ export function App() {
   }, [activeTab, currentReviewNote, isSearchMode, orderedInbox.length])
 
   return (
-    <main className="daily-shell">
-      <section className="daily-card">
+    <div className="app-shell">
         <header className="app-header">
-          {!isSearchMode ? (
+          <div className="app-content app-header-inner">
             <div className="mode-tabs" role="tablist" aria-label="Bereiche">
             <button
               type="button"
@@ -610,7 +610,6 @@ export function App() {
               To-Do
             </button>
             </div>
-          ) : null}
 
           <div className="header-search">
             <input
@@ -673,62 +672,73 @@ export function App() {
               )}
             </button>
           </div>
+          </div>
         </header>
 
-        {showDataPanel ? (
-          <section className="data-section" aria-label="Daten">
-            <div className="data-panel">
-              <div className="data-actions">
-                <button type="button" onClick={() => void handleExport()}>
-                  Backup exportieren
-                </button>
-                <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
-                  Backup importieren
-                </button>
-              </div>
+        <main
+          className={showBraindumpComposer ? 'app-main app-main--with-footer' : 'app-main'}
+          ref={mainScrollRef}
+          onScroll={() => {
+            if (activeTab === 'BRAINDUMP' && !isSearchMode) {
+              shouldAutoScrollRef.current = isNearBottom()
+            }
+          }}
+        >
+          <section className="app-content">
+            {showDataPanel ? (
+              <section className="data-section" aria-label="Daten">
+                <div className="data-panel">
+                  <div className="data-actions">
+                    <button type="button" onClick={() => void handleExport()}>
+                      Backup exportieren
+                    </button>
+                    <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
+                      Backup importieren
+                    </button>
+                  </div>
 
-              {showImportPanel ? (
-                <div className="import-panel">
-                  <input
-                    type="file"
-                    accept="application/json,.json"
-                    onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
-                  />
-                  <label className="import-mode-option">
-                    <input
-                      type="radio"
-                      name="importMode"
-                      checked={importMode === 'MERGE'}
-                      onChange={() => setImportMode('MERGE')}
-                    />
-                    <span>Zusammenführen (empfohlen)</span>
-                  </label>
-                  <label className="import-mode-option">
-                    <input
-                      type="radio"
-                      name="importMode"
-                      checked={importMode === 'REPLACE'}
-                      onChange={() => setImportMode('REPLACE')}
-                    />
-                    <span>Ersetzen (löscht lokale Daten)</span>
-                  </label>
-                  <button type="button" onClick={() => void handleImport()}>
-                    Import starten
-                  </button>
+                  {showImportPanel ? (
+                    <div className="import-panel">
+                      <input
+                        type="file"
+                        accept="application/json,.json"
+                        onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                      />
+                      <label className="import-mode-option">
+                        <input
+                          type="radio"
+                          name="importMode"
+                          checked={importMode === 'MERGE'}
+                          onChange={() => setImportMode('MERGE')}
+                        />
+                        <span>Zusammenführen (empfohlen)</span>
+                      </label>
+                      <label className="import-mode-option">
+                        <input
+                          type="radio"
+                          name="importMode"
+                          checked={importMode === 'REPLACE'}
+                          onChange={() => setImportMode('REPLACE')}
+                        />
+                        <span>Ersetzen (löscht lokale Daten)</span>
+                      </label>
+                      <button type="button" onClick={() => void handleImport()}>
+                        Import starten
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {importReport ? (
+                    <p className="hint">
+                      Importiert: {importReport.imported} · Aktualisiert: {importReport.updated} · Übersprungen:{' '}
+                      {importReport.skipped} · Ungültig: {importReport.invalid}
+                    </p>
+                  ) : null}
                 </div>
-              ) : null}
+              </section>
+            ) : null}
 
-              {importReport ? (
-                <p className="hint">
-                  Importiert: {importReport.imported} · Aktualisiert: {importReport.updated} · Übersprungen:{' '}
-                  {importReport.skipped} · Ungültig: {importReport.invalid}
-                </p>
-              ) : null}
-            </div>
-          </section>
-        ) : null}
-
-        <div className="tab-content">
+            <div className="tab-content">
           {isSearchMode ? (
             <>
               <h2>Treffer ({searchResults.length})</h2>
@@ -754,14 +764,6 @@ export function App() {
             <>
           {activeTab === 'BRAINDUMP' ? (
             <>
-            <div className="braindump-flow">
-              <div
-                className="braindump-scroll"
-                ref={braindumpScrollRef}
-                onScroll={() => {
-                  shouldAutoScrollRef.current = isNearBottom()
-                }}
-              >
                 {braindumpGroups.length === 0 ? <p className="empty-text">Noch keine Notizen.</p> : null}
                 {braindumpGroups.map((group) => (
                   <section key={group.key} className="note-group">
@@ -822,43 +824,6 @@ export function App() {
                   </section>
                 ))}
                 <div ref={braindumpEndRef} />
-              </div>
-
-              <form className="capture-form braindump-composer" onSubmit={(event) => void handleSubmit(event)}>
-                <textarea
-                  rows={2}
-                  ref={captureInputRef}
-                  placeholder="Gedanken festhalten..."
-                  value={text}
-                  onChange={(event) => setText(event.target.value)}
-                  onKeyDown={handleTextKeyDown}
-                  onPaste={(event) => void handlePaste(event)}
-                />
-                <small className="capture-hint">Enter: speichern · Shift+Enter: Zeile</small>
-                <div className="capture-actions">
-                  <div className="capture-meta">
-                    <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
-                      {text.length} / {SOFT_CHAR_LIMIT}
-                    </small>
-                    {text.length > SOFT_CHAR_LIMIT ? (
-                      <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
-                    ) : null}
-                  </div>
-                  <button type="submit" className="capture-submit" aria-label="Notiz hinzufügen" title="Hinzufügen">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        d="M12 5v14M5 12h14"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.9"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </form>
-            </div>
             </>
           ) : null}
 
@@ -1218,8 +1183,50 @@ export function App() {
               {error ? <p className="error-text">{error}</p> : null}
             </>
           ) : null}
-        </div>
-      </section>
-    </main>
+            </div>
+          </section>
+        </main>
+
+        {showBraindumpComposer ? (
+          <footer className="app-footer">
+            <div className="app-content">
+              <form className="capture-form braindump-composer" onSubmit={(event) => void handleSubmit(event)}>
+                <textarea
+                  rows={2}
+                  ref={captureInputRef}
+                  placeholder="Gedanken festhalten..."
+                  value={text}
+                  onChange={(event) => setText(event.target.value)}
+                  onKeyDown={handleTextKeyDown}
+                  onPaste={(event) => void handlePaste(event)}
+                />
+                <small className="capture-hint">Enter: speichern · Shift+Enter: Zeile</small>
+                <div className="capture-actions">
+                  <div className="capture-meta">
+                    <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
+                      {text.length} / {SOFT_CHAR_LIMIT}
+                    </small>
+                    {text.length > SOFT_CHAR_LIMIT ? (
+                      <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
+                    ) : null}
+                  </div>
+                  <button type="submit" className="capture-submit" aria-label="Notiz hinzufügen" title="Hinzufügen">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M12 5v14M5 12h14"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.9"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </footer>
+        ) : null}
+    </div>
   )
 }
