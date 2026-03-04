@@ -178,7 +178,10 @@ export async function verifyTrustedEnvelope(envelope: ChangeEnvelope): Promise<b
   }
 
   const trusted = loadTrustedKeysMap()
-  if (trusted[signerDeviceId] !== signerPublicKey) {
+  const knownKey = trusted[signerDeviceId]
+  if (!knownKey) {
+    setTrustedPublicKey(signerDeviceId, signerPublicKey)
+  } else if (knownKey !== signerPublicKey) {
     return false
   }
 

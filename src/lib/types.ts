@@ -29,6 +29,7 @@ export type SyncState = {
   lastPushedAt: string | null
   lastError: string | null
   isEnabled: boolean
+  syncToken: string | null
 }
 
 export type OutboxChange = {

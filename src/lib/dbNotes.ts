@@ -2,6 +2,7 @@ import * as Automerge from '@automerge/automerge/slim'
 import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64'
 import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
+import { generateSyncToken } from './syncToken'
 import { signEnvelope } from './syncSigning'
 import type { ChangeEnvelope, Note, NoteStatus, NoteType } from './types'
 
@@ -56,6 +57,7 @@ type SyncStateRow = {
   lastPushedAt: string | null
   lastError: string | null
   isEnabled: boolean
+  syncToken: string | null
 }
 
 type OutboxRow = {
@@ -212,6 +214,7 @@ function ensureSyncStateDefaults(store: IDBObjectStore, roomId: string) {
       lastPushedAt: null,
       lastError: null,
       isEnabled: false,
+      syncToken: null,
     }
     store.put(row)
   }
@@ -964,6 +967,7 @@ export type SyncDebugInfo = {
   roomId: string
   lastPulledSeq: number
   isEnabled: boolean
+  syncToken: string | null
 }
 
 export async function getSyncDebugInfo(roomId = DEFAULT_ROOM_ID): Promise<SyncDebugInfo> {
@@ -985,6 +989,7 @@ export async function getSyncDebugInfo(roomId = DEFAULT_ROOM_ID): Promise<SyncDe
           lastPushedAt: null,
           lastError: null,
           isEnabled: false,
+          syncToken: null,
         }
         store.put(row)
         resolve({
@@ -992,6 +997,7 @@ export async function getSyncDebugInfo(roomId = DEFAULT_ROOM_ID): Promise<SyncDe
           roomId,
           lastPulledSeq: 0,
           isEnabled: false,
+          syncToken: null,
         })
         return
       }
@@ -1004,6 +1010,10 @@ export async function getSyncDebugInfo(roomId = DEFAULT_ROOM_ID): Promise<SyncDe
             ? existing.lastPulledSeq
             : 0,
         isEnabled: Boolean((existing as SyncStateRow).isEnabled),
+        syncToken:
+          typeof (existing as SyncStateRow).syncToken === 'string'
+            ? (existing as SyncStateRow).syncToken
+            : null,
       })
     }
   })
@@ -1022,6 +1032,12 @@ export async function getSyncState(roomId = DEFAULT_ROOM_ID): Promise<SyncStateR
     request.onsuccess = () => {
       const existing = request.result as SyncStateRow | undefined
       if (existing) {
+        if (typeof existing.syncToken !== 'string' && existing.syncToken !== null) {
+          const normalized = { ...existing, syncToken: null }
+          store.put(normalized)
+          resolve(normalized)
+          return
+        }
         resolve(existing)
         return
       }
@@ -1031,6 +1047,7 @@ export async function getSyncState(roomId = DEFAULT_ROOM_ID): Promise<SyncStateR
         lastPushedAt: null,
         lastError: null,
         isEnabled: false,
+        syncToken: null,
       }
       store.put(created)
       resolve(created)
@@ -1058,7 +1075,17 @@ export async function updateSyncState(
 }
 
 export async function setSyncEnabled(roomId: string, enabled: boolean): Promise<SyncStateRow> {
-  return updateSyncState(roomId, { isEnabled: enabled, lastError: null })
+  const current = await getSyncState(roomId)
+  const syncToken = enabled ? (current.syncToken ?? generateSyncToken()) : current.syncToken
+  return updateSyncState(roomId, { isEnabled: enabled, lastError: null, syncToken })
+}
+
+export async function getSyncPairCode(roomId = DEFAULT_ROOM_ID): Promise<string | null> {
+  const state = await getSyncState(roomId)
+  if (!state.syncToken) {
+    return null
+  }
+  return JSON.stringify({ roomId, token: state.syncToken })
 }
 
 export async function listPendingOutboxChanges(roomId: string, limit = 50): Promise<OutboxRow[]> {

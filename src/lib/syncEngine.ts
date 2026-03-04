@@ -11,6 +11,8 @@ import {
   markOutboxChangesSent,
   updateSyncState,
 } from './dbNotes'
+import { sha256Hex } from './syncToken'
+import { makeSupabaseClient, pullRemoteRows, pushRemoteRows } from './supabaseSync'
 import { isSyncSigningSupported, verifyTrustedEnvelope } from './syncSigning'
 import type { ChangeEnvelope } from './types'
 
@@ -47,6 +49,22 @@ function getSyncEndpoint(): string | null {
 
 function isOnline() {
   return typeof navigator === 'undefined' ? true : navigator.onLine
+}
+
+function asSyncEnvelope(value: unknown): ChangeEnvelope | null {
+  const item = value as Partial<ChangeEnvelope> | null
+  if (!item) {
+    return null
+  }
+  if (
+    typeof item.changeId !== 'string' ||
+    typeof item.roomId !== 'string' ||
+    typeof item.noteId !== 'string' ||
+    !Array.isArray(item.payload)
+  ) {
+    return null
+  }
+  return item as ChangeEnvelope
 }
 
 export function startSyncEngine(options: SyncEngineOptions = {}) {
@@ -88,9 +106,19 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
       return
     }
 
-    const endpoint = getSyncEndpoint()
     const syncState = await getSyncState(roomId)
-    if (!syncState.isEnabled || !endpoint) {
+    if (!syncState.isEnabled) {
+      setStatus('disabled')
+      return
+    }
+    if (!syncState.syncToken) {
+      await updateSyncState(roomId, { lastError: 'Sync-Token fehlt. Bitte Sync neu aktivieren.' })
+      setStatus('error', 'Sync-Token fehlt. Bitte Sync neu aktivieren.')
+      return
+    }
+    const endpoint = getSyncEndpoint()
+    const supabase = makeSupabaseClient(syncState.syncToken)
+    if (!endpoint && !supabase) {
       setStatus(syncState.isEnabled ? 'idle' : 'disabled')
       return
     }
@@ -110,20 +138,50 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
       }
 
       const envelopes = pending.map((row) => decodeOutboxEnvelope(row.bytes))
-      const response = await fetch(`${endpoint}/push`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, changes: envelopes }),
-      })
-      if (!response.ok) {
-        throw new Error(`Push failed (${response.status})`)
-      }
+      if (supabase) {
+        const tokenHash = await sha256Hex(syncState.syncToken)
+        const rows = envelopes.map((envelope) => ({
+          room_id: envelope.roomId,
+          note_id: envelope.noteId,
+          change_id: envelope.changeId,
+          device_id: envelope.deviceId,
+          ts: envelope.ts,
+          kind: envelope.kind,
+          payload: envelope.payload,
+          token_hash: tokenHash,
+          signer_device_id: envelope.signerDeviceId ?? null,
+          signer_public_key: envelope.signerPublicKey ?? null,
+          signature: envelope.signature ?? null,
+        }))
+        await pushRemoteRows(supabase, rows)
+      } else if (endpoint) {
+        const response = await fetch(`${endpoint}/push`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-leiser-token': syncState.syncToken,
+          },
+          body: JSON.stringify({
+            roomId,
+            tokenHash: await sha256Hex(syncState.syncToken),
+            changes: envelopes,
+          }),
+        })
+        if (!response.ok) {
+          throw new Error(`Push failed (${response.status})`)
+        }
 
-      const json = (await response.json().catch(() => ({}))) as PushResponse
-      const ackedIds = json.ackedChangeIds?.length
-        ? json.ackedChangeIds
-        : pending.map((row) => row.changeId)
-      await markOutboxChangesSent(ackedIds)
+        const json = (await response.json().catch(() => ({}))) as PushResponse
+        const ackedIds = json.ackedChangeIds?.length
+          ? json.ackedChangeIds
+          : pending.map((row) => row.changeId)
+        await markOutboxChangesSent(ackedIds)
+      } else {
+        return
+      }
+      if (supabase) {
+        await markOutboxChangesSent(pending.map((row) => row.changeId))
+      }
       await updateSyncState(roomId, {
         lastPushedAt: new Date().toISOString(),
         lastError: null,
@@ -147,9 +205,19 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
       return
     }
 
-    const endpoint = getSyncEndpoint()
     const syncState = await getSyncState(roomId)
-    if (!syncState.isEnabled || !endpoint) {
+    if (!syncState.isEnabled) {
+      setStatus('disabled')
+      return
+    }
+    if (!syncState.syncToken) {
+      await updateSyncState(roomId, { lastError: 'Sync-Token fehlt. Bitte Sync neu aktivieren.' })
+      setStatus('error', 'Sync-Token fehlt. Bitte Sync neu aktivieren.')
+      return
+    }
+    const endpoint = getSyncEndpoint()
+    const supabase = makeSupabaseClient(syncState.syncToken)
+    if (!endpoint && !supabase) {
       setStatus(syncState.isEnabled ? 'idle' : 'disabled')
       return
     }
@@ -161,20 +229,52 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
     pullRunning = true
     setStatus('syncing')
     try {
-      const response = await fetch(
-        `${endpoint}/pull?roomId=${encodeURIComponent(roomId)}&sinceSeq=${encodeURIComponent(String(syncState.lastPulledSeq))}`,
-      )
-      if (!response.ok) {
-        throw new Error(`Pull failed (${response.status})`)
-      }
+      let seq = syncState.lastPulledSeq
+      let changes: Array<Partial<ChangeEnvelope>> = []
 
-      const json = (await response.json().catch(() => ({}))) as PullResponse
-      const seq = typeof json.seq === 'number' ? json.seq : syncState.lastPulledSeq
-      const changes = Array.isArray(json.changes) ? json.changes : []
+      if (supabase) {
+        const rows = await pullRemoteRows(supabase, roomId, syncState.lastPulledSeq, 200)
+        if (rows.length > 0) {
+          seq = Math.max(...rows.map((row) => row.seq ?? syncState.lastPulledSeq), syncState.lastPulledSeq)
+        }
+        changes = rows.map((row) => ({
+          changeId: row.change_id,
+          roomId: row.room_id,
+          noteId: row.note_id,
+          deviceId: row.device_id,
+          ts: row.ts,
+          kind: row.kind as ChangeEnvelope['kind'],
+          payload: row.payload,
+          signerDeviceId: row.signer_device_id ?? undefined,
+          signerPublicKey: row.signer_public_key ?? undefined,
+          signature: row.signature ?? undefined,
+        }))
+      } else if (endpoint) {
+        const response = await fetch(
+          `${endpoint}/pull?roomId=${encodeURIComponent(roomId)}&sinceSeq=${encodeURIComponent(String(syncState.lastPulledSeq))}`,
+          {
+            headers: {
+              'x-leiser-token': syncState.syncToken,
+            },
+          },
+        )
+        if (!response.ok) {
+          throw new Error(`Pull failed (${response.status})`)
+        }
+        const json = (await response.json().catch(() => ({}))) as PullResponse
+        seq = typeof json.seq === 'number' ? json.seq : syncState.lastPulledSeq
+        changes = Array.isArray(json.changes) ? json.changes : []
+      } else {
+        return
+      }
       const seenKeys: string[] = []
       let applied = false
 
-      for (const item of changes) {
+      for (const rawItem of changes) {
+        const item = asSyncEnvelope(rawItem)
+        if (!item) {
+          continue
+        }
         const noteId = item.noteId
         const changeId = item.changeId
         const payload = item.payload

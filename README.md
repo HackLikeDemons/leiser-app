@@ -56,7 +56,7 @@ Auto-Scroll-Verhalten:
   - Theme wechseln (hell/dunkel)
   - Backup exportieren
   - Backup importieren
-  - Datenbereich öffnen/schließen
+  - Daten öffnen
 
 ## Tastenkürzel (ausführlich)
 
@@ -246,3 +246,20 @@ Empfohlener Ablauf:
 
 Leiser sendet keine Telemetrie und macht keine externen API-Requests fuer Notizdaten.
 Alle Inhalte bleiben lokal im Browserprofil.
+
+## Optionaler Supabase Sync (ohne Login)
+
+Leiser kann optional gegen Supabase synchronisieren, wenn in `localStorage` gesetzt:
+
+- `leiser:supabaseUrl`
+- `leiser:supabaseAnonKey`
+
+Zusätzlich wird beim Aktivieren von Sync ein `syncToken` erzeugt:
+
+- Token wird lokal im `sync_state` gehalten
+- Requests senden den Header `x-leiser-token`
+- In Supabase wird nur `token_hash` (SHA-256 Hex) gespeichert, nie der Klartext-Token
+
+Pair-Code:
+- Im Datenbereich wird ein Pair-Code mit `roomId` und `token` angezeigt.
+- Der Code dient zum Koppeln eines zweiten Geräts mit demselben Sync-Space.

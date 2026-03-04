@@ -299,6 +299,18 @@ body {
   gap: 0.45rem;
 }
 
+.import-panel textarea {
+  width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.55rem;
+  resize: vertical;
+}
+
 .dev-sync-panel {
   margin-top: 0.4rem;
   padding-top: 0.3rem;

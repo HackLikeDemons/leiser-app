@@ -9,6 +9,7 @@ import {
   countNotesByStatus,
   deleteNote,
   getSyncDebugInfo,
+  getSyncPairCode,
   listDecidedNotesByDay,
   listInboxNotes,
   listNotesByStatus,
@@ -54,6 +55,7 @@ type DevSyncInfo = {
   roomId: string
   lastPulledSeq: number
   isEnabled: boolean
+  syncToken: string | null
 }
 
 function toClockLabel(isoTimestamp: string) {
@@ -732,6 +734,7 @@ function AppContent() {
   const [syncEnabled, setSyncEnabledState] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncUiStatus>('disabled')
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [syncPairCode, setSyncPairCode] = useState<string | null>(null)
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null)
   const [staleReviewMode, setStaleReviewMode] = useState(false)
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
@@ -783,6 +786,7 @@ function AppContent() {
       setSearchableNotes(searchable)
       const syncInfo = await getSyncDebugInfo()
       setSyncEnabledState(syncInfo.isEnabled)
+      setSyncPairCode(await getSyncPairCode())
       if (import.meta.env.DEV) {
         setDevSyncInfo(syncInfo)
       }
@@ -1596,12 +1600,19 @@ function AppContent() {
                   {syncStatus === 'syncing' ? <p className="hint">Sync läuft im Hintergrund.</p> : null}
                   {syncStatus === 'offline' ? <p className="hint">Sync pausiert (offline).</p> : null}
                   {syncStatus === 'error' && syncError ? <p className="error-text">{syncError}</p> : null}
+                  {syncPairCode ? (
+                    <div className="import-panel">
+                      <label className="hint" htmlFor="sync-pair-code">Pair Code (mit Token)</label>
+                      <textarea id="sync-pair-code" readOnly value={syncPairCode} rows={3} />
+                    </div>
+                  ) : null}
                   {import.meta.env.DEV && devSyncInfo ? (
                     <div className="dev-sync-panel">
                       <p className="hint">Device ID: {devSyncInfo.deviceId}</p>
                       <p className="hint">Room ID: {devSyncInfo.roomId}</p>
                       <p className="hint">Last Pulled Seq: {devSyncInfo.lastPulledSeq}</p>
                       <p className="hint">Sync enabled: {String(devSyncInfo.isEnabled)}</p>
+                      <p className="hint">Sync token: {devSyncInfo.syncToken ? 'gesetzt' : 'nicht gesetzt'}</p>
                     </div>
                   ) : null}
                 </div>
