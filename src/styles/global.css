@@ -235,6 +235,29 @@ button:hover {
   gap: 0.42rem;
 }
 
+.braindump-flow {
+  display: flex;
+  flex-direction: column;
+  min-height: 460px;
+}
+
+.braindump-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.1rem;
+}
+
+.braindump-composer {
+  position: sticky;
+  bottom: 0;
+  background: var(--surface-card);
+  border-top: 1px solid color-mix(in srgb, var(--border-default) 85%, transparent);
+  padding-top: 0.45rem;
+  padding-bottom: calc(0.35rem + env(safe-area-inset-bottom));
+  margin-top: 0.35rem;
+}
+
 .capture-form textarea {
   width: 100%;
   border: 1px solid var(--border-soft);
@@ -689,6 +712,10 @@ button:focus {
   }
 
   .tab-content {
+    min-height: 340px;
+  }
+
+  .braindump-flow {
     min-height: 340px;
   }
 
