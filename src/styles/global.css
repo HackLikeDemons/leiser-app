@@ -647,6 +647,22 @@ button:hover {
   overflow: hidden;
 }
 
+.note-text-toggle {
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.note-text--expanded {
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
 .note-content {
   display: inline-flex;
   align-items: baseline;

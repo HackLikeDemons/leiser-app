@@ -132,6 +132,22 @@ function NoteTypeBadge({ note }: { note: Note }) {
   return <span className="note-type-badge">{label}</span>
 }
 
+function ExpandableNoteText({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <button
+      type="button"
+      className={expanded ? 'note-text note-text-toggle note-text--expanded' : 'note-text note-text-toggle'}
+      onClick={() => setExpanded((prev) => !prev)}
+      aria-expanded={expanded}
+      title={expanded ? 'Text einklappen' : 'Text vollständig anzeigen'}
+    >
+      {text}
+    </button>
+  )
+}
+
 function noteStatusLabel(status: NoteStatus) {
   if (status === 'INBOX') return 'Inbox'
   if (status === 'TODO') return 'To-Do'
@@ -211,7 +227,7 @@ const BraindumpNoteRow = memo(function BraindumpNoteRow({
     <li className="note-item">
       <span className="note-time">{toClockLabel(note.createdAt)}</span>
       <span className="note-content">
-        <span className="note-text">{note.text}</span>
+        <ExpandableNoteText text={note.text} />
         {label ? <span className="note-type-badge">{label}</span> : null}
       </span>
       <div className="note-actions">
@@ -391,7 +407,7 @@ function TodoNoteRow({
     <li key={note.id} className="note-item note-item--todo">
       <span className="note-time">{formatNoteTime(note, todayISO)}</span>
       <span className="note-content">
-        <span className="note-text">{note.text}</span>
+        <ExpandableNoteText text={note.text} />
         {note.starred ? <span className="status-badge">Wichtig</span> : null}
         <NoteTypeBadge note={note} />
       </span>
@@ -469,7 +485,7 @@ function ThinkingNoteRow({
     <li className="note-item note-item--todo">
       <span className="note-time">{toClockLabel(note.createdAt)}</span>
       <span className="note-content">
-        <span className="note-text">{note.text}</span>
+        <ExpandableNoteText text={note.text} />
         <NoteTypeBadge note={note} />
       </span>
       <div className="todo-actions">
@@ -545,7 +561,7 @@ function ArchivedThinkingNoteRow({
     <li className="note-item note-item--todo">
       <span className="note-time">{toClockLabel(note.createdAt)}</span>
       <span className="note-content">
-        <span className="note-text">{note.text}</span>
+        <ExpandableNoteText text={note.text} />
         <NoteTypeBadge note={note} />
       </span>
       <div className="todo-actions">
@@ -1728,7 +1744,7 @@ function AppContent() {
                     <li key={note.id} className="note-item note-item--todo">
                       <span className="note-time">{formatNoteTime(note, todayISO)}</span>
                       <span className="note-content">
-                        <span className="note-text">{note.text}</span>
+                        <ExpandableNoteText text={note.text} />
                         <span className="status-badge">{noteStatusLabel(note.status)}</span>
                         <NoteTypeBadge note={note} />
                       </span>
@@ -1952,7 +1968,7 @@ function AppContent() {
                           <li key={note.id} className="note-item note-item--todo">
                       <span className="note-time">{formatNoteTime(note, todayISO)}</span>
                             <span className="note-content">
-                              <span className="note-text">{note.text}</span>
+                              <ExpandableNoteText text={note.text} />
                               <span className="status-badge">{noteStatusLabel(note.status)}</span>
                               <NoteTypeBadge note={note} />
                             </span>
