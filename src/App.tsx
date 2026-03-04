@@ -403,6 +403,9 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchableNotes, setSearchableNotes] = useState<Note[]>([])
   const [showArchive, setShowArchive] = useState(false)
+  const [showTodoToday, setShowTodoToday] = useState(true)
+  const [showTodoWeek, setShowTodoWeek] = useState(true)
+  const [showTodoOlder, setShowTodoOlder] = useState(false)
   const [showDataPanel, setShowDataPanel] = useState(false)
   const [showImportPanel, setShowImportPanel] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
@@ -799,6 +802,33 @@ function AppContent() {
     }
     return searchEngine.search(searchQuery.trim(), { limit: SEARCH_RESULT_LIMIT })
   }, [isSearchMode, searchEngine, searchQuery])
+
+  const groupedTodos = useMemo(() => {
+    const groups: Record<'TODAY' | 'THIS_WEEK' | 'OLDER', Note[]> = {
+      TODAY: [],
+      THIS_WEEK: [],
+      OLDER: [],
+    }
+
+    for (const todo of todoNotes) {
+      if (todo.dayISO === todayISO) {
+        groups.TODAY.push(todo)
+      } else if (todo.dayISO >= weekStartISO) {
+        groups.THIS_WEEK.push(todo)
+      } else {
+        groups.OLDER.push(todo)
+      }
+    }
+
+    const byCreatedDesc = (a: Note, b: Note) => b.createdAt.localeCompare(a.createdAt)
+    groups.TODAY.sort(byCreatedDesc)
+    groups.THIS_WEEK.sort(byCreatedDesc)
+    groups.OLDER.sort(byCreatedDesc)
+
+    return groups
+  }, [todoNotes, todayISO, weekStartISO])
+
+  const useGroupedTodos = todoNotes.length > 10
 
   useEffect(() => {
     if (activeTab !== 'BRAINDUMP' || isSearchMode) {
@@ -1360,55 +1390,231 @@ function AppContent() {
             <>
             <h2>To-Do ({todoNotes.length})</h2>
             {todoNotes.length === 0 ? <p className="empty-text">Keine offenen To-Dos.</p> : null}
-            <ul className="notes-list" aria-label="To-Do Notizen">
-              {todoNotes.map((note) => (
-                <li key={note.id} className="note-item note-item--todo">
-                  <span className="note-time">{toDayClockLabel(note.createdAt)}</span>
-                  <span className="note-content">
-                    <span className="note-text">{note.text}</span>
-                    {renderTypeBadge(note)}
-                  </span>
-                  <div className="todo-actions">
-                    <button
-                      type="button"
-                      className="review-btn review-btn--done review-btn--icon"
-                      onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
-                      aria-label="Als erledigt markieren"
-                      title="Erledigt"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M5 12.5 10 17l9-10"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className="review-btn review-btn--back review-btn--icon"
-                      onClick={() => void handleReviewDecision(note.id, 'INBOX')}
-                      aria-label="Zurück in Inbox"
-                      title="Zurück"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M10 7 5 12l5 5M6 12h13"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            {!useGroupedTodos ? (
+              <ul className="notes-list" aria-label="To-Do Notizen">
+                {todoNotes.map((note) => (
+                  <li key={note.id} className="note-item note-item--todo">
+                    <span className="note-time">{toDayClockLabel(note.createdAt)}</span>
+                    <span className="note-content">
+                      <span className="note-text">{note.text}</span>
+                      {renderTypeBadge(note)}
+                    </span>
+                    <div className="todo-actions">
+                      <button
+                        type="button"
+                        className="review-btn review-btn--done review-btn--icon"
+                        onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
+                        aria-label="Als erledigt markieren"
+                        title="Erledigt"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path
+                            d="M5 12.5 10 17l9-10"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.9"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="review-btn review-btn--back review-btn--icon"
+                        onClick={() => void handleReviewDecision(note.id, 'INBOX')}
+                        aria-label="Zurück in Inbox"
+                        title="Zurück"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path
+                            d="M10 7 5 12l5 5M6 12h13"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.9"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {useGroupedTodos ? (
+              <>
+                <section className="todo-group">
+                  <button type="button" className="todo-group-toggle" onClick={() => setShowTodoToday((prev) => !prev)}>
+                    Heute ({groupedTodos.TODAY.length})
+                  </button>
+                  {showTodoToday ? (
+                    <ul className="notes-list" aria-label="To-Do Heute">
+                      {groupedTodos.TODAY.map((note) => (
+                        <li key={note.id} className="note-item note-item--todo">
+                          <span className="note-time">{toDayClockLabel(note.createdAt)}</span>
+                          <span className="note-content">
+                            <span className="note-text">{note.text}</span>
+                            {renderTypeBadge(note)}
+                          </span>
+                          <div className="todo-actions">
+                            <button
+                              type="button"
+                              className="review-btn review-btn--done review-btn--icon"
+                              onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
+                              aria-label="Als erledigt markieren"
+                              title="Erledigt"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                  d="M5 12.5 10 17l9-10"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.9"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className="review-btn review-btn--back review-btn--icon"
+                              onClick={() => void handleReviewDecision(note.id, 'INBOX')}
+                              aria-label="Zurück in Inbox"
+                              title="Zurück"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                  d="M10 7 5 12l5 5M6 12h13"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.9"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
+
+                <section className="todo-group">
+                  <button type="button" className="todo-group-toggle" onClick={() => setShowTodoWeek((prev) => !prev)}>
+                    Diese Woche ({groupedTodos.THIS_WEEK.length})
+                  </button>
+                  {showTodoWeek ? (
+                    <ul className="notes-list" aria-label="To-Do Diese Woche">
+                      {groupedTodos.THIS_WEEK.map((note) => (
+                        <li key={note.id} className="note-item note-item--todo">
+                          <span className="note-time">{toDayClockLabel(note.createdAt)}</span>
+                          <span className="note-content">
+                            <span className="note-text">{note.text}</span>
+                            {renderTypeBadge(note)}
+                          </span>
+                          <div className="todo-actions">
+                            <button
+                              type="button"
+                              className="review-btn review-btn--done review-btn--icon"
+                              onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
+                              aria-label="Als erledigt markieren"
+                              title="Erledigt"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                  d="M5 12.5 10 17l9-10"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.9"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className="review-btn review-btn--back review-btn--icon"
+                              onClick={() => void handleReviewDecision(note.id, 'INBOX')}
+                              aria-label="Zurück in Inbox"
+                              title="Zurück"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                  d="M10 7 5 12l5 5M6 12h13"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.9"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
+
+                <section className="todo-group">
+                  <button type="button" className="todo-group-toggle" onClick={() => setShowTodoOlder((prev) => !prev)}>
+                    Älter ({groupedTodos.OLDER.length})
+                  </button>
+                  {showTodoOlder ? (
+                    <ul className="notes-list" aria-label="To-Do Älter">
+                      {groupedTodos.OLDER.map((note) => (
+                        <li key={note.id} className="note-item note-item--todo">
+                          <span className="note-time">{toDayClockLabel(note.createdAt)}</span>
+                          <span className="note-content">
+                            <span className="note-text">{note.text}</span>
+                            {renderTypeBadge(note)}
+                          </span>
+                          <div className="todo-actions">
+                            <button
+                              type="button"
+                              className="review-btn review-btn--done review-btn--icon"
+                              onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
+                              aria-label="Als erledigt markieren"
+                              title="Erledigt"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                  d="M5 12.5 10 17l9-10"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.9"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className="review-btn review-btn--back review-btn--icon"
+                              onClick={() => void handleReviewDecision(note.id, 'INBOX')}
+                              aria-label="Zurück in Inbox"
+                              title="Zurück"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                  d="M10 7 5 12l5 5M6 12h13"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.9"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
+              </>
+            ) : null}
             </>
           ) : null}
 

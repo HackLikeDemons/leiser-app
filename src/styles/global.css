@@ -376,6 +376,16 @@ button:hover {
   font-weight: 600;
 }
 
+.todo-group {
+  margin-top: 0.5rem;
+}
+
+.todo-group-toggle {
+  padding: 0.28rem 0.54rem;
+  font-size: 0.86rem;
+  opacity: 0.92;
+}
+
 .empty-text {
   margin: 0;
   color: var(--text-muted);
