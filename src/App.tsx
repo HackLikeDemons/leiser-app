@@ -9,6 +9,7 @@ import {
   updateNoteText,
   updateNoteStatus,
 } from './lib/dbNotes'
+import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO } from './lib/date'
 import type { Note, NoteStatus } from './lib/types'
 
@@ -37,6 +38,10 @@ export function App() {
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [processNotes, setProcessNotes] = useState<Note[]>([])
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
+  const [showImportPanel, setShowImportPanel] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importMode, setImportMode] = useState<ImportMode>('MERGE')
+  const [importReport, setImportReport] = useState<ImportReport | null>(null)
   const [error, setError] = useState('')
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
@@ -163,6 +168,46 @@ export function App() {
     }
   }
 
+  const handleExport = async () => {
+    setError('')
+    try {
+      const backup = await buildBackupData()
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const day = getLocalDayISO()
+      link.href = url
+      link.download = `leiser-backup-${day}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Backup konnte nicht exportiert werden.')
+    }
+  }
+
+  const handleImport = async () => {
+    if (!importFile) {
+      setError('Bitte zuerst eine Backup-Datei auswählen.')
+      return
+    }
+
+    setError('')
+    setImportReport(null)
+    try {
+      const text = await importFile.text()
+      const report = await importBackupJson(text, importMode)
+      setImportReport(report)
+      setImportFile(null)
+      await refreshAll()
+    } catch (importError) {
+      if (importError instanceof Error) {
+        setError(importError.message)
+      } else {
+        setError('Import fehlgeschlagen.')
+      }
+    }
+  }
+
   return (
     <main className="daily-shell">
       <section className="daily-card">
@@ -192,6 +237,55 @@ export function App() {
             Denken
           </button>
         </div>
+
+        <section className="data-panel" aria-label="Daten">
+          <div className="data-actions">
+            <button type="button" onClick={() => void handleExport()}>
+              Backup exportieren
+            </button>
+            <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
+              Backup importieren
+            </button>
+          </div>
+
+          {showImportPanel ? (
+            <div className="import-panel">
+              <input
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+              />
+              <label className="import-mode-option">
+                <input
+                  type="radio"
+                  name="importMode"
+                  checked={importMode === 'MERGE'}
+                  onChange={() => setImportMode('MERGE')}
+                />
+                <span>Zusammenführen (empfohlen)</span>
+              </label>
+              <label className="import-mode-option">
+                <input
+                  type="radio"
+                  name="importMode"
+                  checked={importMode === 'REPLACE'}
+                  onChange={() => setImportMode('REPLACE')}
+                />
+                <span>Ersetzen (löscht lokale Daten)</span>
+              </label>
+              <button type="button" onClick={() => void handleImport()}>
+                Import starten
+              </button>
+            </div>
+          ) : null}
+
+          {importReport ? (
+            <p className="hint">
+              Importiert: {importReport.imported} · Aktualisiert: {importReport.updated} ·
+              Übersprungen: {importReport.skipped} · Ungültig: {importReport.invalid}
+            </p>
+          ) : null}
+        </section>
 
         {activeTab === 'BRAINDUMP' ? (
           <>

@@ -12,7 +12,7 @@ const STATUS_CREATED_AT_INDEX = 'status_createdAt'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
-function asActiveNote(value: unknown): Note | null {
+function asStoredNote(value: unknown): Note | null {
   const note = value as Partial<Note> | undefined
   if (!note || typeof note !== 'object') {
     return null
@@ -33,6 +33,19 @@ function asActiveNote(value: unknown): Note | null {
     text: String(note.text ?? ''),
     status: (note.status as NoteStatus | undefined) ?? 'INBOX',
   }
+}
+
+function asActiveNote(value: unknown): Note | null {
+  const note = asStoredNote(value)
+  if (!note) {
+    return null
+  }
+
+  if (note.deletedAt !== null && note.deletedAt !== undefined) {
+    return null
+  }
+
+  return note
 }
 
 function openDb() {
@@ -147,6 +160,83 @@ export async function listNotesByDay(dayISO: string, limit = 500): Promise<Note[
       }
       cursor.continue()
     }
+  })
+}
+
+export async function listAllNotes(): Promise<Note[]> {
+  const db = await openDb()
+
+  return new Promise<Note[]>((resolve, reject) => {
+    const notes: Note[] = []
+    const transaction = db.transaction(NOTES_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_STORE)
+    const request = store.openCursor()
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => {
+      notes.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      resolve(notes)
+    }
+
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        return
+      }
+
+      const note = asStoredNote(cursor.value)
+      if (note) {
+        notes.push(note)
+      }
+      cursor.continue()
+    }
+  })
+}
+
+export async function getNoteById(id: string): Promise<Note | null> {
+  const db = await openDb()
+
+  return new Promise<Note | null>((resolve, reject) => {
+    const transaction = db.transaction(NOTES_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_STORE)
+    const request = store.get(id)
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      resolve(asStoredNote(request.result))
+    }
+  })
+}
+
+export async function upsertNote(note: Note): Promise<void> {
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(NOTES_STORE, 'readwrite')
+    const store = transaction.objectStore(NOTES_STORE)
+    const request = store.put(note)
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+}
+
+export async function clearNotesStore(): Promise<void> {
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(NOTES_STORE, 'readwrite')
+    const store = transaction.objectStore(NOTES_STORE)
+    const request = store.clear()
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve()
+    request.onerror = () => reject(request.error)
   })
 }
 

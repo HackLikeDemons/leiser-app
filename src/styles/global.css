@@ -95,6 +95,32 @@ body {
   color: #b7661a;
 }
 
+.data-panel {
+  border: 1px solid #d7e2dc;
+  border-radius: 10px;
+  background: #f7fbf9;
+  padding: 0.7rem;
+  margin-bottom: 1rem;
+}
+
+.data-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.import-panel {
+  margin-top: 0.6rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.import-mode-option {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
 button {
   width: fit-content;
   border: 1px solid #b7c8c1;
