@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ClipboardEvent, FormEvent, KeyboardEvent } from 'react'
 import {
   addNote,
+  countNotesByStatus,
   deleteNote,
   listInboxNotes,
   listNotesByDay,
-  listProcessNotes,
+  listNotesByStatus,
   listTodoNotes,
   updateNoteText,
   updateNoteStatus,
@@ -57,6 +58,9 @@ export function App() {
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [processNotes, setProcessNotes] = useState<Note[]>([])
   const [todoNotes, setTodoNotes] = useState<Note[]>([])
+  const [archivedNotes, setArchivedNotes] = useState<Note[]>([])
+  const [archiveCount, setArchiveCount] = useState(0)
+  const [showArchive, setShowArchive] = useState(false)
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
   const [showDataPanel, setShowDataPanel] = useState(false)
   const [showImportPanel, setShowImportPanel] = useState(false)
@@ -69,16 +73,20 @@ export function App() {
 
   const refreshAll = async () => {
     try {
-      const [today, inbox, process, todo] = await Promise.all([
+      const [today, inbox, process, todo, archived, archivedTotal] = await Promise.all([
         listNotesByDay(todayISO, 500),
         listInboxNotes(200),
-        listProcessNotes(200),
+        listNotesByStatus('PROCESS', 200),
         listTodoNotes(200),
+        listNotesByStatus('ARCHIVE', 50),
+        countNotesByStatus('ARCHIVE'),
       ])
       setTodayNotes(today)
       setInboxNotes(inbox)
       setProcessNotes(process)
       setTodoNotes(todo)
+      setArchivedNotes(archived)
+      setArchiveCount(archivedTotal)
     } catch {
       setError('Daten konnten nicht geladen werden.')
     }
@@ -535,8 +543,17 @@ export function App() {
 
         {activeTab === 'THINKING' ? (
           <>
-            <h2>Denken ({processNotes.length})</h2>
-            {processNotes.length === 0 ? <p className="empty-text">Keine Gedanken im Denken-Modus.</p> : null}
+            <div className="section-headline">
+              <h2>Denken ({processNotes.length})</h2>
+              <button
+                type="button"
+                className="archive-toggle"
+                onClick={() => setShowArchive((prev) => !prev)}
+              >
+                {showArchive ? `Archiv ausblenden (${archiveCount})` : `Archiv anzeigen (${archiveCount})`}
+              </button>
+            </div>
+            {processNotes.length === 0 ? <p className="empty-text">Keine offenen Gedanken im Denken.</p> : null}
             <ul className="notes-list" aria-label="Denken Notizen">
               {processNotes.map((note) => (
                 <li key={note.id} className="note-item">
@@ -548,8 +565,10 @@ export function App() {
                   <div className="note-actions">
                     <button
                       type="button"
-                      className="review-btn review-btn--archive"
+                      className="review-btn review-btn--archive review-btn--icon"
                       onClick={() => void handleReviewDecision(note.id, 'ARCHIVE')}
+                      aria-label="Archivieren"
+                      title="Archivieren"
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path
@@ -561,12 +580,13 @@ export function App() {
                           strokeLinejoin="round"
                         />
                       </svg>
-                      <span>Abgelegt</span>
                     </button>
                     <button
                       type="button"
-                      className="review-btn review-btn--todo"
+                      className="review-btn review-btn--todo review-btn--icon"
                       onClick={() => void handleReviewDecision(note.id, 'TODO')}
+                      aria-label="Zu To-Do verschieben"
+                      title="Zu To-Do"
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path
@@ -578,12 +598,13 @@ export function App() {
                           strokeLinejoin="round"
                         />
                       </svg>
-                      <span>To-Do</span>
                     </button>
                     <button
                       type="button"
-                      className="review-btn review-btn--discard"
+                      className="review-btn review-btn--discard review-btn--icon"
                       onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
+                      aria-label="Verwerfen"
+                      title="Verwerfen"
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path
@@ -595,12 +616,69 @@ export function App() {
                           strokeLinejoin="round"
                         />
                       </svg>
-                      <span>Verwerfen</span>
                     </button>
                   </div>
                 </li>
               ))}
             </ul>
+            {showArchive ? (
+              <>
+                <h3 className="archive-title">Archiv</h3>
+                {archivedNotes.length === 0 ? <p className="empty-text">Archiv ist leer.</p> : null}
+                <ul className="notes-list" aria-label="Archivierte Gedanken">
+                  {archivedNotes.map((note) => (
+                    <li key={note.id} className="note-item note-item--todo">
+                      <span className="note-time">{note.createdAt.slice(0, 10)}</span>
+                      <span className="note-content">
+                        <span className="note-text">{note.text}</span>
+                        {renderTypeBadge(note)}
+                      </span>
+                      <div className="todo-actions">
+                        <button
+                          type="button"
+                          className="review-btn review-btn--back review-btn--icon"
+                          onClick={() => void handleReviewDecision(note.id, 'PROCESS')}
+                          aria-label="Zurück zu Denken"
+                          title="Zurück zu Denken"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                              d="M10 7 5 12l5 5M6 12h13"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.9"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          className="review-btn review-btn--discard review-btn--icon"
+                          onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
+                          aria-label="Verwerfen"
+                          title="Verwerfen"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                              d="M6 6l12 12M18 6 6 18"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.9"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {archiveCount > archivedNotes.length ? (
+                  <p className="hint">Nur die letzten 50 angezeigt.</p>
+                ) : null}
+              </>
+            ) : null}
           </>
         ) : null}
 

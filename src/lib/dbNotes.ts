@@ -333,35 +333,7 @@ export async function listDecidedNotesByDay(dayISO: string, limit = 200): Promis
 }
 
 export async function listProcessNotes(limit = 200): Promise<Note[]> {
-  const db = await openDb()
-
-  return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
-    const transaction = db.transaction(NOTES_STORE, 'readonly')
-    const store = transaction.objectStore(NOTES_STORE)
-    const index = store.index(STATUS_INDEX)
-    const request = index.openCursor(IDBKeyRange.only('PROCESS'), 'next')
-
-    transaction.onerror = () => reject(transaction.error)
-    transaction.onabort = () => reject(transaction.error)
-    transaction.oncomplete = () => {
-      notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      resolve(notes)
-    }
-
-    request.onerror = () => reject(request.error)
-    request.onsuccess = () => {
-      const cursor = request.result
-      if (!cursor || notes.length >= limit) {
-        return
-      }
-      const note = asActiveNote(cursor.value)
-      if (note) {
-        notes.push(note)
-      }
-      cursor.continue()
-    }
-  })
+  return listNotesByStatus('PROCESS', limit)
 }
 
 export async function listTodoNotes(limit = 200): Promise<Note[]> {
@@ -390,6 +362,67 @@ export async function listTodoNotes(limit = 200): Promise<Note[]> {
       const note = asActiveNote(cursor.value)
       if (note) {
         notes.push(note)
+      }
+      cursor.continue()
+    }
+  })
+}
+
+export async function listNotesByStatus(status: NoteStatus, limit = 200): Promise<Note[]> {
+  const db = await openDb()
+
+  return new Promise<Note[]>((resolve, reject) => {
+    const notes: Note[] = []
+    const transaction = db.transaction(NOTES_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_STORE)
+    const index = store.index(STATUS_INDEX)
+    const request = index.openCursor(IDBKeyRange.only(status), 'next')
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => {
+      notes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      resolve(notes)
+    }
+
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor || notes.length >= limit) {
+        return
+      }
+      const note = asActiveNote(cursor.value)
+      if (note) {
+        notes.push(note)
+      }
+      cursor.continue()
+    }
+  })
+}
+
+export async function countNotesByStatus(status: NoteStatus): Promise<number> {
+  const db = await openDb()
+
+  return new Promise<number>((resolve, reject) => {
+    let count = 0
+    const transaction = db.transaction(NOTES_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_STORE)
+    const index = store.index(STATUS_INDEX)
+    const request = index.openCursor(IDBKeyRange.only(status), 'next')
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve(count)
+
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        return
+      }
+      const note = asActiveNote(cursor.value)
+      if (note) {
+        count += 1
       }
       cursor.continue()
     }
