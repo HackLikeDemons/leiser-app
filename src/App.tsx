@@ -15,6 +15,7 @@ import type { Note, NoteStatus } from './lib/types'
 
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING'
 const SOFT_CHAR_LIMIT = 200
+const THEME_KEY = 'leiser:theme'
 
 function toClockLabel(isoTimestamp: string) {
   const date = new Date(isoTimestamp)
@@ -33,11 +34,16 @@ function isUndoAvailable(note: Note) {
 
 export function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('BRAINDUMP')
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const stored = localStorage.getItem(THEME_KEY)
+    return stored === 'light' ? 'light' : 'dark'
+  })
   const [text, setText] = useState('')
   const [todayNotes, setTodayNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [processNotes, setProcessNotes] = useState<Note[]>([])
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
+  const [showDataPanel, setShowDataPanel] = useState(false)
   const [showImportPanel, setShowImportPanel] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
@@ -64,6 +70,11 @@ export function App() {
   useEffect(() => {
     void refreshAll()
   }, [todayISO])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem(THEME_KEY, theme)
+  }, [theme])
 
   const handleSubmit = async (event?: FormEvent) => {
     event?.preventDefault()
@@ -194,8 +205,8 @@ export function App() {
     setError('')
     setImportReport(null)
     try {
-      const text = await importFile.text()
-      const report = await importBackupJson(text, importMode)
+      const fileText = await importFile.text()
+      const report = await importBackupJson(fileText, importMode)
       setImportReport(report)
       setImportFile(null)
       await refreshAll()
@@ -211,8 +222,63 @@ export function App() {
   return (
     <main className="daily-shell">
       <section className="daily-card">
-        <h1>Leiser</h1>
-        <p className="subtitle">Täglicher Braindump. Komplett lokal.</p>
+        <header className="app-header">
+          <div>
+            <h1>Leiser</h1>
+            <p className="subtitle">Täglicher Braindump. Komplett lokal.</p>
+          </div>
+          <div className="header-actions">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setShowDataPanel((prev) => !prev)}
+              aria-label="Backup-Menü öffnen"
+              title="Backup"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 3v9m0 0 3-3m-3 3-3-3M4 14.5v4A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5v-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
+              aria-label={theme === 'dark' ? 'Zum hellen Theme wechseln' : 'Zum dunklen Theme wechseln'}
+              title={theme === 'dark' ? 'Helles Theme' : 'Dunkles Theme'}
+            >
+              {theme === 'dark' ? (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M12 4.5V2m0 20v-2.5M4.5 12H2m20 0h-2.5M6.34 6.34L4.57 4.57m14.86 14.86-1.77-1.77M17.66 6.34l1.77-1.77M6.34 17.66l-1.77 1.77M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M21 12.8A8.8 8.8 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </button>
+          </div>
+        </header>
 
         <div className="mode-tabs" role="tablist" aria-label="Bereiche">
           <button
@@ -238,54 +304,58 @@ export function App() {
           </button>
         </div>
 
-        <section className="data-panel" aria-label="Daten">
-          <div className="data-actions">
-            <button type="button" onClick={() => void handleExport()}>
-              Backup exportieren
-            </button>
-            <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
-              Backup importieren
-            </button>
-          </div>
+        {showDataPanel ? (
+          <section className="data-section" aria-label="Daten">
+            <div className="data-panel">
+              <div className="data-actions">
+                <button type="button" onClick={() => void handleExport()}>
+                  Backup exportieren
+                </button>
+                <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
+                  Backup importieren
+                </button>
+              </div>
 
-          {showImportPanel ? (
-            <div className="import-panel">
-              <input
-                type="file"
-                accept="application/json,.json"
-                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
-              />
-              <label className="import-mode-option">
-                <input
-                  type="radio"
-                  name="importMode"
-                  checked={importMode === 'MERGE'}
-                  onChange={() => setImportMode('MERGE')}
-                />
-                <span>Zusammenführen (empfohlen)</span>
-              </label>
-              <label className="import-mode-option">
-                <input
-                  type="radio"
-                  name="importMode"
-                  checked={importMode === 'REPLACE'}
-                  onChange={() => setImportMode('REPLACE')}
-                />
-                <span>Ersetzen (löscht lokale Daten)</span>
-              </label>
-              <button type="button" onClick={() => void handleImport()}>
-                Import starten
-              </button>
+              {showImportPanel ? (
+                <div className="import-panel">
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                  />
+                  <label className="import-mode-option">
+                    <input
+                      type="radio"
+                      name="importMode"
+                      checked={importMode === 'MERGE'}
+                      onChange={() => setImportMode('MERGE')}
+                    />
+                    <span>Zusammenführen (empfohlen)</span>
+                  </label>
+                  <label className="import-mode-option">
+                    <input
+                      type="radio"
+                      name="importMode"
+                      checked={importMode === 'REPLACE'}
+                      onChange={() => setImportMode('REPLACE')}
+                    />
+                    <span>Ersetzen (löscht lokale Daten)</span>
+                  </label>
+                  <button type="button" onClick={() => void handleImport()}>
+                    Import starten
+                  </button>
+                </div>
+              ) : null}
+
+              {importReport ? (
+                <p className="hint">
+                  Importiert: {importReport.imported} · Aktualisiert: {importReport.updated} · Übersprungen:{' '}
+                  {importReport.skipped} · Ungültig: {importReport.invalid}
+                </p>
+              ) : null}
             </div>
-          ) : null}
-
-          {importReport ? (
-            <p className="hint">
-              Importiert: {importReport.imported} · Aktualisiert: {importReport.updated} ·
-              Übersprungen: {importReport.skipped} · Ungültig: {importReport.invalid}
-            </p>
-          ) : null}
-        </section>
+          </section>
+        ) : null}
 
         {activeTab === 'BRAINDUMP' ? (
           <>
@@ -298,6 +368,7 @@ export function App() {
                 onKeyDown={handleTextKeyDown}
                 onPaste={(event) => void handlePaste(event)}
               />
+              <small className="capture-hint">Enter speichert, Shift+Enter macht einen Zeilenumbruch.</small>
               <div className="capture-meta">
                 <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
                   {text.length} / {SOFT_CHAR_LIMIT}
@@ -309,7 +380,7 @@ export function App() {
               <button type="submit">Hinzufügen</button>
             </form>
 
-            <h2>Heute</h2>
+            <h2>Heute ({todayNotes.length})</h2>
             {todayNotes.length === 0 ? <p className="empty-text">Noch keine Notizen heute.</p> : null}
             <ul className="notes-list" aria-label="Heutige Notizen">
               {todayNotes.map((note) => (
@@ -338,7 +409,7 @@ export function App() {
 
         {activeTab === 'REVIEW' ? (
           <>
-            <h2>Offen</h2>
+            <h2>Offen ({inboxNotes.length})</h2>
             {inboxNotes.length === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
             <ul className="notes-list" aria-label="Offene Gedanken">
               {inboxNotes.map((note) => (
@@ -346,31 +417,48 @@ export function App() {
                   <span className="note-time">{toClockLabel(note.createdAt)}</span>
                   <span className="note-text">{note.text}</span>
                   <div className="review-actions-inline">
-                    <button type="button" onClick={() => void handleReviewDecision(note.id, 'TODO')}>
-                      TODO
+                    <button
+                      type="button"
+                      className="review-btn review-btn--todo"
+                      onClick={() => void handleReviewDecision(note.id, 'TODO')}
+                    >
+                      <span aria-hidden="true">✓</span>
+                      <span>TODO</span>
                     </button>
-                    <button type="button" onClick={() => void handleReviewDecision(note.id, 'PROCESS')}>
-                      PROCESS
+                    <button
+                      type="button"
+                      className="review-btn review-btn--process"
+                      onClick={() => void handleReviewDecision(note.id, 'PROCESS')}
+                    >
+                      <span aria-hidden="true">◎</span>
+                      <span>PROCESS</span>
                     </button>
-                    <button type="button" onClick={() => void handleReviewDecision(note.id, 'DISCARD')}>
-                      DISCARD
+                    <button
+                      type="button"
+                      className="review-btn review-btn--discard"
+                      onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
+                    >
+                      <span aria-hidden="true">×</span>
+                      <span>DISCARD</span>
                     </button>
                     {mergeTargetId === note.id ? (
-                      <button type="button" onClick={() => setMergeTargetId(null)}>
+                      <button type="button" className="review-btn review-btn--merge" onClick={() => setMergeTargetId(null)}>
                         Merge beenden
                       </button>
                     ) : mergeTargetId ? (
-                      <button type="button" onClick={() => void handleMergeIntoTarget(note.id)}>
+                      <button
+                        type="button"
+                        className="review-btn review-btn--merge"
+                        onClick={() => void handleMergeIntoTarget(note.id)}
+                      >
                         → hierhin zusammenführen
                       </button>
                     ) : (
-                      <button type="button" onClick={() => setMergeTargetId(note.id)}>
+                      <button type="button" className="review-btn review-btn--merge" onClick={() => setMergeTargetId(note.id)}>
                         Zusammenführen
                       </button>
                     )}
-                    {mergeTargetId === note.id ? (
-                      <span className="merge-label">Merging in diese Notiz</span>
-                    ) : null}
+                    {mergeTargetId === note.id ? <span className="merge-label">Merging in diese Notiz</span> : null}
                   </div>
                 </li>
               ))}
@@ -380,7 +468,7 @@ export function App() {
 
         {activeTab === 'THINKING' ? (
           <>
-            <h2>Denken</h2>
+            <h2>Denken ({processNotes.length})</h2>
             {processNotes.length === 0 ? <p className="empty-text">Keine Gedanken im Denken-Modus.</p> : null}
             <ul className="notes-list" aria-label="Denken Notizen">
               {processNotes.map((note) => (
