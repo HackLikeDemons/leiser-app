@@ -1,6 +1,6 @@
 :root {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  line-height: 1.5;
+  line-height: 1.4;
   --bg: #0f1115;
   --surface: #161a20;
   --text: #e6e8eb;
@@ -20,7 +20,7 @@
   --text-primary: var(--text);
   --text-secondary: var(--muted);
   --text-muted: var(--muted);
-  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.25);
+  --shadow-soft: 0 6px 18px rgba(0, 0, 0, 0.2);
   color: var(--text-primary);
   background: var(--surface-page-top);
 }
@@ -45,7 +45,7 @@
   --text-primary: var(--text);
   --text-secondary: var(--muted);
   --text-muted: var(--muted);
-  --shadow-soft: 0 8px 24px rgba(28, 24, 14, 0.08);
+  --shadow-soft: 0 5px 14px rgba(28, 24, 14, 0.06);
 }
 
 * {
@@ -68,15 +68,15 @@ body {
   min-height: 100vh;
   display: grid;
   place-items: start center;
-  padding: 2rem 1rem 3rem;
+  padding: 1.1rem 0.8rem 1.6rem;
 }
 
 .daily-card {
   width: min(820px, 100%);
   background: var(--surface-card);
   border: 1px solid var(--border-default);
-  border-radius: 16px;
-  padding: 1.25rem;
+  border-radius: 14px;
+  padding: 0.85rem;
   box-shadow: var(--shadow-soft);
 }
 
@@ -85,34 +85,34 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 0.9rem;
-  margin-bottom: 0.7rem;
+  margin-bottom: 0.45rem;
 }
 
 .header-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.35rem;
   flex-shrink: 0;
 }
 
 .icon-button {
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   display: inline-grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 999px;
 }
 
 .icon-button svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 .mode-tabs {
   display: flex;
   justify-content: flex-start;
   flex: 1 1 auto;
-  gap: 0.5rem;
+  gap: 0.35rem;
   margin: 0;
   min-width: 0;
   overflow-x: auto;
@@ -121,7 +121,21 @@ body {
 
 .tab-button {
   border-radius: 999px;
-  padding-inline: 1rem;
+  padding: 0.38rem 0.78rem;
+  font-size: 0.95rem;
+}
+
+.tab-button--icon {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+
+.tab-button--icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 .tab-button--active {
@@ -133,7 +147,7 @@ body {
 .data-section {
   display: flex;
   justify-content: flex-end;
-  margin: 0 0 1rem;
+  margin: 0 0 0.7rem;
 }
 
 .data-panel {
@@ -141,7 +155,11 @@ body {
   border: 1px solid var(--border-default);
   border-radius: 10px;
   background: var(--surface-card-soft);
-  padding: 0.75rem;
+  padding: 0.6rem;
+}
+
+.tab-content {
+  min-height: 460px;
 }
 
 .data-actions {
@@ -151,7 +169,7 @@ body {
 }
 
 .import-panel {
-  margin-top: 0.6rem;
+  margin-top: 0.4rem;
   display: grid;
   gap: 0.45rem;
 }
@@ -173,10 +191,11 @@ button {
   border: 1px solid var(--border-soft);
   background: var(--surface-button);
   color: var(--text-primary);
-  border-radius: 8px;
-  padding: 0.5rem 0.85rem;
+  border-radius: 7px;
+  padding: 0.4rem 0.65rem;
   cursor: pointer;
   font: inherit;
+  transition: background 160ms ease, border-color 160ms ease, opacity 160ms ease;
 }
 
 button:hover {
@@ -185,16 +204,16 @@ button:hover {
 
 .capture-form {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.42rem;
 }
 
 .capture-form textarea {
   width: 100%;
   border: 1px solid var(--border-soft);
   border-radius: 10px;
-  padding: 0.65rem 0.75rem;
-  min-height: 92px;
-  max-height: 220px;
+  padding: 0.5rem 0.65rem;
+  min-height: 74px;
+  max-height: 160px;
   background: var(--surface-input);
   color: var(--text-primary);
   font: inherit;
@@ -204,6 +223,7 @@ button:hover {
 
 .capture-hint {
   color: var(--text-muted);
+  font-size: 0.88rem;
 }
 
 .capture-meta {
@@ -213,9 +233,9 @@ button:hover {
 
 .capture-actions {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.8rem;
+  gap: 0.6rem;
 }
 
 .counter {
@@ -239,17 +259,17 @@ button:hover {
 
 .capture-submit {
   flex-shrink: 0;
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   display: inline-grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 999px;
 }
 
 .capture-submit svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .error-text {
@@ -258,13 +278,14 @@ button:hover {
 }
 
 .daily-card h2 {
-  margin: 1.2rem 0 0.5rem;
-  font-size: 1.05rem;
+  margin: 0.8rem 0 0.35rem;
+  font-size: 0.98rem;
+  font-weight: 600;
 }
 
 .section-headline {
-  margin-top: 1.2rem;
-  margin-bottom: 0.5rem;
+  margin-top: 0.8rem;
+  margin-bottom: 0.35rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -276,13 +297,14 @@ button:hover {
 }
 
 .archive-toggle {
-  padding: 0.35rem 0.65rem;
-  font-size: 0.9rem;
+  padding: 0.28rem 0.52rem;
+  font-size: 0.84rem;
+  opacity: 0.9;
 }
 
 .archive-title {
-  margin: 0.9rem 0 0.35rem;
-  font-size: 0.95rem;
+  margin: 0.6rem 0 0.28rem;
+  font-size: 0.86rem;
   color: var(--text-secondary);
   font-weight: 600;
 }
@@ -293,21 +315,21 @@ button:hover {
 }
 
 .notes-list {
-  margin: 0.5rem 0 0;
+  margin: 0.35rem 0 0;
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .note-item {
   display: grid;
   grid-template-columns: 64px 1fr auto;
-  gap: 0.6rem;
+  gap: 0.45rem;
   align-items: start;
   border: 1px solid var(--border-default);
-  border-radius: 10px;
-  padding: 0.6rem 0.7rem;
+  border-radius: 9px;
+  padding: 0.46rem 0.55rem;
   background: var(--surface-card-soft);
 }
 
@@ -318,12 +340,12 @@ button:hover {
 .note-item--todo {
   grid-template-columns: 64px 1fr auto;
   align-items: center;
-  padding: 0.5rem 0.65rem;
+  padding: 0.42rem 0.5rem;
 }
 
 .todo-actions {
   display: inline-flex;
-  gap: 0.3rem;
+  gap: 0.24rem;
   align-items: center;
   justify-content: flex-end;
 }
@@ -331,11 +353,16 @@ button:hover {
 .note-time {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
 }
 
 .note-text {
   white-space: pre-wrap;
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .note-content {
@@ -348,18 +375,18 @@ button:hover {
 .note-type-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0.1rem 0.4rem;
+  padding: 0.08rem 0.35rem;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--border-default) 80%, transparent);
   background: color-mix(in srgb, var(--surface-card-soft) 80%, transparent);
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: 0.69rem;
   white-space: nowrap;
 }
 
 .note-actions {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.25rem;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -369,8 +396,8 @@ button:hover {
 }
 
 .note-delete--icon {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   display: inline-grid;
   place-items: center;
@@ -385,11 +412,12 @@ button:hover {
   grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.32rem;
 }
 
 .review-actions-inline button {
-  padding: 0.35rem 0.6rem;
+  padding: 0.3rem 0.52rem;
+  font-size: 0.92rem;
 }
 
 .review-actions-inline--compact {
@@ -410,8 +438,8 @@ button:hover {
 }
 
 .review-btn--icon {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   display: inline-grid;
   place-items: center;
@@ -423,8 +451,8 @@ button:hover {
 }
 
 .review-btn--todo {
-  background: color-mix(in srgb, var(--accent) 22%, var(--surface-button));
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-default));
+  background: var(--surface-button);
+  border-color: var(--border-default);
 }
 
 .review-btn--process {
@@ -433,8 +461,8 @@ button:hover {
 }
 
 .review-btn--discard {
-  background: color-mix(in srgb, #9a6a72 14%, var(--surface-button));
-  border-color: color-mix(in srgb, #9a6a72 42%, var(--border-default));
+  background: var(--surface-button);
+  border-color: var(--border-default);
 }
 
 .review-btn--merge {
@@ -443,18 +471,18 @@ button:hover {
 }
 
 .review-btn--archive {
-  background: color-mix(in srgb, #6f7894 16%, var(--surface-button));
-  border-color: color-mix(in srgb, #6f7894 42%, var(--border-default));
+  background: var(--surface-button);
+  border-color: var(--border-default);
 }
 
 .review-btn--done {
-  background: color-mix(in srgb, var(--accent) 20%, var(--surface-button));
-  border-color: color-mix(in srgb, var(--accent) 52%, var(--border-default));
+  background: var(--surface-button);
+  border-color: var(--border-default);
 }
 
 .review-btn--back {
-  background: color-mix(in srgb, #8892a8 14%, var(--surface-button));
-  border-color: color-mix(in srgb, #8892a8 40%, var(--border-default));
+  background: var(--surface-button);
+  border-color: var(--border-default);
 }
 
 .merge-label {
@@ -477,6 +505,10 @@ button:focus {
 
   .daily-card {
     padding: 1rem;
+  }
+
+  .tab-content {
+    min-height: 340px;
   }
 
   .app-header {

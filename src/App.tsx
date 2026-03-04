@@ -259,31 +259,76 @@ export function App() {
           <div className="mode-tabs" role="tablist" aria-label="Bereiche">
             <button
               type="button"
-              className={activeTab === 'BRAINDUMP' ? 'tab-button tab-button--active' : 'tab-button'}
+              className={activeTab === 'BRAINDUMP' ? 'tab-button tab-button--icon tab-button--active' : 'tab-button tab-button--icon'}
               onClick={() => setActiveTab('BRAINDUMP')}
+              aria-label="Braindump"
+              title="Braindump"
             >
-              Braindump
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="m4 20 4.2-1 9.9-9.9a1.7 1.7 0 0 0 0-2.4l-.8-.8a1.7 1.7 0 0 0-2.4 0L5 15.8 4 20Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
             <button
               type="button"
-              className={activeTab === 'REVIEW' ? 'tab-button tab-button--active' : 'tab-button'}
+              className={activeTab === 'REVIEW' ? 'tab-button tab-button--icon tab-button--active' : 'tab-button tab-button--icon'}
               onClick={() => setActiveTab('REVIEW')}
+              aria-label="Review"
+              title="Review"
             >
-              Review
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M9 3h6l1 2h3v16H5V5h3l1-2Zm-1 9 2.4 2.4L16 9"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
             <button
               type="button"
-              className={activeTab === 'THINKING' ? 'tab-button tab-button--active' : 'tab-button'}
+              className={activeTab === 'THINKING' ? 'tab-button tab-button--icon tab-button--active' : 'tab-button tab-button--icon'}
               onClick={() => setActiveTab('THINKING')}
+              aria-label="Denken"
+              title="Denken"
             >
-              Denken
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 4c-1.8 0-3.3 1-4 2.6a3.6 3.6 0 0 0-2.9 3.5c0 .9.3 1.7.9 2.4-.3.5-.4 1-.4 1.6 0 1.7 1.3 3 3 3h1.2V20h4.6v-2.9H16a3 3 0 0 0 3-3c0-.6-.2-1.1-.4-1.6.5-.7.8-1.5.8-2.4a3.6 3.6 0 0 0-2.9-3.5A4.4 4.4 0 0 0 12 4Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path d="M10.5 8.8c.7.8.7 2 0 2.8m3-2.8c.7.8.7 2 0 2.8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
             </button>
             <button
               type="button"
-              className={activeTab === 'TODO' ? 'tab-button tab-button--active' : 'tab-button'}
+              className={activeTab === 'TODO' ? 'tab-button tab-button--icon tab-button--active' : 'tab-button tab-button--icon'}
               onClick={() => setActiveTab('TODO')}
+              aria-label="To-Do"
+              title="To-Do"
             >
-              To-Do
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
           </div>
 
@@ -393,8 +438,9 @@ export function App() {
           </section>
         ) : null}
 
-        {activeTab === 'BRAINDUMP' ? (
-          <>
+        <div className="tab-content">
+          {activeTab === 'BRAINDUMP' ? (
+            <>
             <form className="capture-form" onSubmit={(event) => void handleSubmit(event)}>
               <textarea
                 rows={2}
@@ -476,11 +522,11 @@ export function App() {
                 </li>
               ))}
             </ul>
-          </>
-        ) : null}
+            </>
+          ) : null}
 
-        {activeTab === 'REVIEW' ? (
-          <>
+          {activeTab === 'REVIEW' ? (
+            <>
             <h2>Offen ({inboxNotes.length})</h2>
             {inboxNotes.length === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
             <ul className="notes-list" aria-label="Offene Gedanken">
@@ -538,11 +584,11 @@ export function App() {
                 </li>
               ))}
             </ul>
-          </>
-        ) : null}
+            </>
+          ) : null}
 
-        {activeTab === 'THINKING' ? (
-          <>
+          {activeTab === 'THINKING' ? (
+            <>
             <div className="section-headline">
               <h2>Denken ({processNotes.length})</h2>
               <button
@@ -572,7 +618,7 @@ export function App() {
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path
-                          d="M4 8h16M6 8v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8M9 4h6"
+                          d="M3 7h18v4H3V7Zm3 4h12v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8Zm4 3h4"
                           fill="none"
                           stroke="currentColor"
                           strokeWidth="1.7"
@@ -679,11 +725,11 @@ export function App() {
                 ) : null}
               </>
             ) : null}
-          </>
-        ) : null}
+            </>
+          ) : null}
 
-        {activeTab === 'TODO' ? (
-          <>
+          {activeTab === 'TODO' ? (
+            <>
             <h2>To-Do ({todoNotes.length})</h2>
             {todoNotes.length === 0 ? <p className="empty-text">Keine offenen To-Dos.</p> : null}
             <ul className="notes-list" aria-label="To-Do Notizen">
@@ -735,10 +781,11 @@ export function App() {
                 </li>
               ))}
             </ul>
-          </>
-        ) : null}
+            </>
+          ) : null}
 
-        {error ? <p className="error-text">{error}</p> : null}
+          {error ? <p className="error-text">{error}</p> : null}
+        </div>
       </section>
     </main>
   )
