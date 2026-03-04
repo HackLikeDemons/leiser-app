@@ -270,7 +270,8 @@ button:hover {
   margin-top: 0;
 }
 
-.capture-form textarea {
+.capture-form textarea,
+.capture-textarea {
   width: 100%;
   border: 1px solid var(--border-soft);
   border-radius: 10px;
@@ -282,6 +283,19 @@ button:hover {
   font: inherit;
   resize: vertical;
   caret-color: var(--accent);
+}
+
+.capture-textarea--flash {
+  animation: capture-flash 120ms ease-out;
+}
+
+@keyframes capture-flash {
+  from {
+    opacity: 0.95;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .capture-hint {
@@ -409,23 +423,28 @@ button:hover {
   margin-top: 0.55rem;
 }
 
-.note-group-title {
-  margin: 0;
-  font-size: 0.88rem;
-  font-weight: 600;
+.day-divider {
+  margin-top: 1.1rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  opacity: 0.6;
   color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
-.load-more-button {
-  margin-top: 0.34rem;
-  font-size: 0.84rem;
-  padding: 0.24rem 0.5rem;
-  opacity: 0.9;
+.day-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--border-default) 70%, transparent);
 }
 
 .note-item {
   display: grid;
-  grid-template-columns: 56px 1fr auto;
+  grid-template-columns: 60px 1fr auto;
   gap: 0.45rem;
   align-items: start;
   border: 1px solid var(--border-default);
@@ -435,11 +454,11 @@ button:hover {
 }
 
 .note-item--review {
-  grid-template-columns: 56px 1fr;
+  grid-template-columns: 60px 1fr;
 }
 
 .note-item--todo {
-  grid-template-columns: 56px 1fr auto;
+  grid-template-columns: 60px 1fr auto;
   align-items: center;
   padding: var(--card-padding-y) var(--card-padding-x);
 }
@@ -449,6 +468,57 @@ button:hover {
   gap: 0.24rem;
   align-items: center;
   justify-content: flex-end;
+}
+
+.note-actions-menu {
+  position: relative;
+}
+
+.note-actions-trigger {
+  width: 40px;
+  height: 40px;
+  opacity: 0.7;
+  background: transparent;
+  border-color: color-mix(in srgb, var(--border-default) 88%, transparent);
+}
+
+.note-actions-trigger:hover,
+.note-actions-trigger:focus-visible,
+.note-actions-menu:focus-within .note-actions-trigger {
+  opacity: 1;
+  background: var(--surface-button);
+  border-color: var(--border-default);
+}
+
+.note-actions-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 150px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-card);
+  box-shadow: var(--shadow-soft);
+  padding: 0.22rem;
+  z-index: 40;
+}
+
+.note-actions-item {
+  width: 100%;
+  min-height: 40px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+}
+
+.note-actions-item:hover {
+  background: var(--surface-button);
+}
+
+.note-actions-item--destructive {
+  color: color-mix(in srgb, #cf7480 70%, var(--text-primary));
 }
 
 .note-time {
@@ -549,6 +619,23 @@ button:hover {
   border-radius: 10px;
   padding: 0.82rem 0.9rem;
   background: var(--surface-card-soft);
+}
+
+.stale-review-banner {
+  margin: 0.2rem 0 0.55rem;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  padding: 0.48rem 0.6rem;
+  background: color-mix(in srgb, var(--surface-card-soft) 92%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.stale-review-banner span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 .review-focus-head {
