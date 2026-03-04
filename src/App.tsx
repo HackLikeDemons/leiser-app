@@ -122,6 +122,10 @@ export function App() {
   }
 
   const handleTextKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) {
+      return
+    }
+
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       void handleSubmit()
