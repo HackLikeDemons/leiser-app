@@ -49,6 +49,7 @@ type CrdtNoteDoc = {
   text: string
   status: NoteStatus
   type: NoteType
+  starred: boolean
   createdAt: number
   updatedAt: number
   dayISO: string
@@ -103,6 +104,7 @@ function noteToCrdtDoc(note: Note): CrdtNoteDoc {
     text: note.text,
     status: normalizeStatus(note.status),
     type: normalizeType(note.type),
+    starred: Boolean(note.starred),
     createdAt: toEpochMs(note.createdAt),
     updatedAt: toEpochMs(note.updatedAt),
     dayISO: note.dayISO,
@@ -126,6 +128,7 @@ function crdtDocToNote(noteId: string, doc: CrdtNoteDoc): Note {
     text: typeof doc.text === 'string' ? doc.text : '',
     status: normalizeStatus(doc.status),
     type: normalizeType(doc.type),
+    starred: Boolean(doc.starred),
   }
 }
 
@@ -146,6 +149,7 @@ function asStoredNote(value: unknown): Note | null {
     text: String(note.text ?? ''),
     status: normalizeStatus(note.status),
     type: normalizeType(note.type),
+    starred: Boolean(note.starred),
   }
 }
 
@@ -233,6 +237,7 @@ function createEmptyCrdtDoc() {
     text: '',
     status: 'INBOX',
     type: 'NOTE',
+    starred: false,
     createdAt: now,
     updatedAt: now,
     dayISO: getLocalDayISO(new Date(now)),
@@ -249,6 +254,7 @@ function buildDocFromPayload(payload: CrdtNoteDoc) {
     draft.text = payload.text
     draft.status = payload.status
     draft.type = payload.type
+    draft.starred = payload.starred
     draft.createdAt = payload.createdAt
     draft.updatedAt = payload.updatedAt
     draft.dayISO = payload.dayISO
@@ -413,6 +419,7 @@ function materializeFromDoc(noteId: string, doc: Automerge.Doc<CrdtNoteDoc>): No
     text: doc.text,
     status: doc.status,
     type: doc.type,
+    starred: doc.starred,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     dayISO: doc.dayISO,
@@ -585,6 +592,7 @@ export async function createNote(text: string): Promise<Note> {
     text: parsed.text,
     status: parsed.status,
     type: parsed.type,
+    starred: false,
   }
 
   const { base, doc } = buildDocFromPayload(noteToCrdtDoc(note))
@@ -866,7 +874,12 @@ export async function listTodoNotes(limit = 200): Promise<Note[]> {
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => {
-      notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      notes.sort((a, b) => {
+        if (a.starred !== b.starred) {
+          return a.starred ? -1 : 1
+        }
+        return b.createdAt.localeCompare(a.createdAt)
+      })
       resolve(notes)
     }
 
@@ -968,6 +981,12 @@ export async function updateNoteText(id: string, text: string): Promise<void> {
 export async function updateNoteStatus(id: string, status: NoteStatus): Promise<void> {
   await applyLocalEdit(id, (doc) => {
     doc.status = status
+  })
+}
+
+export async function updateNoteStarred(id: string, starred: boolean): Promise<void> {
+  await applyLocalEdit(id, (doc) => {
+    doc.starred = starred
   })
 }
 

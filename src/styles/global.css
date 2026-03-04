@@ -481,6 +481,11 @@ button:hover {
   opacity: 0.9;
 }
 
+.archive-toggle--active {
+  border-color: color-mix(in srgb, #ffd36b 45%, var(--border-default));
+  background: color-mix(in srgb, #ffd36b 12%, var(--surface-button));
+}
+
 .archive-title {
   margin: 0.6rem 0 0.28rem;
   font-size: 0.86rem;
@@ -885,6 +890,17 @@ button:hover {
 .review-btn--todo {
   background: var(--surface-button);
   border-color: var(--border-default);
+}
+
+.review-btn--star {
+  background: var(--surface-button);
+  border-color: var(--border-default);
+}
+
+.review-btn--star-active {
+  color: color-mix(in srgb, #ffd36b 88%, var(--text-primary));
+  border-color: color-mix(in srgb, #ffd36b 45%, var(--border-default));
+  background: color-mix(in srgb, #ffd36b 12%, var(--surface-button));
 }
 
 .review-btn--process {

@@ -106,6 +106,7 @@ function asSnapshotNote(value: unknown, noteId: string): Note | null {
         ? note.status
         : 'INBOX',
     type: note.type === 'QUESTION' || note.type === 'IDEA' || note.type === 'TASK' || note.type === 'NOTE' ? note.type : 'NOTE',
+    starred: Boolean(note.starred),
   }
 }
 

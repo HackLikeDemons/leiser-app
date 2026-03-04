@@ -46,6 +46,7 @@ export async function seedOlderThoughtsDemo() {
       text: seed.text,
       status: seed.status,
       type: seed.type,
+      starred: false,
     }
     await upsertNote(note)
   })

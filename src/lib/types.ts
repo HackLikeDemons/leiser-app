@@ -12,6 +12,7 @@ export type Note = {
   text: string
   status: NoteStatus
   type: NoteType
+  starred: boolean
 }
 
 export type NotesView = Note

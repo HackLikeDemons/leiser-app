@@ -17,6 +17,7 @@ import {
   listSearchableNotes,
   listTodoNotes,
   setSyncEnabled,
+  updateNoteStarred,
   updateNoteStatus,
 } from './lib/dbNotes'
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
@@ -376,11 +377,13 @@ function NoteActionsMenu({
 function TodoNoteRow({
   note,
   todayISO,
+  onToggleStar,
   onDone,
   onBack,
 }: {
   note: Note
   todayISO: string
+  onToggleStar: (id: string, starred: boolean) => void
   onDone: (id: string) => void
   onBack: (id: string) => void
 }) {
@@ -389,9 +392,27 @@ function TodoNoteRow({
       <span className="note-time">{formatNoteTime(note, todayISO)}</span>
       <span className="note-content">
         <span className="note-text">{note.text}</span>
+        {note.starred ? <span className="status-badge">Wichtig</span> : null}
         <NoteTypeBadge note={note} />
       </span>
       <div className="todo-actions">
+        <button
+          type="button"
+          className={note.starred ? 'review-btn review-btn--star review-btn--star-active review-btn--icon' : 'review-btn review-btn--star review-btn--icon'}
+          onClick={() => onToggleStar(note.id, !note.starred)}
+          aria-label={note.starred ? 'Priorität entfernen' : 'Als wichtig markieren'}
+          title={note.starred ? 'Stern entfernen' : 'Mit Stern markieren'}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="m12 3.8 2.6 5.2 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z"
+              fill={note.starred ? 'currentColor' : 'none'}
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
         <button
           type="button"
           className="review-btn review-btn--done review-btn--icon"
@@ -711,6 +732,7 @@ function AppContent() {
   const [processNotes, setProcessNotes] = useState<Note[]>([])
   const [processCount, setProcessCount] = useState(0)
   const [todoNotes, setTodoNotes] = useState<Note[]>([])
+  const [todoStarOnly, setTodoStarOnly] = useState(false)
   const [archivedNotes, setArchivedNotes] = useState<Note[]>([])
   const [archiveCount, setArchiveCount] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
@@ -1311,6 +1333,19 @@ function AppContent() {
     [handleTodoStatusChange],
   )
 
+  const handleTodoToggleStar = useCallback(
+    async (id: string, starred: boolean) => {
+      setError('')
+      try {
+        await updateNoteStarred(id, starred)
+        await refreshAll()
+      } catch {
+        setError('Priorität konnte nicht aktualisiert werden.')
+      }
+    },
+    [refreshAll],
+  )
+
   const handleUndoLastTodoAction = async () => {
     if (!lastTodoAction || todoUndoBusy) {
       return
@@ -1371,9 +1406,14 @@ function AppContent() {
     return searchEngine.search(searchQuery.trim(), { limit: SEARCH_RESULT_LIMIT })
   }, [isSearchMode, searchEngine, searchQuery])
 
+  const visibleTodoNotes = useMemo(
+    () => (todoStarOnly ? todoNotes.filter((note) => note.starred) : todoNotes),
+    [todoNotes, todoStarOnly],
+  )
+
   const todoGroups = useMemo(() => {
     const grouped = new Map<string, Note[]>()
-    for (const note of todoNotes) {
+    for (const note of visibleTodoNotes) {
       const dayNotes = grouped.get(note.dayISO)
       if (dayNotes) {
         dayNotes.push(note)
@@ -1384,11 +1424,16 @@ function AppContent() {
     return [...grouped.entries()]
       .sort(([dayA], [dayB]) => dayB.localeCompare(dayA))
       .map(([dayISO, notes]) => ({
-      dayISO,
-      label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
-      notes,
+        dayISO,
+        label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
+        notes: [...notes].sort((a, b) => {
+          if (a.starred !== b.starred) {
+            return a.starred ? -1 : 1
+          }
+          return b.createdAt.localeCompare(a.createdAt)
+        }),
       }))
-  }, [todoNotes, todayISO, yesterdayISO])
+  }, [visibleTodoNotes, todayISO, yesterdayISO])
 
   useEffect(() => {
     setOpenActionMenuId(null)
@@ -1979,7 +2024,16 @@ function AppContent() {
 
           {activeTab === 'TODO' ? (
             <>
-            <h2>To-Do ({todoNotes.length})</h2>
+            <div className="section-headline section-headline--todo">
+              <h2>To-Do ({visibleTodoNotes.length}{todoStarOnly ? ` / ${todoNotes.length}` : ''})</h2>
+              <button
+                type="button"
+                className={todoStarOnly ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
+                onClick={() => setTodoStarOnly((prev) => !prev)}
+              >
+                {todoStarOnly ? 'Alle anzeigen' : 'Nur mit Stern'}
+              </button>
+            </div>
             {lastTodoAction ? (
               <div className="undo-snackbar undo-snackbar--subtle" role="status" aria-live="polite">
                 <span>{todoActionLabel(lastTodoAction.newStatus)}</span>
@@ -1993,6 +2047,9 @@ function AppContent() {
               </div>
             ) : null}
             {todoNotes.length === 0 ? <p className="empty-text">Keine offenen To-Dos.</p> : null}
+            {todoNotes.length > 0 && visibleTodoNotes.length === 0 ? (
+              <p className="empty-text">Keine To-Dos mit Stern.</p>
+            ) : null}
             {todoGroups.map((group) => (
               <section key={group.dayISO} className="note-group">
                 <div className="day-divider">{group.label}</div>
@@ -2002,6 +2059,7 @@ function AppContent() {
                       key={note.id}
                       note={note}
                       todayISO={todayISO}
+                      onToggleStar={handleTodoToggleStar}
                       onDone={handleTodoDone}
                       onBack={handleTodoBack}
                     />

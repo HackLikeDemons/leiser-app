@@ -88,6 +88,7 @@ function normalizeImportedNote(raw: unknown, nowISO: string): Note | null {
     text: typeof input.text === 'string' ? input.text : '',
     status,
     type,
+    starred: Boolean(input.starred),
   }
 }
 
