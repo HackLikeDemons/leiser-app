@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ClipboardEvent, FormEvent, KeyboardEvent } from 'react'
 import Fuse from 'fuse.js'
 import {
@@ -17,6 +17,8 @@ import {
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO } from './lib/date'
 import type { Note, NoteStatus, NoteType } from './lib/types'
+import { AppShell } from './app/AppShell'
+import { FooterProvider, useFooter } from './app/FooterContext'
 
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO'
 const SOFT_CHAR_LIMIT = 200
@@ -131,7 +133,8 @@ function getWeekStartISO(date = new Date()) {
   return getLocalDayISO(normalized)
 }
 
-export function App() {
+function AppContent() {
+  const { setFooter } = useFooter()
   const [activeTab, setActiveTab] = useState<TabKey>('BRAINDUMP')
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const stored = localStorage.getItem(THEME_KEY)
@@ -175,7 +178,7 @@ export function App() {
   }, [])
   const weekStartISO = useMemo(() => getWeekStartISO(), [])
 
-  const refreshAll = async () => {
+  const refreshAll = useCallback(async () => {
     try {
       const [braindump, inbox, inboxTotal, decidedToday, process, processTotal, todo, archived, archivedTotal, searchable] = await Promise.all([
         listRecentActiveNotes(500),
@@ -202,11 +205,11 @@ export function App() {
     } catch {
       setError('Daten konnten nicht geladen werden.')
     }
-  }
+  }, [todayISO])
 
   useEffect(() => {
     void refreshAll()
-  }, [todayISO])
+  }, [refreshAll])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -233,19 +236,19 @@ export function App() {
     }
   }, [orderedInbox, reviewIndex])
 
-  const isNearBottom = () => {
+  const isNearBottom = useCallback(() => {
     const container = mainScrollRef.current
     if (!container) {
       return true
     }
     return container.scrollHeight - container.scrollTop - container.clientHeight < AUTOSCROLL_NEAR_BOTTOM_PX
-  }
+  }, [])
 
-  const scrollToBraindumpBottom = (behavior: ScrollBehavior = 'auto') => {
+  const scrollToBraindumpBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     braindumpEndRef.current?.scrollIntoView({ block: 'end', behavior })
-  }
+  }, [])
 
-  const handleSubmit = async (event?: FormEvent) => {
+  const handleSubmit = useCallback(async (event?: FormEvent) => {
     event?.preventDefault()
     const trimmed = text.trim()
     if (!trimmed) {
@@ -262,9 +265,9 @@ export function App() {
     } catch {
       setError('Notiz konnte nicht gespeichert werden.')
     }
-  }
+  }, [isNearBottom, refreshAll, text])
 
-  const handleTextKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleTextKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) {
       return
     }
@@ -272,9 +275,9 @@ export function App() {
       event.preventDefault()
       void handleSubmit()
     }
-  }
+  }, [handleSubmit])
 
-  const handlePaste = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = useCallback(async (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const pasted = event.clipboardData.getData('text')
     if (!pasted.includes('\n')) {
       return
@@ -300,7 +303,7 @@ export function App() {
     } catch {
       setError('Notizen aus Zwischenablage konnten nicht gespeichert werden.')
     }
-  }
+  }, [isNearBottom, refreshAll])
 
   const handleDelete = async (id: string, options?: { confirm?: boolean }) => {
     const shouldConfirm = options?.confirm ?? true
@@ -496,6 +499,54 @@ export function App() {
     }
     return searchEngine.search(searchQuery.trim(), { limit: SEARCH_RESULT_LIMIT })
   }, [isSearchMode, searchEngine, searchQuery])
+
+  useEffect(() => {
+    if (!showBraindumpComposer) {
+      setFooter(null)
+      return
+    }
+
+    setFooter(
+      <div className="app-content">
+        <form className="capture-form braindump-composer" onSubmit={(event) => void handleSubmit(event)}>
+          <textarea
+            rows={2}
+            ref={captureInputRef}
+            placeholder="Gedanken festhalten..."
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={handleTextKeyDown}
+            onPaste={(event) => void handlePaste(event)}
+          />
+          <small className="capture-hint">Enter: speichern · Shift+Enter: Zeile</small>
+          <div className="capture-actions">
+            <div className="capture-meta">
+              <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
+                {text.length} / {SOFT_CHAR_LIMIT}
+              </small>
+              {text.length > SOFT_CHAR_LIMIT ? (
+                <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
+              ) : null}
+            </div>
+            <button type="submit" className="capture-submit" aria-label="Notiz hinzufügen" title="Hinzufügen">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 5v14M5 12h14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </form>
+      </div>,
+    )
+
+    return () => setFooter(null)
+  }, [handlePaste, handleSubmit, handleTextKeyDown, setFooter, showBraindumpComposer, text])
 
   useEffect(() => {
     if (activeTab !== 'BRAINDUMP' || isSearchMode) {
@@ -1228,5 +1279,13 @@ export function App() {
           </footer>
         ) : null}
     </div>
+  )
+}
+
+export function App() {
+  return (
+    <FooterProvider>
+      <AppContent />
+    </FooterProvider>
   )
 }
