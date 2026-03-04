@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ClipboardEvent, FormEvent, KeyboardEvent } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ClipboardEvent, FormEvent, KeyboardEvent, RefObject } from 'react'
 import Fuse from 'fuse.js'
 import {
   addNote,
@@ -19,6 +19,7 @@ import { getLocalDayISO } from './lib/date'
 import type { Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FooterProvider, useFooter } from './app/FooterContext'
+import { seedOlderThoughtsDemo } from './lib/demoNotes'
 
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO'
 const SOFT_CHAR_LIMIT = 200
@@ -28,8 +29,13 @@ const REVIEW_LIMIT = 50
 const FRESH_HOURS = 12
 const OVERDUE_DAYS = 3
 const AUTOSCROLL_NEAR_BOTTOM_PX = 80
+const BRAINDUMP_FETCH_LIMIT = 300
+const BRAINDUMP_LOAD_MORE_STEP = 50
+const INITIAL_LIMIT_TODAY = 100
+const INITIAL_LIMIT_DEFAULT = 50
 
 type ReviewAgeCategory = 'OVERDUE' | 'READY' | 'FRESH'
+type BraindumpGroupKey = 'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'OLDER'
 type LastAction = {
   noteId: string
   prevStatus: NoteStatus
@@ -42,6 +48,13 @@ function toClockLabel(isoTimestamp: string) {
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
   return `${hours}:${minutes}`
+}
+
+function toDayClockLabel(isoTimestamp: string) {
+  const date = new Date(isoTimestamp)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${day}.${month}. · ${toClockLabel(isoTimestamp)}`
 }
 
 function isUndoAvailable(note: Note) {
@@ -124,6 +137,242 @@ function getDayBucket(dayISO: string, todayISO: string, yesterdayISO: string, we
   return 'OLDER'
 }
 
+const BraindumpNoteRow = memo(function BraindumpNoteRow({
+  note,
+  onUndoDelete,
+  onDelete,
+}: {
+  note: Note
+  onUndoDelete: (id: string) => void
+  onDelete: (id: string) => void
+}) {
+  const label = noteTypeLabel(note.type)
+
+  return (
+    <li className="note-item">
+      <span className="note-time">{toClockLabel(note.createdAt)}</span>
+      <span className="note-content">
+        <span className="note-text">{note.text}</span>
+        {label ? <span className="note-type-badge">{label}</span> : null}
+      </span>
+      <div className="note-actions">
+        {isUndoAvailable(note) ? (
+          <button
+            type="button"
+            className="note-delete note-delete--icon"
+            onClick={() => onUndoDelete(note.id)}
+            aria-label="Rückgängig"
+            title="Rückgängig"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M9 7 4 12l5 5M5 12h8a5 5 0 1 1 0 10h-2"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="note-delete note-delete--icon"
+          onClick={() => onDelete(note.id)}
+          aria-label="Notiz löschen"
+          title="Löschen"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M4 7h16M9.5 3h5M8 7v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7M10 11v6M14 11v6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+    </li>
+  )
+})
+
+const BraindumpList = memo(function BraindumpList({
+  groups,
+  onUndoDelete,
+  onDelete,
+  onLoadMore,
+  endRef,
+}: {
+  groups: Array<{ key: BraindumpGroupKey; label: string; notes: Note[]; total: number; hasMore: boolean }>
+  onUndoDelete: (id: string) => void
+  onDelete: (id: string) => void
+  onLoadMore: (group: BraindumpGroupKey) => void
+  endRef: RefObject<HTMLDivElement | null>
+}) {
+  if (groups.length === 0) {
+    return <p className="empty-text">Noch keine Notizen.</p>
+  }
+
+  return (
+    <>
+      {groups.map((group) => (
+        <section key={group.key} className="note-group">
+          <h3 className="note-group-title">
+            {group.label} ({group.total})
+          </h3>
+          <ul className="notes-list" aria-label={`${group.label} Notizen`}>
+            {group.notes.map((note) => (
+              <BraindumpNoteRow key={note.id} note={note} onUndoDelete={onUndoDelete} onDelete={onDelete} />
+            ))}
+          </ul>
+          {group.hasMore ? (
+            <button type="button" className="load-more-button" onClick={() => onLoadMore(group.key)}>
+              Weitere anzeigen
+            </button>
+          ) : null}
+        </section>
+      ))}
+      <div ref={endRef} />
+    </>
+  )
+})
+
+function BraindumpComposer({
+  onSubmitEntries,
+}: {
+  onSubmitEntries: (entries: string[]) => Promise<void>
+}) {
+  const [text, setText] = useState('')
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+
+  useEffect(() => {
+    const focusInput = () => {
+      inputRef.current?.focus({ preventScroll: true })
+    }
+
+    const frameId = requestAnimationFrame(focusInput)
+    window.addEventListener('focus', focusInput)
+    document.addEventListener('visibilitychange', focusInput)
+
+    return () => {
+      cancelAnimationFrame(frameId)
+      window.removeEventListener('focus', focusInput)
+      document.removeEventListener('visibilitychange', focusInput)
+    }
+  }, [])
+
+  const submit = async (entries: string[]) => {
+    const cleaned = entries.map((entry) => entry.trim()).filter((entry) => entry.length > 0)
+    if (cleaned.length === 0) {
+      return
+    }
+    await onSubmitEntries(cleaned)
+    setText('')
+    inputRef.current?.focus({ preventScroll: true })
+  }
+
+  const handleTextKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) {
+      return
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void submit([text])
+    }
+  }
+
+  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = event.clipboardData.getData('text')
+    if (!pasted.includes('\n')) {
+      return
+    }
+
+    event.preventDefault()
+    const lines = pasted.split(/\r?\n/)
+    void submit(lines)
+  }
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void submit([text])
+  }
+
+  return (
+    <div className="app-content">
+      <form className="capture-form braindump-composer" onSubmit={handleSubmit}>
+        <textarea
+          rows={2}
+          ref={inputRef}
+          placeholder="Gedanken festhalten..."
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={handleTextKeyDown}
+          onPaste={handlePaste}
+        />
+        <div className="capture-actions">
+          <div className="capture-meta-row">
+            <small className="capture-hint">Enter: speichern · Shift+Enter: Zeile</small>
+            <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
+              {text.length} / {SOFT_CHAR_LIMIT}
+            </small>
+          </div>
+          <button type="submit" className="capture-submit" aria-label="Notiz hinzufügen" title="Hinzufügen">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M12 5v14M5 12h14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+        {text.length > SOFT_CHAR_LIMIT ? (
+          <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
+        ) : null}
+      </form>
+    </div>
+  )
+}
+
+function BraindumpPage({
+  groups,
+  onUndoDelete,
+  onDelete,
+  onLoadMore,
+  endRef,
+  onSubmitEntries,
+}: {
+  groups: Array<{ key: BraindumpGroupKey; label: string; notes: Note[]; total: number; hasMore: boolean }>
+  onUndoDelete: (id: string) => void
+  onDelete: (id: string) => void
+  onLoadMore: (group: BraindumpGroupKey) => void
+  endRef: RefObject<HTMLDivElement | null>
+  onSubmitEntries: (entries: string[]) => Promise<void>
+}) {
+  const { setFooter } = useFooter()
+
+  useEffect(() => {
+    setFooter(<BraindumpComposer onSubmitEntries={onSubmitEntries} />)
+    return () => setFooter(null)
+  }, [onSubmitEntries, setFooter])
+
+  return (
+    <BraindumpList
+      groups={groups}
+      onUndoDelete={onUndoDelete}
+      onDelete={onDelete}
+      onLoadMore={onLoadMore}
+      endRef={endRef}
+    />
+  )
+}
+
 function getWeekStartISO(date = new Date()) {
   const normalized = new Date(date)
   normalized.setHours(12, 0, 0, 0)
@@ -134,13 +383,11 @@ function getWeekStartISO(date = new Date()) {
 }
 
 function AppContent() {
-  const { setFooter } = useFooter()
   const [activeTab, setActiveTab] = useState<TabKey>('BRAINDUMP')
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const stored = localStorage.getItem(THEME_KEY)
     return stored === 'light' ? 'light' : 'dark'
   })
-  const [text, setText] = useState('')
   const [braindumpNotes, setBraindumpNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [inboxCount, setInboxCount] = useState(0)
@@ -164,11 +411,16 @@ function AppContent() {
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
   const [undoBusy, setUndoBusy] = useState(false)
   const [error, setError] = useState('')
-  const captureInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const [info, setInfo] = useState('')
+  const [visibleCountToday, setVisibleCountToday] = useState(INITIAL_LIMIT_TODAY)
+  const [visibleCountYesterday, setVisibleCountYesterday] = useState(INITIAL_LIMIT_DEFAULT)
+  const [visibleCountWeek, setVisibleCountWeek] = useState(INITIAL_LIMIT_DEFAULT)
+  const [visibleCountOlder, setVisibleCountOlder] = useState(INITIAL_LIMIT_DEFAULT)
   const undoTimeoutRef = useRef<number | null>(null)
   const mainScrollRef = useRef<HTMLElement | null>(null)
   const braindumpEndRef = useRef<HTMLDivElement | null>(null)
   const shouldAutoScrollRef = useRef(true)
+  const nextAutoScrollBehaviorRef = useRef<ScrollBehavior>('auto')
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
   const yesterdayISO = useMemo(() => {
@@ -181,7 +433,7 @@ function AppContent() {
   const refreshAll = useCallback(async () => {
     try {
       const [braindump, inbox, inboxTotal, decidedToday, process, processTotal, todo, archived, archivedTotal, searchable] = await Promise.all([
-        listRecentActiveNotes(500),
+        listRecentActiveNotes(BRAINDUMP_FETCH_LIMIT),
         listInboxNotes(REVIEW_LIMIT),
         countInboxNotes(),
         listDecidedNotesByDay(todayISO, 200),
@@ -248,64 +500,39 @@ function AppContent() {
     braindumpEndRef.current?.scrollIntoView({ block: 'end', behavior })
   }, [])
 
-  const handleSubmit = useCallback(async (event?: FormEvent) => {
-    event?.preventDefault()
-    const trimmed = text.trim()
-    if (!trimmed) {
-      return
-    }
+  const handleBraindumpSubmitEntries = useCallback(
+    async (entries: string[]) => {
+      if (entries.length === 0) {
+        return
+      }
 
-    shouldAutoScrollRef.current = isNearBottom()
-    setError('')
-    try {
-      await addNote(trimmed)
-      setText('')
-      await refreshAll()
-      captureInputRef.current?.focus({ preventScroll: true })
-    } catch {
-      setError('Notiz konnte nicht gespeichert werden.')
-    }
-  }, [isNearBottom, refreshAll, text])
+      shouldAutoScrollRef.current = true
+      nextAutoScrollBehaviorRef.current = 'smooth'
+      setError('')
+      try {
+        const created = await Promise.all(entries.map((entry) => addNote(entry)))
+        if (created.length > 0) {
+          setBraindumpNotes((prev) => {
+            const next = [...created, ...prev]
+            const seen = new Set<string>()
+            const deduped: Note[] = []
+            for (const note of next) {
+              if (seen.has(note.id)) continue
+              seen.add(note.id)
+              deduped.push(note)
+            }
+            return deduped
+          })
+        }
+        void refreshAll()
+      } catch {
+        setError('Notiz konnte nicht gespeichert werden.')
+      }
+    },
+    [isNearBottom, refreshAll],
+  )
 
-  const handleTextKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.nativeEvent.isComposing) {
-      return
-    }
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      void handleSubmit()
-    }
-  }, [handleSubmit])
-
-  const handlePaste = useCallback(async (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const pasted = event.clipboardData.getData('text')
-    if (!pasted.includes('\n')) {
-      return
-    }
-
-    event.preventDefault()
-    const lines = pasted
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-
-    if (lines.length === 0) {
-      return
-    }
-
-    shouldAutoScrollRef.current = isNearBottom()
-    setError('')
-    try {
-      await Promise.all(lines.map((line) => addNote(line)))
-      setText('')
-      await refreshAll()
-      captureInputRef.current?.focus({ preventScroll: true })
-    } catch {
-      setError('Notizen aus Zwischenablage konnten nicht gespeichert werden.')
-    }
-  }, [isNearBottom, refreshAll])
-
-  const handleDelete = async (id: string, options?: { confirm?: boolean }) => {
+  const handleDelete = useCallback(async (id: string, options?: { confirm?: boolean }) => {
     const shouldConfirm = options?.confirm ?? true
     if (shouldConfirm) {
       const confirmed = window.confirm('Notiz löschen?')
@@ -321,7 +548,7 @@ function AppContent() {
     } catch {
       setError('Notiz konnte nicht gelöscht werden.')
     }
-  }
+  }, [refreshAll])
 
   const clearUndoTimeout = () => {
     if (undoTimeoutRef.current !== null) {
@@ -405,6 +632,7 @@ function AppContent() {
   }
 
   const handleExport = async () => {
+    setInfo('')
     setError('')
     try {
       const backup = await buildBackupData()
@@ -427,12 +655,14 @@ function AppContent() {
       return
     }
 
+    setInfo('')
     setError('')
     setImportReport(null)
     try {
       const fileText = await importFile.text()
       const report = await importBackupJson(fileText, importMode)
       setImportReport(report)
+      setInfo('Backup erfolgreich importiert.')
       setImportFile(null)
       await refreshAll()
     } catch (importError) {
@@ -441,6 +671,18 @@ function AppContent() {
       } else {
         setError('Import fehlgeschlagen.')
       }
+    }
+  }
+
+  const handleSeedOlderThoughts = async () => {
+    setInfo('')
+    setError('')
+    try {
+      await seedOlderThoughtsDemo()
+      await refreshAll()
+      setInfo('Ältere Testgedanken geladen.')
+    } catch {
+      setError('Testgedanken konnten nicht geladen werden.')
     }
   }
 
@@ -453,11 +695,16 @@ function AppContent() {
   }
 
   const isSearchMode = searchQuery.trim().length > 0
-  const showBraindumpComposer = activeTab === 'BRAINDUMP' && !isSearchMode
+  const visibleCountMap: Record<BraindumpGroupKey, number> = {
+    TODAY: visibleCountToday,
+    YESTERDAY: visibleCountYesterday,
+    THIS_WEEK: visibleCountWeek,
+    OLDER: visibleCountOlder,
+  }
   const currentReviewNote = orderedInbox[effectiveReviewIndex] ?? null
   const currentReviewCategory = currentReviewNote ? getReviewAgeCategory(currentReviewNote) : null
   const braindumpGroups = useMemo(() => {
-    const grouped: Record<'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'OLDER', Note[]> = {
+    const grouped: Record<BraindumpGroupKey, Note[]> = {
       TODAY: [],
       YESTERDAY: [],
       THIS_WEEK: [],
@@ -473,15 +720,68 @@ function AppContent() {
     grouped.THIS_WEEK.sort(byCreatedAsc)
     grouped.OLDER.sort(byCreatedAsc)
 
-    const groups: Array<{ key: string; label: string; notes: Note[] }> = [
-      { key: 'TODAY', label: 'Heute', notes: grouped.TODAY },
-      { key: 'YESTERDAY', label: 'Gestern', notes: grouped.YESTERDAY },
-      { key: 'THIS_WEEK', label: 'Diese Woche', notes: grouped.THIS_WEEK },
-      { key: 'OLDER', label: 'Älter', notes: grouped.OLDER },
+    const groups: Array<{ key: BraindumpGroupKey; label: string; notes: Note[]; total: number; hasMore: boolean }> = [
+      {
+        key: 'OLDER',
+        label: 'Älter',
+        notes: grouped.OLDER.slice(0, visibleCountMap.OLDER),
+        total: grouped.OLDER.length,
+        hasMore: grouped.OLDER.length > visibleCountMap.OLDER,
+      },
+      {
+        key: 'THIS_WEEK',
+        label: 'Diese Woche',
+        notes: grouped.THIS_WEEK.slice(0, visibleCountMap.THIS_WEEK),
+        total: grouped.THIS_WEEK.length,
+        hasMore: grouped.THIS_WEEK.length > visibleCountMap.THIS_WEEK,
+      },
+      {
+        key: 'YESTERDAY',
+        label: 'Gestern',
+        notes: grouped.YESTERDAY.slice(0, visibleCountMap.YESTERDAY),
+        total: grouped.YESTERDAY.length,
+        hasMore: grouped.YESTERDAY.length > visibleCountMap.YESTERDAY,
+      },
+      {
+        key: 'TODAY',
+        label: 'Heute',
+        notes: grouped.TODAY.slice(0, visibleCountMap.TODAY),
+        total: grouped.TODAY.length,
+        hasMore: grouped.TODAY.length > visibleCountMap.TODAY,
+      },
     ]
 
-    return groups.filter((group) => group.notes.length > 0)
-  }, [braindumpNotes, todayISO, yesterdayISO, weekStartISO])
+    return groups.filter((group) => group.total > 0)
+  }, [
+    braindumpNotes,
+    todayISO,
+    visibleCountOlder,
+    visibleCountWeek,
+    visibleCountToday,
+    visibleCountYesterday,
+    weekStartISO,
+    yesterdayISO,
+  ])
+
+  const increaseVisibleCount = useCallback((group: BraindumpGroupKey) => {
+    if (group === 'TODAY') {
+      setVisibleCountToday((prev) => prev + BRAINDUMP_LOAD_MORE_STEP)
+    } else if (group === 'YESTERDAY') {
+      setVisibleCountYesterday((prev) => prev + BRAINDUMP_LOAD_MORE_STEP)
+    } else if (group === 'THIS_WEEK') {
+      setVisibleCountWeek((prev) => prev + BRAINDUMP_LOAD_MORE_STEP)
+    } else {
+      setVisibleCountOlder((prev) => prev + BRAINDUMP_LOAD_MORE_STEP)
+    }
+  }, [])
+
+  const handleUndoDelete = useCallback((id: string) => {
+    void handleDelete(id, { confirm: false })
+  }, [handleDelete])
+
+  const handleDeleteDefault = useCallback((id: string) => {
+    void handleDelete(id)
+  }, [handleDelete])
 
   const searchEngine = useMemo(
     () =>
@@ -501,74 +801,6 @@ function AppContent() {
   }, [isSearchMode, searchEngine, searchQuery])
 
   useEffect(() => {
-    if (!showBraindumpComposer) {
-      setFooter(null)
-      return
-    }
-
-    setFooter(
-      <div className="app-content">
-        <form className="capture-form braindump-composer" onSubmit={(event) => void handleSubmit(event)}>
-          <textarea
-            rows={2}
-            ref={captureInputRef}
-            placeholder="Gedanken festhalten..."
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={handleTextKeyDown}
-            onPaste={(event) => void handlePaste(event)}
-          />
-          <small className="capture-hint">Enter: speichern · Shift+Enter: Zeile</small>
-          <div className="capture-actions">
-            <div className="capture-meta">
-              <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
-                {text.length} / {SOFT_CHAR_LIMIT}
-              </small>
-              {text.length > SOFT_CHAR_LIMIT ? (
-                <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
-              ) : null}
-            </div>
-            <button type="submit" className="capture-submit" aria-label="Notiz hinzufügen" title="Hinzufügen">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M12 5v14M5 12h14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.9"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
-        </form>
-      </div>,
-    )
-
-    return () => setFooter(null)
-  }, [handlePaste, handleSubmit, handleTextKeyDown, setFooter, showBraindumpComposer, text])
-
-  useEffect(() => {
-    if (activeTab !== 'BRAINDUMP' || isSearchMode) {
-      return
-    }
-
-    const focusInput = () => {
-      captureInputRef.current?.focus({ preventScroll: true })
-    }
-
-    const frameId = requestAnimationFrame(focusInput)
-    window.addEventListener('focus', focusInput)
-    document.addEventListener('visibilitychange', focusInput)
-
-    return () => {
-      cancelAnimationFrame(frameId)
-      window.removeEventListener('focus', focusInput)
-      document.removeEventListener('visibilitychange', focusInput)
-    }
-  }, [activeTab, isSearchMode, braindumpNotes.length])
-
-  useEffect(() => {
     if (activeTab !== 'BRAINDUMP' || isSearchMode) {
       return
     }
@@ -586,7 +818,9 @@ function AppContent() {
     if (!shouldAutoScrollRef.current) {
       return
     }
-    const frame = requestAnimationFrame(() => scrollToBraindumpBottom('auto'))
+    const behavior = nextAutoScrollBehaviorRef.current
+    nextAutoScrollBehaviorRef.current = 'auto'
+    const frame = requestAnimationFrame(() => scrollToBraindumpBottom(behavior))
     return () => cancelAnimationFrame(frame)
   }, [activeTab, braindumpGroups, isSearchMode])
 
@@ -620,9 +854,15 @@ function AppContent() {
   }, [activeTab, currentReviewNote, isSearchMode, orderedInbox.length])
 
   return (
-    <div className="app-shell">
-        <header className="app-header">
-          <div className="app-content app-header-inner">
+    <AppShell
+      mainRef={mainScrollRef}
+      onMainScroll={() => {
+        if (activeTab === 'BRAINDUMP' && !isSearchMode) {
+          shouldAutoScrollRef.current = isNearBottom()
+        }
+      }}
+      header={
+        <div className="app-content app-header-inner">
             <div className="mode-tabs" role="tablist" aria-label="Bereiche">
             <button
               type="button"
@@ -723,19 +963,10 @@ function AppContent() {
               )}
             </button>
           </div>
-          </div>
-        </header>
-
-        <main
-          className={showBraindumpComposer ? 'app-main app-main--with-footer' : 'app-main'}
-          ref={mainScrollRef}
-          onScroll={() => {
-            if (activeTab === 'BRAINDUMP' && !isSearchMode) {
-              shouldAutoScrollRef.current = isNearBottom()
-            }
-          }}
-        >
-          <section className="app-content">
+        </div>
+      }
+    >
+      <section className="app-content">
             {showDataPanel ? (
               <section className="data-section" aria-label="Daten">
                 <div className="data-panel">
@@ -745,6 +976,9 @@ function AppContent() {
                     </button>
                     <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
                       Backup importieren
+                    </button>
+                    <button type="button" onClick={() => void handleSeedOlderThoughts()}>
+                      Ältere Testgedanken laden
                     </button>
                   </div>
 
@@ -785,6 +1019,7 @@ function AppContent() {
                       {importReport.skipped} · Ungültig: {importReport.invalid}
                     </p>
                   ) : null}
+                  {info ? <p className="hint">{info}</p> : null}
                 </div>
               </section>
             ) : null}
@@ -814,68 +1049,14 @@ function AppContent() {
           {!isSearchMode ? (
             <>
           {activeTab === 'BRAINDUMP' ? (
-            <>
-                {braindumpGroups.length === 0 ? <p className="empty-text">Noch keine Notizen.</p> : null}
-                {braindumpGroups.map((group) => (
-                  <section key={group.key} className="note-group">
-                    <h3 className="note-group-title">
-                      {group.label} ({group.notes.length})
-                    </h3>
-                    <ul className="notes-list" aria-label={`${group.label} Notizen`}>
-                      {group.notes.map((note) => (
-                        <li key={note.id} className="note-item">
-                          <span className="note-time">{toClockLabel(note.createdAt)}</span>
-                          <span className="note-content">
-                            <span className="note-text">{note.text}</span>
-                            {renderTypeBadge(note)}
-                          </span>
-                          <div className="note-actions">
-                            {isUndoAvailable(note) ? (
-                              <button
-                                type="button"
-                                className="note-delete note-delete--icon"
-                                onClick={() => void handleDelete(note.id, { confirm: false })}
-                                aria-label="Rückgängig"
-                                title="Rückgängig"
-                              >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                  <path
-                                    d="M9 7 4 12l5 5M5 12h8a5 5 0 1 1 0 10h-2"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.8"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </svg>
-                              </button>
-                            ) : null}
-                            <button
-                              type="button"
-                              className="note-delete note-delete--icon"
-                              onClick={() => void handleDelete(note.id)}
-                              aria-label="Notiz löschen"
-                              title="Löschen"
-                            >
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path
-                                  d="M4 7h16M9.5 3h5M8 7v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7M10 11v6M14 11v6"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.7"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                ))}
-                <div ref={braindumpEndRef} />
-            </>
+            <BraindumpPage
+              groups={braindumpGroups}
+              onUndoDelete={handleUndoDelete}
+              onDelete={handleDeleteDefault}
+              onLoadMore={increaseVisibleCount}
+              endRef={braindumpEndRef}
+              onSubmitEntries={handleBraindumpSubmitEntries}
+            />
           ) : null}
 
           {activeTab === 'REVIEW' ? (
@@ -1050,7 +1231,7 @@ function AppContent() {
             <ul className="notes-list" aria-label="Denken Notizen">
               {processNotes.map((note) => (
                 <li key={note.id} className="note-item">
-                  <span className="note-time">{toClockLabel(note.createdAt)}</span>
+                  <span className="note-time">{toDayClockLabel(note.createdAt)}</span>
                   <span className="note-content">
                     <span className="note-text">{note.text}</span>
                     {renderTypeBadge(note)}
@@ -1121,7 +1302,7 @@ function AppContent() {
                 <ul className="notes-list" aria-label="Archivierte Gedanken">
                   {archivedNotes.map((note) => (
                     <li key={note.id} className="note-item note-item--todo">
-                      <span className="note-time">{note.createdAt.slice(0, 10)}</span>
+                      <span className="note-time">{toDayClockLabel(note.createdAt)}</span>
                       <span className="note-content">
                         <span className="note-text">{note.text}</span>
                         {renderTypeBadge(note)}
@@ -1182,7 +1363,7 @@ function AppContent() {
             <ul className="notes-list" aria-label="To-Do Notizen">
               {todoNotes.map((note) => (
                 <li key={note.id} className="note-item note-item--todo">
-                  <span className="note-time">{toClockLabel(note.createdAt)}</span>
+                  <span className="note-time">{toDayClockLabel(note.createdAt)}</span>
                   <span className="note-content">
                     <span className="note-text">{note.text}</span>
                     {renderTypeBadge(note)}
@@ -1231,54 +1412,13 @@ function AppContent() {
             </>
           ) : null}
 
+              {info && !showDataPanel ? <p className="hint">{info}</p> : null}
               {error ? <p className="error-text">{error}</p> : null}
             </>
           ) : null}
-            </div>
-          </section>
-        </main>
-
-        {showBraindumpComposer ? (
-          <footer className="app-footer">
-            <div className="app-content">
-              <form className="capture-form braindump-composer" onSubmit={(event) => void handleSubmit(event)}>
-                <textarea
-                  rows={2}
-                  ref={captureInputRef}
-                  placeholder="Gedanken festhalten..."
-                  value={text}
-                  onChange={(event) => setText(event.target.value)}
-                  onKeyDown={handleTextKeyDown}
-                  onPaste={(event) => void handlePaste(event)}
-                />
-                <small className="capture-hint">Enter: speichern · Shift+Enter: Zeile</small>
-                <div className="capture-actions">
-                  <div className="capture-meta">
-                    <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
-                      {text.length} / {SOFT_CHAR_LIMIT}
-                    </small>
-                    {text.length > SOFT_CHAR_LIMIT ? (
-                      <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
-                    ) : null}
-                  </div>
-                  <button type="submit" className="capture-submit" aria-label="Notiz hinzufügen" title="Hinzufügen">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        d="M12 5v14M5 12h14"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.9"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </footer>
-        ) : null}
-    </div>
+          </div>
+        </section>
+    </AppShell>
   )
 }
 
