@@ -11,9 +11,8 @@ import {
   markOutboxChangesSent,
   updateSyncState,
 } from './dbNotes'
-import { sha256Hex } from './syncToken'
-import { makeSupabaseClient, pullRemoteRows, pushRemoteRows } from './supabaseSync'
-import { isSyncSigningSupported, verifyTrustedEnvelope } from './syncSigning'
+import { pullSync, pushSync, REMOTE_CHANGED_ERROR, type SyncBlob } from './sync/supabaseAdapter'
+import { verifyTrustedEnvelope } from './syncSigning'
 import type { ChangeEnvelope } from './types'
 
 type SyncUiStatus = 'idle' | 'syncing' | 'offline' | 'error' | 'disabled'
@@ -26,26 +25,14 @@ type SyncEngineOptions = {
   onDataChanged?: () => void
 }
 
-type PullResponse = {
-  seq?: number
-  changes?: Array<Partial<ChangeEnvelope>>
+type SyncNowOptions = {
+  roomId?: string
+  onStatusChange?: (status: SyncUiStatus, error?: string | null) => void
+  onDataChanged?: () => void
 }
 
-type PushResponse = {
-  ackedChangeIds?: string[]
-}
-
-const SYNC_ENDPOINT_KEY = 'leiser:syncEndpoint'
 const DEFAULT_DEBOUNCE_MS = 1200
 const DEFAULT_PULL_INTERVAL_MS = 90000
-
-function getSyncEndpoint(): string | null {
-  const raw = localStorage.getItem(SYNC_ENDPOINT_KEY)?.trim() ?? ''
-  if (!raw) {
-    return null
-  }
-  return raw.replace(/\/+$/, '')
-}
 
 function isOnline() {
   return typeof navigator === 'undefined' ? true : navigator.onLine
@@ -65,6 +52,17 @@ function asSyncEnvelope(value: unknown): ChangeEnvelope | null {
     return null
   }
   return item as ChangeEnvelope
+}
+
+function asSyncBlob(value: unknown): SyncBlob | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const blob = value as Partial<SyncBlob>
+  if (blob.version !== 1 || !Array.isArray(blob.changes)) {
+    return null
+  }
+  return { version: 1, changes: blob.changes }
 }
 
 export function startSyncEngine(options: SyncEngineOptions = {}) {
@@ -101,100 +99,78 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
     }, debounceMs)
   }
 
-  const pushNow = async () => {
-    if (stopped || pushRunning) {
-      return
+  const mergeRemoteBlob = async (syncId: string, blob: SyncBlob | null) => {
+    if (!blob) {
+      return { applied: false, seen: 0, remoteEnvelopes: [] as ChangeEnvelope[] }
     }
 
+    const seenKeys: string[] = []
+    const remoteEnvelopes: ChangeEnvelope[] = []
+    let applied = false
+
+    for (const rawItem of blob.changes) {
+      const item = asSyncEnvelope(rawItem)
+      if (!item) {
+        continue
+      }
+      const dedupeKey = `${syncId}:${item.changeId}`
+      if (await hasInboxSeen(dedupeKey)) {
+        remoteEnvelopes.push(item)
+        continue
+      }
+
+      if (item.signature) {
+        const signatureValid = await verifyTrustedEnvelope(item)
+        if (!signatureValid) {
+          continue
+        }
+      }
+
+      const bytes = decodeChangePayload(item.payload)
+      await applyRemoteChanges(item.noteId, bytes)
+      seenKeys.push(dedupeKey)
+      remoteEnvelopes.push(item)
+      applied = true
+    }
+
+    if (seenKeys.length > 0) {
+      await markInboxSeen(seenKeys, 30 * 24 * 60 * 60 * 1000)
+    }
+
+    return { applied, seen: seenKeys.length, remoteEnvelopes }
+  }
+
+  const pullOnce = async () => {
     const syncState = await getSyncState(roomId)
     if (!syncState.isEnabled) {
       setStatus('disabled')
-      return
+      return { applied: false, seen: 0, remoteEnvelopes: [] as ChangeEnvelope[] }
     }
     if (!syncState.syncToken) {
       await updateSyncState(roomId, { lastError: 'Sync-Token fehlt. Bitte Sync neu aktivieren.' })
       setStatus('error', 'Sync-Token fehlt. Bitte Sync neu aktivieren.')
-      return
-    }
-    const endpoint = getSyncEndpoint()
-    const supabase = makeSupabaseClient(syncState.syncToken)
-    if (!endpoint && !supabase) {
-      setStatus(syncState.isEnabled ? 'idle' : 'disabled')
-      return
-    }
-    if (!isOnline()) {
-      setStatus('offline')
-      return
+      return { applied: false, seen: 0, remoteEnvelopes: [] as ChangeEnvelope[] }
     }
 
+    const remoteState = await pullSync(roomId, syncState.syncToken)
+    const blob = asSyncBlob(remoteState?.blob ?? null)
+    const merged = await mergeRemoteBlob(roomId, blob)
+
+    await updateSyncState(roomId, {
+      lastPulledSeq: syncState.lastPulledSeq + merged.seen,
+      lastError: null,
+    })
+    if (merged.applied) {
+      onDataChanged?.()
+    }
+    return merged
+  }
+
+  const pushNow = async () => {
+    if (stopped || pushRunning) return
     pushRunning = true
-    setStatus('syncing')
     try {
-      const pending = await listPendingOutboxChanges(roomId, 50)
-      if (pending.length === 0) {
-        await updateSyncState(roomId, { lastError: null })
-        setStatus('idle')
-        return
-      }
-
-      const envelopes = pending.map((row) => decodeOutboxEnvelope(row.bytes))
-      if (supabase) {
-        const tokenHash = await sha256Hex(syncState.syncToken)
-        const rows = envelopes.map((envelope) => ({
-          room_id: envelope.roomId,
-          note_id: envelope.noteId,
-          change_id: envelope.changeId,
-          device_id: envelope.deviceId,
-          ts: envelope.ts,
-          kind: envelope.kind,
-          payload: envelope.payload,
-          token_hash: tokenHash,
-          signer_device_id: envelope.signerDeviceId ?? null,
-          signer_public_key: envelope.signerPublicKey ?? null,
-          signature: envelope.signature ?? null,
-        }))
-        await pushRemoteRows(supabase, rows)
-      } else if (endpoint) {
-        const response = await fetch(`${endpoint}/push`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-leiser-token': syncState.syncToken,
-          },
-          body: JSON.stringify({
-            roomId,
-            tokenHash: await sha256Hex(syncState.syncToken),
-            changes: envelopes,
-          }),
-        })
-        if (!response.ok) {
-          throw new Error(`Push failed (${response.status})`)
-        }
-
-        const json = (await response.json().catch(() => ({}))) as PushResponse
-        const ackedIds = json.ackedChangeIds?.length
-          ? json.ackedChangeIds
-          : pending.map((row) => row.changeId)
-        await markOutboxChangesSent(ackedIds)
-      } else {
-        return
-      }
-      if (supabase) {
-        await markOutboxChangesSent(pending.map((row) => row.changeId))
-      }
-      await updateSyncState(roomId, {
-        lastPushedAt: new Date().toISOString(),
-        lastError: null,
-      })
-      setStatus('idle')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Push failed'
-      const pending = await listPendingOutboxChanges(roomId, 50)
-      if (pending[0]) {
-        await bumpOutboxAttempt(pending[0].changeId)
-      }
-      await updateSyncState(roomId, { lastError: message })
-      setStatus(isOnline() ? 'error' : 'offline', message)
+      await syncNow({ roomId, onStatusChange, onDataChanged })
     } finally {
       pushRunning = false
     }
@@ -202,23 +178,6 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
 
   const pullNow = async () => {
     if (stopped || pullRunning) {
-      return
-    }
-
-    const syncState = await getSyncState(roomId)
-    if (!syncState.isEnabled) {
-      setStatus('disabled')
-      return
-    }
-    if (!syncState.syncToken) {
-      await updateSyncState(roomId, { lastError: 'Sync-Token fehlt. Bitte Sync neu aktivieren.' })
-      setStatus('error', 'Sync-Token fehlt. Bitte Sync neu aktivieren.')
-      return
-    }
-    const endpoint = getSyncEndpoint()
-    const supabase = makeSupabaseClient(syncState.syncToken)
-    if (!endpoint && !supabase) {
-      setStatus(syncState.isEnabled ? 'idle' : 'disabled')
       return
     }
     if (!isOnline()) {
@@ -229,88 +188,12 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
     pullRunning = true
     setStatus('syncing')
     try {
-      let seq = syncState.lastPulledSeq
-      let changes: Array<Partial<ChangeEnvelope>> = []
-
-      if (supabase) {
-        const rows = await pullRemoteRows(supabase, roomId, syncState.lastPulledSeq, 200)
-        if (rows.length > 0) {
-          seq = Math.max(...rows.map((row) => row.seq ?? syncState.lastPulledSeq), syncState.lastPulledSeq)
-        }
-        changes = rows.map((row) => ({
-          changeId: row.change_id,
-          roomId: row.room_id,
-          noteId: row.note_id,
-          deviceId: row.device_id,
-          ts: row.ts,
-          kind: row.kind as ChangeEnvelope['kind'],
-          payload: row.payload,
-          signerDeviceId: row.signer_device_id ?? undefined,
-          signerPublicKey: row.signer_public_key ?? undefined,
-          signature: row.signature ?? undefined,
-        }))
-      } else if (endpoint) {
-        const response = await fetch(
-          `${endpoint}/pull?roomId=${encodeURIComponent(roomId)}&sinceSeq=${encodeURIComponent(String(syncState.lastPulledSeq))}`,
-          {
-            headers: {
-              'x-leiser-token': syncState.syncToken,
-            },
-          },
-        )
-        if (!response.ok) {
-          throw new Error(`Pull failed (${response.status})`)
-        }
-        const json = (await response.json().catch(() => ({}))) as PullResponse
-        seq = typeof json.seq === 'number' ? json.seq : syncState.lastPulledSeq
-        changes = Array.isArray(json.changes) ? json.changes : []
-      } else {
-        return
-      }
-      const seenKeys: string[] = []
-      let applied = false
-
-      for (const rawItem of changes) {
-        const item = asSyncEnvelope(rawItem)
-        if (!item) {
-          continue
-        }
-        const noteId = item.noteId
-        const changeId = item.changeId
-        const payload = item.payload
-        if (!noteId || !Array.isArray(payload) || !changeId) {
-          continue
-        }
-        const signatureValid = await verifyTrustedEnvelope(item as ChangeEnvelope)
-        if (!signatureValid) {
-          continue
-        }
-        const dedupeKey = `${roomId}:${changeId}`
-        if (await hasInboxSeen(dedupeKey)) {
-          continue
-        }
-        const bytes = decodeChangePayload(payload)
-        await applyRemoteChanges(noteId, bytes)
-        seenKeys.push(dedupeKey)
-        applied = true
-      }
-
-      if (seenKeys.length > 0) {
-        await markInboxSeen(seenKeys, 30 * 24 * 60 * 60 * 1000)
-      }
-
-      await updateSyncState(roomId, {
-        lastPulledSeq: Math.max(syncState.lastPulledSeq, seq),
-        lastError: null,
-      })
-      if (applied) {
-        onDataChanged?.()
-      }
+      await pullOnce()
       setStatus('idle')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Pull failed'
       await updateSyncState(roomId, { lastError: message })
-      setStatus(isOnline() ? 'error' : 'offline', message)
+      setStatus('error', message)
     } finally {
       pullRunning = false
     }
@@ -350,13 +233,6 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
 
   void (async () => {
     const state = await getSyncState(roomId)
-    if (state.isEnabled && !isSyncSigningSupported()) {
-      await updateSyncState(roomId, {
-        lastError: 'Sync-Signaturen (Ed25519) werden auf diesem Gerät nicht unterstützt.',
-      })
-      setStatus('error', 'Sync-Signaturen (Ed25519) werden auf diesem Gerät nicht unterstützt.')
-      return
-    }
     setStatus(state.isEnabled ? (isOnline() ? 'idle' : 'offline') : 'disabled')
     if (state.isEnabled && isOnline()) {
       void pullNow()
@@ -375,6 +251,131 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
     document.removeEventListener('visibilitychange', onVisibility)
     window.removeEventListener('online', onOnline)
     window.removeEventListener('offline', onOffline)
+  }
+}
+
+export async function syncNow(options: SyncNowOptions = {}) {
+  const roomId = options.roomId ?? DEFAULT_SYNC_ROOM_ID
+  const setStatus = (status: SyncUiStatus, error?: string | null) => {
+    options.onStatusChange?.(status, error ?? null)
+  }
+
+  if (!isOnline()) {
+    setStatus('offline')
+    return
+  }
+
+  setStatus('syncing')
+  try {
+    const syncState = await getSyncState(roomId)
+    if (!syncState.isEnabled) {
+      setStatus('disabled')
+      return
+    }
+    if (!syncState.syncToken) {
+      await updateSyncState(roomId, { lastError: 'Sync-Token fehlt. Bitte Sync neu aktivieren.' })
+      setStatus('error', 'Sync-Token fehlt. Bitte Sync neu aktivieren.')
+      return
+    }
+
+    const maxRetries = 2
+    let attempts = 0
+    let pendingForAck: string[] = []
+    let synced = false
+    let totalSeen = 0
+    let appliedAny = false
+
+    while (!synced && attempts <= maxRetries) {
+      attempts += 1
+
+      const remoteState = await pullSync(roomId, syncState.syncToken)
+      const remoteVersion = remoteState?.version ?? 0
+      const remoteBlob = asSyncBlob(remoteState?.blob ?? null)
+      const merged = await (async () => {
+        const seenKeys: string[] = []
+        const remoteEnvelopes: ChangeEnvelope[] = []
+        let applied = false
+
+        for (const rawItem of remoteBlob?.changes ?? []) {
+          const item = asSyncEnvelope(rawItem)
+          if (!item) continue
+          const dedupeKey = `${roomId}:${item.changeId}`
+          if (await hasInboxSeen(dedupeKey)) {
+            remoteEnvelopes.push(item)
+            continue
+          }
+          if (item.signature) {
+            const signatureValid = await verifyTrustedEnvelope(item)
+            if (!signatureValid) continue
+          }
+          const bytes = decodeChangePayload(item.payload)
+          await applyRemoteChanges(item.noteId, bytes)
+          seenKeys.push(dedupeKey)
+          remoteEnvelopes.push(item)
+          applied = true
+        }
+
+        if (seenKeys.length > 0) {
+          await markInboxSeen(seenKeys, 30 * 24 * 60 * 60 * 1000)
+        }
+        return { applied, seen: seenKeys.length, remoteEnvelopes }
+      })()
+
+      totalSeen += merged.seen
+      appliedAny = appliedAny || merged.applied
+
+      const pending = await listPendingOutboxChanges(roomId, 200)
+      const localEnvelopes = pending.map((row) => decodeOutboxEnvelope(row.bytes))
+      pendingForAck = pending.map((row) => row.changeId)
+
+      const combined = new Map<string, ChangeEnvelope>()
+      for (const env of merged.remoteEnvelopes) combined.set(env.changeId, env)
+      for (const env of localEnvelopes) combined.set(env.changeId, env)
+
+      if (combined.size === 0) {
+        synced = true
+        break
+      }
+
+      const blob: SyncBlob = {
+        version: 1,
+        changes: [...combined.values()].sort((a, b) => a.ts - b.ts),
+      }
+
+      try {
+        await pushSync(roomId, syncState.syncToken, blob, remoteVersion)
+        synced = true
+      } catch (error) {
+        if (error instanceof Error && error.message === REMOTE_CHANGED_ERROR && attempts <= maxRetries) {
+          setStatus('syncing', 'Remote geändert, synchronisiere erneut…')
+          continue
+        }
+        throw error
+      }
+    }
+
+    if (pendingForAck.length > 0) {
+      await markOutboxChangesSent(pendingForAck)
+    }
+
+    await updateSyncState(roomId, {
+      lastPulledSeq: syncState.lastPulledSeq + totalSeen,
+      lastPushedAt: new Date().toISOString(),
+      lastError: null,
+    })
+    if (appliedAny) {
+      options.onDataChanged?.()
+    }
+    setStatus('idle')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Sync failed'
+    const pending = await listPendingOutboxChanges(roomId, 50)
+    if (pending[0]) {
+      await bumpOutboxAttempt(pending[0].changeId)
+    }
+    await updateSyncState(roomId, { lastError: message })
+    setStatus(isOnline() ? 'error' : 'offline', message)
+    throw error
   }
 }
 

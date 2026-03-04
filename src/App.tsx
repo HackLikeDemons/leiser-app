@@ -25,7 +25,7 @@ import type { Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FooterProvider, useFooter } from './app/FooterContext'
 import { seedOlderThoughtsDemo } from './lib/demoNotes'
-import { startSyncEngine, type SyncUiStatus } from './lib/syncEngine'
+import { startSyncEngine, syncNow, type SyncUiStatus } from './lib/syncEngine'
 
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA'
 const SOFT_CHAR_LIMIT = 200
@@ -54,6 +54,7 @@ type DevSyncInfo = {
   deviceId: string
   roomId: string
   lastPulledSeq: number
+  lastPushedAt: string | null
   isEnabled: boolean
   syncToken: string | null
 }
@@ -70,6 +71,19 @@ function toDayClockLabel(isoTimestamp: string) {
   const day = String(date.getDate()).padStart(2, '0')
   const month = String(date.getMonth() + 1).padStart(2, '0')
   return `${day}.${month}. · ${toClockLabel(isoTimestamp)}`
+}
+
+function toSyncTimeLabel(isoTimestamp: string | null) {
+  if (!isoTimestamp) {
+    return 'noch keiner'
+  }
+  const date = new Date(isoTimestamp)
+  if (Number.isNaN(date.getTime())) {
+    return 'noch keiner'
+  }
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
 }
 
 function formatNoteTime(note: Note, todayISO: string) {
@@ -735,6 +749,10 @@ function AppContent() {
   const [syncStatus, setSyncStatus] = useState<SyncUiStatus>('disabled')
   const [syncError, setSyncError] = useState<string | null>(null)
   const [syncPairCode, setSyncPairCode] = useState<string | null>(null)
+  const [syncRoomId, setSyncRoomId] = useState(
+    () => localStorage.getItem('leiser-sync-id') || DEFAULT_SYNC_ROOM_ID,
+  )
+  const [syncNowBusy, setSyncNowBusy] = useState(false)
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null)
   const [staleReviewMode, setStaleReviewMode] = useState(false)
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
@@ -760,8 +778,9 @@ function AppContent() {
     return getLocalDayISO(d)
   }, [])
 
-  const refreshAll = useCallback(async () => {
+  const refreshAll = useCallback(async (roomIdOverride?: string) => {
     try {
+      const activeRoomId = roomIdOverride ?? syncRoomId
       const [braindump, inbox, inboxTotal, decidedToday, process, processTotal, todo, archived, archivedTotal, searchable] = await Promise.all([
         listRecentActiveNotes(BRAINDUMP_FETCH_LIMIT),
         listInboxNotes(REVIEW_LIMIT),
@@ -784,16 +803,14 @@ function AppContent() {
       setArchivedNotes(archived)
       setArchiveCount(archivedTotal)
       setSearchableNotes(searchable)
-      const syncInfo = await getSyncDebugInfo()
+      const syncInfo = await getSyncDebugInfo(activeRoomId)
       setSyncEnabledState(syncInfo.isEnabled)
-      setSyncPairCode(await getSyncPairCode())
-      if (import.meta.env.DEV) {
-        setDevSyncInfo(syncInfo)
-      }
+      setSyncPairCode(await getSyncPairCode(activeRoomId))
+      setDevSyncInfo(syncInfo)
     } catch {
       setError('Daten konnten nicht geladen werden.')
     }
-  }, [todayISO])
+  }, [syncRoomId, todayISO])
 
   useEffect(() => {
     void refreshAll()
@@ -801,7 +818,7 @@ function AppContent() {
 
   useEffect(() => {
     const stop = startSyncEngine({
-      roomId: DEFAULT_SYNC_ROOM_ID,
+      roomId: syncRoomId,
       debounceMs: 1200,
       pullIntervalMs: 90000,
       onStatusChange: (status, errorMessage) => {
@@ -813,7 +830,7 @@ function AppContent() {
       },
     })
     return stop
-  }, [refreshAll])
+  }, [refreshAll, syncRoomId])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -824,14 +841,41 @@ function AppContent() {
     setError('')
     try {
       const nextEnabled = !syncEnabled
-      const next = await setSyncEnabled(DEFAULT_SYNC_ROOM_ID, nextEnabled)
+      const nextRoomId = nextEnabled
+        ? localStorage.getItem('leiser-sync-id') || crypto.randomUUID()
+        : syncRoomId
+      setSyncRoomId(nextRoomId)
+      const next = await setSyncEnabled(nextRoomId, nextEnabled)
       setSyncEnabledState(next.isEnabled)
       setInfo(next.isEnabled ? 'Sync aktiviert.' : 'Sync deaktiviert.')
-      await refreshAll()
+      await refreshAll(nextRoomId)
     } catch {
       setError('Sync-Status konnte nicht geändert werden.')
     }
-  }, [refreshAll, syncEnabled])
+  }, [refreshAll, syncEnabled, syncRoomId])
+
+  const handleSyncNow = useCallback(async () => {
+    setSyncNowBusy(true)
+    setError('')
+    try {
+      await syncNow({
+        roomId: syncRoomId,
+        onStatusChange: (status, message) => {
+          setSyncStatus(status)
+          setSyncError(message ?? null)
+        },
+        onDataChanged: () => {
+          void refreshAll(syncRoomId)
+        },
+      })
+      await refreshAll(syncRoomId)
+      setInfo('Sync erfolgreich.')
+    } catch {
+      setError('Sync now fehlgeschlagen.')
+    } finally {
+      setSyncNowBusy(false)
+    }
+  }, [refreshAll, syncRoomId])
 
   const orderedInbox = useMemo(() => sortInboxForReview(inboxNotes), [inboxNotes])
   const pinnedReviewIndex = useMemo(() => {
@@ -1556,6 +1600,9 @@ function AppContent() {
                     <button type="button" onClick={() => void handleToggleSyncEnabled()}>
                       {syncEnabled ? 'Sync deaktivieren' : 'Sync aktivieren'}
                     </button>
+                    <button type="button" onClick={() => void handleSyncNow()} disabled={!syncEnabled || syncNowBusy}>
+                      {syncNowBusy ? 'Sync läuft…' : 'Sync now (Debug)'}
+                    </button>
                   </div>
 
                   {showImportPanel ? (
@@ -1597,9 +1644,12 @@ function AppContent() {
                   ) : null}
                   {info ? <p className="hint">{info}</p> : null}
                   {offlineReady ? <p className="hint">Offline bereit.</p> : null}
-                  {syncStatus === 'syncing' ? <p className="hint">Sync läuft im Hintergrund.</p> : null}
+                  {syncStatus === 'syncing' ? (
+                    <p className="hint">{syncError ?? 'Sync läuft im Hintergrund.'}</p>
+                  ) : null}
                   {syncStatus === 'offline' ? <p className="hint">Sync pausiert (offline).</p> : null}
                   {syncStatus === 'error' && syncError ? <p className="error-text">{syncError}</p> : null}
+                  <p className="hint">Letzter Sync: {toSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p>
                   {syncPairCode ? (
                     <div className="import-panel">
                       <label className="hint" htmlFor="sync-pair-code">Pair Code (mit Token)</label>

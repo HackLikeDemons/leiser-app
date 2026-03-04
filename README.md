@@ -252,7 +252,7 @@ Alle Inhalte bleiben lokal im Browserprofil.
 Leiser kann optional gegen Supabase synchronisieren, wenn in `localStorage` gesetzt:
 
 - `leiser:supabaseUrl`
-- `leiser:supabaseAnonKey`
+- `leiser:supabasePublishableKey` (optional, falls nicht via `.env`)
 
 Zusätzlich wird beim Aktivieren von Sync ein `syncToken` erzeugt:
 
@@ -263,3 +263,8 @@ Zusätzlich wird beim Aktivieren von Sync ein `syncToken` erzeugt:
 Pair-Code:
 - Im Datenbereich wird ein Pair-Code mit `roomId` und `token` angezeigt.
 - Der Code dient zum Koppeln eines zweiten Geräts mit demselben Sync-Space.
+
+Umgebungsvariablen:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`

@@ -966,6 +966,7 @@ export type SyncDebugInfo = {
   deviceId: string
   roomId: string
   lastPulledSeq: number
+  lastPushedAt: string | null
   isEnabled: boolean
   syncToken: string | null
 }
@@ -996,6 +997,7 @@ export async function getSyncDebugInfo(roomId = DEFAULT_ROOM_ID): Promise<SyncDe
           deviceId: getOrCreateDeviceId(),
           roomId,
           lastPulledSeq: 0,
+          lastPushedAt: null,
           isEnabled: false,
           syncToken: null,
         })
@@ -1009,6 +1011,10 @@ export async function getSyncDebugInfo(roomId = DEFAULT_ROOM_ID): Promise<SyncDe
           typeof existing.lastPulledSeq === 'number' && Number.isFinite(existing.lastPulledSeq)
             ? existing.lastPulledSeq
             : 0,
+        lastPushedAt:
+          typeof (existing as SyncStateRow).lastPushedAt === 'string'
+            ? (existing as SyncStateRow).lastPushedAt
+            : null,
         isEnabled: Boolean((existing as SyncStateRow).isEnabled),
         syncToken:
           typeof (existing as SyncStateRow).syncToken === 'string'
@@ -1077,7 +1083,17 @@ export async function updateSyncState(
 export async function setSyncEnabled(roomId: string, enabled: boolean): Promise<SyncStateRow> {
   const current = await getSyncState(roomId)
   const syncToken = enabled ? (current.syncToken ?? generateSyncToken()) : current.syncToken
-  return updateSyncState(roomId, { isEnabled: enabled, lastError: null, syncToken })
+  const next = await updateSyncState(roomId, { isEnabled: enabled, lastError: null, syncToken })
+  if (typeof window !== 'undefined') {
+    if (enabled && next.syncToken) {
+      localStorage.setItem('leiser-sync-id', roomId)
+      localStorage.setItem('leiser-sync-token', next.syncToken)
+    } else {
+      localStorage.removeItem('leiser-sync-id')
+      localStorage.removeItem('leiser-sync-token')
+    }
+  }
+  return next
 }
 
 export async function getSyncPairCode(roomId = DEFAULT_ROOM_ID): Promise<string | null> {
