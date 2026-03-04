@@ -1,4 +1,5 @@
 import * as Automerge from '@automerge/automerge/slim'
+import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64'
 import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
 import type { ChangeEnvelope, Note, NoteStatus, NoteType } from './types'
@@ -33,6 +34,7 @@ const ALLOWED_NOTE_TYPES: NoteType[] = ['NOTE', 'QUESTION', 'IDEA', 'TASK']
 const ALLOWED_NOTE_STATUSES: NoteStatus[] = ['INBOX', 'TODO', 'PROCESS', 'DISCARD', 'ARCHIVE']
 
 let dbPromise: Promise<IDBDatabase> | null = null
+let automergeInitPromise: Promise<void> | null = null
 
 type CrdtNoteDoc = {
   text: string
@@ -222,7 +224,7 @@ function createEmptyCrdtDoc() {
 
 function buildDocFromPayload(payload: CrdtNoteDoc) {
   const base = Automerge.init<CrdtNoteDoc>()
-  const doc = Automerge.change(base, (draft) => {
+  const doc = Automerge.change(base, (draft: CrdtNoteDoc) => {
     draft.text = payload.text
     draft.status = payload.status
     draft.type = payload.type
@@ -270,7 +272,13 @@ function openDb() {
     return dbPromise
   }
 
-  dbPromise = new Promise((resolve, reject) => {
+  dbPromise = (async () => {
+    if (!automergeInitPromise) {
+      automergeInitPromise = Automerge.initializeBase64Wasm(automergeWasmBase64) as Promise<void>
+    }
+    await automergeInitPromise
+
+    return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
     request.onerror = () => reject(request.error)
@@ -373,7 +381,8 @@ function openDb() {
     }
 
     request.onsuccess = () => resolve(request.result)
-  })
+    })
+  })()
 
   return dbPromise
 }
@@ -548,7 +557,7 @@ export async function applyLocalEdit(
 
   const now = Date.now()
   const deviceId = getOrCreateDeviceId()
-  const updatedDoc = Automerge.change(existing, (draft) => {
+  const updatedDoc = Automerge.change(existing, (draft: CrdtNoteDoc) => {
     mutator(draft)
     draft.updatedAt = now
     draft.revision = Math.max(1, draft.revision || 1) + 1
