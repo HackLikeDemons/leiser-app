@@ -78,6 +78,23 @@ body {
   resize: vertical;
 }
 
+.capture-meta {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.counter {
+  color: #60756d;
+}
+
+.counter--warning {
+  color: #b7661a;
+}
+
+.soft-limit-hint {
+  color: #b7661a;
+}
+
 button {
   width: fit-content;
   border: 1px solid #b7c8c1;
@@ -141,6 +158,13 @@ button:hover {
   padding: 0.3rem 0.6rem;
 }
 
+.note-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .note-item--review {
   grid-template-columns: 64px 1fr;
 }
@@ -154,6 +178,12 @@ button:hover {
 
 .review-actions-inline button {
   padding: 0.35rem 0.6rem;
+}
+
+.merge-label {
+  color: #3d5149;
+  font-size: 0.82rem;
+  align-self: center;
 }
 
 @media (max-width: 640px) {

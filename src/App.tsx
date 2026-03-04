@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent, KeyboardEvent } from 'react'
+import type { ClipboardEvent, FormEvent, KeyboardEvent } from 'react'
 import {
   addNote,
   deleteNote,
   listInboxNotes,
   listNotesByDay,
   listProcessNotes,
+  updateNoteText,
   updateNoteStatus,
 } from './lib/dbNotes'
 import { getLocalDayISO } from './lib/date'
 import type { Note, NoteStatus } from './lib/types'
 
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING'
+const SOFT_CHAR_LIMIT = 200
 
 function toClockLabel(isoTimestamp: string) {
   const date = new Date(isoTimestamp)
@@ -20,12 +22,21 @@ function toClockLabel(isoTimestamp: string) {
   return `${hours}:${minutes}`
 }
 
+function isUndoAvailable(note: Note) {
+  const createdMs = Date.parse(note.createdAt)
+  if (Number.isNaN(createdMs)) {
+    return false
+  }
+  return Date.now() - createdMs <= 5000
+}
+
 export function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('BRAINDUMP')
   const [text, setText] = useState('')
   const [todayNotes, setTodayNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [processNotes, setProcessNotes] = useState<Note[]>([])
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
@@ -76,10 +87,39 @@ export function App() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    const confirmed = window.confirm('Notiz löschen?')
-    if (!confirmed) {
+  const handlePaste = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = event.clipboardData.getData('text')
+    if (!pasted.includes('\n')) {
       return
+    }
+
+    event.preventDefault()
+    const lines = pasted
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+
+    if (lines.length === 0) {
+      return
+    }
+
+    setError('')
+    try {
+      await Promise.all(lines.map((line) => addNote(line)))
+      setText('')
+      await refreshAll()
+    } catch {
+      setError('Notizen aus Zwischenablage konnten nicht gespeichert werden.')
+    }
+  }
+
+  const handleDelete = async (id: string, options?: { confirm?: boolean }) => {
+    const shouldConfirm = options?.confirm ?? true
+    if (shouldConfirm) {
+      const confirmed = window.confirm('Notiz löschen?')
+      if (!confirmed) {
+        return
+      }
     }
 
     setError('')
@@ -98,6 +138,28 @@ export function App() {
       await refreshAll()
     } catch {
       setError('Status konnte nicht aktualisiert werden.')
+    }
+  }
+
+  const handleMergeIntoTarget = async (sourceId: string) => {
+    if (!mergeTargetId || mergeTargetId === sourceId) {
+      return
+    }
+
+    const target = inboxNotes.find((note) => note.id === mergeTargetId)
+    const source = inboxNotes.find((note) => note.id === sourceId)
+    if (!target || !source) {
+      return
+    }
+
+    setError('')
+    try {
+      await updateNoteText(target.id, `${target.text}\n\n${source.text}`)
+      await deleteNote(source.id)
+      setMergeTargetId(null)
+      await refreshAll()
+    } catch {
+      setError('Zusammenführen fehlgeschlagen.')
     }
   }
 
@@ -140,7 +202,16 @@ export function App() {
                 value={text}
                 onChange={(event) => setText(event.target.value)}
                 onKeyDown={handleTextKeyDown}
+                onPaste={(event) => void handlePaste(event)}
               />
+              <div className="capture-meta">
+                <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
+                  {text.length} / {SOFT_CHAR_LIMIT}
+                </small>
+                {text.length > SOFT_CHAR_LIMIT ? (
+                  <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
+                ) : null}
+              </div>
               <button type="submit">Hinzufügen</button>
             </form>
 
@@ -151,9 +222,20 @@ export function App() {
                 <li key={note.id} className="note-item">
                   <span className="note-time">{toClockLabel(note.createdAt)}</span>
                   <span className="note-text">{note.text}</span>
-                  <button type="button" className="note-delete" onClick={() => void handleDelete(note.id)}>
-                    Löschen
-                  </button>
+                  <div className="note-actions">
+                    {isUndoAvailable(note) ? (
+                      <button
+                        type="button"
+                        className="note-delete"
+                        onClick={() => void handleDelete(note.id, { confirm: false })}
+                      >
+                        Rückgängig
+                      </button>
+                    ) : null}
+                    <button type="button" className="note-delete" onClick={() => void handleDelete(note.id)}>
+                      Löschen
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -179,6 +261,22 @@ export function App() {
                     <button type="button" onClick={() => void handleReviewDecision(note.id, 'DISCARD')}>
                       DISCARD
                     </button>
+                    {mergeTargetId === note.id ? (
+                      <button type="button" onClick={() => setMergeTargetId(null)}>
+                        Merge beenden
+                      </button>
+                    ) : mergeTargetId ? (
+                      <button type="button" onClick={() => void handleMergeIntoTarget(note.id)}>
+                        → hierhin zusammenführen
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => setMergeTargetId(note.id)}>
+                        Zusammenführen
+                      </button>
+                    )}
+                    {mergeTargetId === note.id ? (
+                      <span className="merge-label">Merging in diese Notiz</span>
+                    ) : null}
                   </div>
                 </li>
               ))}
