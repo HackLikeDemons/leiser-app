@@ -223,10 +223,30 @@ export function App() {
     <main className="daily-shell">
       <section className="daily-card">
         <header className="app-header">
-          <div>
-            <h1>Leiser</h1>
-            <p className="subtitle">Täglicher Braindump. Komplett lokal.</p>
+          <div className="mode-tabs" role="tablist" aria-label="Bereiche">
+            <button
+              type="button"
+              className={activeTab === 'BRAINDUMP' ? 'tab-button tab-button--active' : 'tab-button'}
+              onClick={() => setActiveTab('BRAINDUMP')}
+            >
+              Braindump
+            </button>
+            <button
+              type="button"
+              className={activeTab === 'REVIEW' ? 'tab-button tab-button--active' : 'tab-button'}
+              onClick={() => setActiveTab('REVIEW')}
+            >
+              Review
+            </button>
+            <button
+              type="button"
+              className={activeTab === 'THINKING' ? 'tab-button tab-button--active' : 'tab-button'}
+              onClick={() => setActiveTab('THINKING')}
+            >
+              Denken
+            </button>
           </div>
+
           <div className="header-actions">
             <button
               type="button"
@@ -279,30 +299,6 @@ export function App() {
             </button>
           </div>
         </header>
-
-        <div className="mode-tabs" role="tablist" aria-label="Bereiche">
-          <button
-            type="button"
-            className={activeTab === 'BRAINDUMP' ? 'tab-button tab-button--active' : 'tab-button'}
-            onClick={() => setActiveTab('BRAINDUMP')}
-          >
-            Braindump
-          </button>
-          <button
-            type="button"
-            className={activeTab === 'REVIEW' ? 'tab-button tab-button--active' : 'tab-button'}
-            onClick={() => setActiveTab('REVIEW')}
-          >
-            Review
-          </button>
-          <button
-            type="button"
-            className={activeTab === 'THINKING' ? 'tab-button tab-button--active' : 'tab-button'}
-            onClick={() => setActiveTab('THINKING')}
-          >
-            Denken
-          </button>
-        </div>
 
         {showDataPanel ? (
           <section className="data-section" aria-label="Daten">
@@ -369,15 +365,33 @@ export function App() {
                 onPaste={(event) => void handlePaste(event)}
               />
               <small className="capture-hint">Enter speichert, Shift+Enter macht einen Zeilenumbruch.</small>
-              <div className="capture-meta">
-                <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
-                  {text.length} / {SOFT_CHAR_LIMIT}
-                </small>
-                {text.length > SOFT_CHAR_LIMIT ? (
-                  <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
-                ) : null}
+              <div className="capture-actions">
+                <div className="capture-meta">
+                  <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
+                    {text.length} / {SOFT_CHAR_LIMIT}
+                  </small>
+                  {text.length > SOFT_CHAR_LIMIT ? (
+                    <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
+                  ) : null}
+                </div>
+                <button
+                  type="submit"
+                  className="capture-submit"
+                  aria-label="Notiz hinzufügen"
+                  title="Hinzufügen"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M12 5v14M5 12h14"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
               </div>
-              <button type="submit">Hinzufügen</button>
             </form>
 
             <h2>Heute ({todayNotes.length})</h2>
@@ -397,8 +411,23 @@ export function App() {
                         Rückgängig
                       </button>
                     ) : null}
-                    <button type="button" className="note-delete" onClick={() => void handleDelete(note.id)}>
-                      Löschen
+                    <button
+                      type="button"
+                      className="note-delete note-delete--icon"
+                      onClick={() => void handleDelete(note.id)}
+                      aria-label="Notiz löschen"
+                      title="Löschen"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M4 7h16M9.5 3h5M8 7v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7M10 11v6M14 11v6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
                     </button>
                   </div>
                 </li>
