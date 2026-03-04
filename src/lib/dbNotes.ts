@@ -1,4 +1,5 @@
 import { getLocalDayISO } from './date'
+import { getOrCreateDeviceId } from './device'
 import type { Note, NoteStatus } from './types'
 
 const DB_NAME = 'leiser-db'
@@ -10,6 +11,29 @@ const CREATED_AT_INDEX = 'createdAt'
 const STATUS_CREATED_AT_INDEX = 'status_createdAt'
 
 let dbPromise: Promise<IDBDatabase> | null = null
+
+function asActiveNote(value: unknown): Note | null {
+  const note = value as Partial<Note> | undefined
+  if (!note || typeof note !== 'object') {
+    return null
+  }
+
+  if (note.deletedAt !== null && note.deletedAt !== undefined) {
+    return null
+  }
+
+  return {
+    id: String(note.id ?? ''),
+    createdAt: String(note.createdAt ?? ''),
+    updatedAt: String(note.updatedAt ?? note.createdAt ?? new Date().toISOString()),
+    deletedAt: note.deletedAt ?? null,
+    deviceId: String(note.deviceId ?? getOrCreateDeviceId()),
+    revision: typeof note.revision === 'number' && Number.isFinite(note.revision) ? note.revision : 1,
+    dayISO: String(note.dayISO ?? ''),
+    text: String(note.text ?? ''),
+    status: (note.status as NoteStatus | undefined) ?? 'INBOX',
+  }
+}
 
 function openDb() {
   if (dbPromise) {
@@ -69,6 +93,9 @@ export async function addNote(text: string): Promise<Note> {
     id: crypto.randomUUID(),
     createdAt: now,
     updatedAt: now,
+    deletedAt: null,
+    deviceId: getOrCreateDeviceId(),
+    revision: 1,
     dayISO: getLocalDayISO(new Date(now)),
     text: trimmed,
     status: 'INBOX',
@@ -103,7 +130,7 @@ export async function listNotesByDay(dayISO: string, limit = 500): Promise<Note[
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => {
-      notes.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       resolve(notes)
     }
 
@@ -114,7 +141,10 @@ export async function listNotesByDay(dayISO: string, limit = 500): Promise<Note[
         return
       }
 
-      notes.push(cursor.value as Note)
+      const note = asActiveNote(cursor.value)
+      if (note) {
+        notes.push(note)
+      }
       cursor.continue()
     }
   })
@@ -143,7 +173,10 @@ export async function listInboxNotes(limit = 50): Promise<Note[]> {
       if (!cursor || notes.length >= limit) {
         return
       }
-      notes.push(cursor.value as Note)
+      const note = asActiveNote(cursor.value)
+      if (note) {
+        notes.push(note)
+      }
       cursor.continue()
     }
   })
@@ -172,8 +205,8 @@ export async function listDecidedNotesByDay(dayISO: string, limit = 200): Promis
       if (!cursor || notes.length >= limit) {
         return
       }
-      const note = cursor.value as Note
-      if (note.status !== 'INBOX') {
+      const note = asActiveNote(cursor.value)
+      if (note && note.status !== 'INBOX') {
         notes.push(note)
       }
       cursor.continue()
@@ -204,7 +237,10 @@ export async function listProcessNotes(limit = 200): Promise<Note[]> {
       if (!cursor || notes.length >= limit) {
         return
       }
-      notes.push(cursor.value as Note)
+      const note = asActiveNote(cursor.value)
+      if (note) {
+        notes.push(note)
+      }
       cursor.continue()
     }
   })
@@ -214,15 +250,27 @@ export async function countInboxNotes(): Promise<number> {
   const db = await openDb()
 
   return new Promise<number>((resolve, reject) => {
+    let count = 0
     const transaction = db.transaction(NOTES_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_STORE)
     const index = store.index(STATUS_INDEX)
-    const request = index.count(IDBKeyRange.only('INBOX'))
+    const request = index.openCursor(IDBKeyRange.only('INBOX'), 'next')
 
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve(count)
     request.onerror = () => reject(request.error)
-    request.onsuccess = () => resolve(request.result)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        return
+      }
+      const note = asActiveNote(cursor.value)
+      if (note) {
+        count += 1
+      }
+      cursor.continue()
+    }
   })
 }
 
@@ -232,13 +280,28 @@ export async function deleteNote(id: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(NOTES_STORE, 'readwrite')
     const store = transaction.objectStore(NOTES_STORE)
+    const getRequest = store.get(id)
 
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => resolve()
+    getRequest.onerror = () => reject(getRequest.error)
+    getRequest.onsuccess = () => {
+      const note = getRequest.result as Note | undefined
+      if (!note) {
+        return
+      }
 
-    const request = store.delete(id)
-    request.onerror = () => reject(request.error)
+      const now = new Date().toISOString()
+      const putRequest = store.put({
+        ...note,
+        deletedAt: now,
+        updatedAt: now,
+        deviceId: note.deviceId ?? getOrCreateDeviceId(),
+        revision: (note.revision ?? 1) + 1,
+      })
+      putRequest.onerror = () => reject(putRequest.error)
+    }
   })
 }
 
@@ -261,10 +324,13 @@ export async function updateNoteText(id: string, text: string): Promise<void> {
         return
       }
 
+      const now = new Date().toISOString()
       const putRequest = store.put({
         ...note,
         text,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
+        deviceId: note.deviceId ?? getOrCreateDeviceId(),
+        revision: (note.revision ?? 1) + 1,
       })
       putRequest.onerror = () => reject(putRequest.error)
     }
@@ -289,7 +355,14 @@ export async function updateNoteStatus(id: string, status: NoteStatus): Promise<
       if (!note) {
         return
       }
-      const putRequest = store.put({ ...note, status })
+      const now = new Date().toISOString()
+      const putRequest = store.put({
+        ...note,
+        status,
+        updatedAt: now,
+        deviceId: note.deviceId ?? getOrCreateDeviceId(),
+        revision: (note.revision ?? 1) + 1,
+      })
       putRequest.onerror = () => reject(putRequest.error)
     }
   })
