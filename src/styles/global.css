@@ -173,6 +173,10 @@ button:hover {
   background: #f7fbf9;
 }
 
+.review-list-item--overdue {
+  background: #eef3ef;
+}
+
 .review-list-item--active {
   border-color: #2f4a57;
   background: #edf6f2;
@@ -181,6 +185,10 @@ button:hover {
 .review-list-badge {
   font-size: 0.75rem;
   color: #4d635b;
+}
+
+.review-list-badge--overdue {
+  color: #2f4a57;
 }
 
 .review-card {

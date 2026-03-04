@@ -11,7 +11,8 @@ import {
 import { getLocalDayISO } from './lib/date'
 import type { Note, NoteStatus } from './lib/types'
 
-const REVIEW_FRESH_HOURS = 12
+const FRESH_HOURS = 12
+const OVERDUE_DAYS = 3
 
 function toClockLabel(isoTimestamp: string) {
   const date = new Date(isoTimestamp)
@@ -20,13 +21,31 @@ function toClockLabel(isoTimestamp: string) {
   return `${hours}:${minutes}`
 }
 
-function isFreshNote(note: Note, now = new Date()) {
+function getNoteAgeMs(note: Note, now = new Date()) {
   const createdAtMs = Date.parse(note.createdAt)
   if (Number.isNaN(createdAtMs)) {
-    return false
+    return 0
   }
-  const freshWindowMs = REVIEW_FRESH_HOURS * 60 * 60 * 1000
-  return now.getTime() - createdAtMs <= freshWindowMs
+  return now.getTime() - createdAtMs
+}
+
+function isFreshNote(note: Note, now = new Date()) {
+  const freshWindowMs = FRESH_HOURS * 60 * 60 * 1000
+  return getNoteAgeMs(note, now) < freshWindowMs
+}
+
+function getNoteAgeCategory(note: Note): 'FRESH' | 'READY' | 'OVERDUE' {
+  const ageMs = getNoteAgeMs(note)
+  const freshWindowMs = FRESH_HOURS * 60 * 60 * 1000
+  const overdueWindowMs = OVERDUE_DAYS * 24 * 60 * 60 * 1000
+
+  if (ageMs < freshWindowMs) {
+    return 'FRESH'
+  }
+  if (ageMs >= overdueWindowMs) {
+    return 'OVERDUE'
+  }
+  return 'READY'
 }
 
 export function App() {
@@ -144,9 +163,22 @@ export function App() {
     }
   }
 
-  const readyNotes = useMemo(() => inboxNotes.filter((note) => !isFreshNote(note)), [inboxNotes])
-  const freshNotes = useMemo(() => inboxNotes.filter((note) => isFreshNote(note)), [inboxNotes])
-  const reviewSequence = useMemo(() => [...readyNotes, ...freshNotes], [readyNotes, freshNotes])
+  const overdueNotes = useMemo(
+    () => inboxNotes.filter((note) => getNoteAgeCategory(note) === 'OVERDUE'),
+    [inboxNotes],
+  )
+  const readyNotes = useMemo(
+    () => inboxNotes.filter((note) => getNoteAgeCategory(note) === 'READY'),
+    [inboxNotes],
+  )
+  const freshNotes = useMemo(
+    () => inboxNotes.filter((note) => getNoteAgeCategory(note) === 'FRESH'),
+    [inboxNotes],
+  )
+  const reviewSequence = useMemo(
+    () => [...overdueNotes, ...readyNotes, ...freshNotes],
+    [overdueNotes, readyNotes, freshNotes],
+  )
 
   useEffect(() => {
     if (mode !== 'REVIEW') {
@@ -279,15 +311,40 @@ export function App() {
           <>
             <h2>Offen</h2>
             {inboxNotes.length === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
-            {readyNotes.length === 0 && freshNotes.length > 0 ? (
+            {overdueNotes.length === 0 && readyNotes.length === 0 && freshNotes.length > 0 ? (
               <p className="empty-text">Keine älteren Gedanken. Nur frische Einträge.</p>
             ) : null}
 
             {inboxNotes.length > 0 ? (
               <div className="review-groups">
-                <div>
-                  <p className="review-group-line">Bereit ({readyNotes.length})</p>
-                  {readyNotes.length > 0 ? (
+                {overdueNotes.length > 0 ? (
+                  <div>
+                    <p className="review-group-line">Überfällig ({overdueNotes.length})</p>
+                    <ul className="review-list">
+                      {overdueNotes.map((note) => (
+                        <li key={note.id}>
+                          <button
+                            type="button"
+                            className={
+                              currentReviewNote?.id === note.id
+                                ? 'review-list-item review-list-item--active review-list-item--overdue'
+                                : 'review-list-item review-list-item--overdue'
+                            }
+                            onClick={() => setReviewCurrentId(note.id)}
+                          >
+                            <span>{toClockLabel(note.createdAt)}</span>
+                            <span>{note.text}</span>
+                            <span className="review-list-badge review-list-badge--overdue">ÜBERFÄLLIG</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {readyNotes.length > 0 ? (
+                  <div>
+                    <p className="review-group-line">Bereit ({readyNotes.length})</p>
                     <ul className="review-list">
                       {readyNotes.map((note) => (
                         <li key={note.id}>
@@ -306,12 +363,12 @@ export function App() {
                         </li>
                       ))}
                     </ul>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
 
-                <div>
-                  <p className="review-group-line">Frisch ({freshNotes.length})</p>
-                  {freshNotes.length > 0 ? (
+                {freshNotes.length > 0 ? (
+                  <div>
+                    <p className="review-group-line">Frisch ({freshNotes.length})</p>
                     <ul className="review-list">
                       {freshNotes.map((note) => (
                         <li key={note.id}>
@@ -331,8 +388,8 @@ export function App() {
                         </li>
                       ))}
                     </ul>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
