@@ -475,6 +475,12 @@ button:hover {
   margin: 0;
 }
 
+.view-mode-toggle {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
 .archive-toggle {
   padding: 0.28rem 0.52rem;
   font-size: 0.84rem;
@@ -645,22 +651,38 @@ button:hover {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.note-text-toggle {
-  padding: 0;
-  margin: 0;
-  border: none;
-  background: transparent;
-  text-align: left;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
+  user-select: text;
+  cursor: text;
 }
 
 .note-text--expanded {
   -webkit-line-clamp: unset;
   overflow: visible;
+}
+
+.note-text-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 0.16rem;
+}
+
+.note-text-toggle-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  padding: 0;
+  line-height: 1.2;
+  opacity: 0.82;
+  cursor: pointer;
+}
+
+.note-text-toggle-btn:hover,
+.note-text-toggle-btn:focus-visible {
+  opacity: 1;
+  color: var(--text-primary);
 }
 
 .note-content {

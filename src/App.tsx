@@ -37,8 +37,10 @@ const FRESH_HOURS = 12
 const OVERDUE_DAYS = 3
 const AUTOSCROLL_NEAR_BOTTOM_PX = 80
 const BRAINDUMP_FETCH_LIMIT = 300
+const REVIEW_LAYOUT_KEY = 'leiser:review-layout'
 
 type ReviewAgeCategory = 'OVERDUE' | 'READY' | 'FRESH'
+type ReviewLayoutPreference = 'AUTO' | 'SINGLE' | 'LIST'
 type LastAction = {
   noteId: string
   prevStatus: NoteStatus
@@ -134,17 +136,39 @@ function NoteTypeBadge({ note }: { note: Note }) {
 
 function ExpandableNoteText({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false)
+  const [canExpand, setCanExpand] = useState(false)
+  const textRef = useRef<HTMLSpanElement | null>(null)
+
+  useEffect(() => {
+    if (expanded) {
+      return
+    }
+    const frameId = requestAnimationFrame(() => {
+      const element = textRef.current
+      if (!element) {
+        return
+      }
+      setCanExpand(element.scrollHeight - element.clientHeight > 2)
+    })
+    return () => cancelAnimationFrame(frameId)
+  }, [expanded, text])
 
   return (
-    <button
-      type="button"
-      className={expanded ? 'note-text note-text-toggle note-text--expanded' : 'note-text note-text-toggle'}
-      onClick={() => setExpanded((prev) => !prev)}
-      aria-expanded={expanded}
-      title={expanded ? 'Text einklappen' : 'Text vollständig anzeigen'}
-    >
-      {text}
-    </button>
+    <span className="note-text-wrap">
+      <span ref={textRef} className={expanded ? 'note-text note-text--expanded' : 'note-text'}>
+        {text}
+      </span>
+      {canExpand ? (
+        <button
+          type="button"
+          className="note-text-toggle-btn"
+          onClick={() => setExpanded((prev) => !prev)}
+          aria-expanded={expanded}
+        >
+          {expanded ? 'Weniger' : 'Mehr'}
+        </button>
+      ) : null}
+    </span>
   )
 }
 
@@ -743,6 +767,13 @@ function AppContent() {
   const [inboxCount, setInboxCount] = useState(0)
   const [decidedTodayNotes, setDecidedTodayNotes] = useState<Note[]>([])
   const [reviewIndex, setReviewIndex] = useState(0)
+  const [reviewLayoutPreference, setReviewLayoutPreference] = useState<ReviewLayoutPreference>(() => {
+    const stored = localStorage.getItem(REVIEW_LAYOUT_KEY)
+    if (stored === 'SINGLE' || stored === 'LIST' || stored === 'AUTO') {
+      return stored
+    }
+    return 'AUTO'
+  })
   const [currentNoteId, setCurrentNoteId] = useState<string | null>(null)
   const [showDecidedToday, setShowDecidedToday] = useState(false)
   const [processNotes, setProcessNotes] = useState<Note[]>([])
@@ -855,6 +886,10 @@ function AppContent() {
     localStorage.setItem(THEME_KEY, theme)
   }, [theme])
 
+  useEffect(() => {
+    localStorage.setItem(REVIEW_LAYOUT_KEY, reviewLayoutPreference)
+  }, [reviewLayoutPreference])
+
   const handleToggleSyncEnabled = useCallback(async () => {
     setError('')
     try {
@@ -899,6 +934,28 @@ function AppContent() {
   }, [refreshAll, syncRoomId])
 
   const orderedInbox = useMemo(() => sortInboxForReview(inboxNotes), [inboxNotes])
+  const resolvedReviewLayout = useMemo<'SINGLE' | 'LIST'>(() => {
+    if (reviewLayoutPreference === 'AUTO') {
+      return orderedInbox.length > 3 ? 'LIST' : 'SINGLE'
+    }
+    return reviewLayoutPreference
+  }, [orderedInbox.length, reviewLayoutPreference])
+  const reviewListGroups = useMemo(() => {
+    const overdue: Note[] = []
+    const ready: Note[] = []
+    const fresh: Note[] = []
+    for (const note of orderedInbox) {
+      const category = getReviewAgeCategory(note)
+      if (category === 'OVERDUE') overdue.push(note)
+      else if (category === 'READY') ready.push(note)
+      else fresh.push(note)
+    }
+    return [
+      { key: 'OVERDUE', label: 'Überfällig', notes: overdue },
+      { key: 'READY', label: 'Bereit', notes: ready },
+      { key: 'FRESH', label: 'Frisch', notes: fresh },
+    ] as const
+  }, [orderedInbox])
   const pinnedReviewIndex = useMemo(() => {
     if (!currentNoteId) {
       return -1
@@ -1483,6 +1540,7 @@ function AppContent() {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (activeTab !== 'REVIEW' || isSearchMode) return
       if (staleReviewMode) return
+      if (resolvedReviewLayout !== 'SINGLE') return
       if (isTypingTarget(event.target)) return
       if (!currentReviewNote && event.key.toLowerCase() !== 'escape') return
 
@@ -1507,7 +1565,7 @@ function AppContent() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeTab, currentReviewNote, isSearchMode, orderedInbox.length, staleReviewMode])
+  }, [activeTab, currentReviewNote, isSearchMode, staleReviewMode, resolvedReviewLayout, handleSkipReview, handleReviewDecision])
 
   return (
     <AppShell
@@ -1768,7 +1826,32 @@ function AppContent() {
 
           {activeTab === 'REVIEW' ? (
             <>
-              <h2>Review</h2>
+              <div className="section-headline">
+                <h2>Review</h2>
+                <div className="view-mode-toggle" role="group" aria-label="Review Ansicht">
+                  <button
+                    type="button"
+                    className={reviewLayoutPreference === 'AUTO' ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
+                    onClick={() => setReviewLayoutPreference('AUTO')}
+                  >
+                    Auto
+                  </button>
+                  <button
+                    type="button"
+                    className={reviewLayoutPreference === 'SINGLE' ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
+                    onClick={() => setReviewLayoutPreference('SINGLE')}
+                  >
+                    Single
+                  </button>
+                  <button
+                    type="button"
+                    className={reviewLayoutPreference === 'LIST' ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
+                    onClick={() => setReviewLayoutPreference('LIST')}
+                  >
+                    Liste
+                  </button>
+                </div>
+              </div>
               {!staleReviewMode && staleTodos.length > 0 ? (
                 <section className="stale-review-banner">
                   <span>Du hast {staleTodos.length} alte To-Dos (&gt;14 Tage). Kurz prüfen?</span>
@@ -1828,6 +1911,107 @@ function AppContent() {
                       </button>
                     </div>
                   </article>
+                )
+              ) : resolvedReviewLayout === 'LIST' ? (
+                orderedInbox.length === 0 ? (
+                  <p className="empty-text">Keine offenen Gedanken.</p>
+                ) : (
+                  <>
+                    {reviewListGroups.map((group) =>
+                      group.notes.length > 0 ? (
+                        <section key={group.key} className="note-group">
+                          <div className="day-divider">{group.label} ({group.notes.length})</div>
+                          <ul className="notes-list" aria-label={`Review ${group.label}`}>
+                            {group.notes.map((note) => (
+                              <li key={note.id} className="note-item note-item--todo">
+                                <span className="note-time">{formatNoteTime(note, todayISO)}</span>
+                                <span className="note-content">
+                                  <ExpandableNoteText text={note.text} />
+                                  <span className={`age-badge age-badge--${getReviewAgeCategory(note).toLowerCase()}`}>
+                                    {reviewAgeLabel(getReviewAgeCategory(note))}
+                                  </span>
+                                  <NoteTypeBadge note={note} />
+                                </span>
+                                <div className="todo-actions">
+                                  <button
+                                    type="button"
+                                    className="review-btn review-btn--todo review-btn--icon"
+                                    onClick={() =>
+                                      void handleReviewDecision(note.id, 'TODO', { enableUndo: true, sourceNote: note })
+                                    }
+                                    aria-label="Als To-Do markieren"
+                                    title="To-Do"
+                                  >
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                      <path
+                                        d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.8"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="review-btn review-btn--process review-btn--icon"
+                                    onClick={() =>
+                                      void handleReviewDecision(note.id, 'PROCESS', { enableUndo: true, sourceNote: note })
+                                    }
+                                    aria-label="In Denken verschieben"
+                                    title="Denken"
+                                  >
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                      <path
+                                        d="M12 4c-1.8 0-3.3 1-4 2.6a3.6 3.6 0 0 0-2.9 3.5c0 .9.3 1.7.9 2.4-.3.5-.4 1-.4 1.6 0 1.7 1.3 3 3 3h1.2V20h4.6v-2.9H16a3 3 0 0 0 3-3c0-.6-.2-1.1-.4-1.6.5-.7.8-1.5.8-2.4a3.6 3.6 0 0 0-2.9-3.5A4.4 4.4 0 0 0 12 4Z"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.8"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      />
+                                      <path
+                                        d="M10.5 8.8c.7.8.7 2 0 2.8m3-2.8c.7.8.7 2 0 2.8"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.5"
+                                        strokeLinecap="round"
+                                      />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="review-btn review-btn--discard review-btn--icon"
+                                    onClick={() =>
+                                      void handleReviewDecision(note.id, 'DISCARD', { enableUndo: true, sourceNote: note })
+                                    }
+                                    aria-label="Verwerfen"
+                                    title="Verwerfen"
+                                  >
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                      <path
+                                        d="M6 6l12 12M18 6 6 18"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.9"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </section>
+                      ) : null,
+                    )}
+                    <p className="review-meta">Offen: {inboxCount}</p>
+                    {inboxCount > inboxNotes.length ? (
+                      <p className="hint">Weitere offene Gedanken vorhanden.</p>
+                    ) : null}
+                  </>
                 )
               ) : currentReviewNote ? (
                 <article className="review-focus-card" aria-label="Aktueller Gedanke">
