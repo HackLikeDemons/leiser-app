@@ -16,6 +16,8 @@ npm run dev
 
 ## Dokumentation
 
+- [Dokumentationsindex](docs/README.md)
+
 ### Einstieg
 - [Produktüberblick](docs/overview.md)
 - [Flows und Tabs](docs/flows.md)
