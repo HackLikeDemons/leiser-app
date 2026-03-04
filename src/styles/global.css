@@ -21,6 +21,18 @@
   --text-secondary: var(--muted);
   --text-muted: var(--muted);
   --shadow-soft: 0 6px 18px rgba(0, 0, 0, 0.2);
+  --note-text-size: 1.03rem;
+  --note-text-weight: 500;
+  --note-text-line-height: 1.35;
+  --note-meta-size: 0.78rem;
+  --note-meta-weight: 500;
+  --note-meta-opacity: 0.65;
+  --note-badge-size: 0.75rem;
+  --note-badge-opacity: 0.75;
+  --card-padding-y: 0.45rem;
+  --card-padding-x: 0.56rem;
+  --card-list-gap: 0.34rem;
+  --card-radius: 9px;
   color: var(--text-primary);
   background: var(--surface-page-top);
 }
@@ -335,28 +347,39 @@ button:hover {
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 0.35rem;
+  gap: var(--card-list-gap);
+}
+
+.note-group {
+  margin-top: 0.55rem;
+}
+
+.note-group-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .note-item {
   display: grid;
-  grid-template-columns: 64px 1fr auto;
+  grid-template-columns: 56px 1fr auto;
   gap: 0.45rem;
   align-items: start;
   border: 1px solid var(--border-default);
-  border-radius: 9px;
-  padding: 0.46rem 0.55rem;
+  border-radius: var(--card-radius);
+  padding: var(--card-padding-y) var(--card-padding-x);
   background: var(--surface-card-soft);
 }
 
 .note-item--review {
-  grid-template-columns: 64px 1fr;
+  grid-template-columns: 56px 1fr;
 }
 
 .note-item--todo {
-  grid-template-columns: 64px 1fr auto;
+  grid-template-columns: 56px 1fr auto;
   align-items: center;
-  padding: 0.42rem 0.5rem;
+  padding: var(--card-padding-y) var(--card-padding-x);
 }
 
 .todo-actions {
@@ -369,12 +392,20 @@ button:hover {
 .note-time {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
-  font-size: 0.95rem;
+  font-size: var(--note-meta-size);
+  font-weight: var(--note-meta-weight);
+  opacity: var(--note-meta-opacity);
+  letter-spacing: 0.01em;
+  align-self: start;
+  padding-top: 0.2rem;
 }
 
 .note-text {
   white-space: pre-wrap;
   word-break: break-word;
+  font-size: var(--note-text-size);
+  font-weight: var(--note-text-weight);
+  line-height: var(--note-text-line-height);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -383,7 +414,8 @@ button:hover {
 
 .note-content {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
+  flex-wrap: wrap;
   gap: 0.45rem;
   min-width: 0;
 }
@@ -396,7 +428,8 @@ button:hover {
   border: 1px solid color-mix(in srgb, var(--border-default) 80%, transparent);
   background: color-mix(in srgb, var(--surface-card-soft) 80%, transparent);
   color: var(--text-muted);
-  font-size: 0.69rem;
+  font-size: var(--note-badge-size);
+  opacity: var(--note-badge-opacity);
   white-space: nowrap;
 }
 
@@ -407,7 +440,8 @@ button:hover {
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--border-default) 86%, transparent);
   color: var(--text-secondary);
-  font-size: 0.69rem;
+  font-size: var(--note-badge-size);
+  opacity: var(--note-badge-opacity);
   white-space: nowrap;
 }
 
@@ -464,8 +498,16 @@ button:hover {
 .review-focus-text {
   margin-top: 0.35rem;
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
+  flex-wrap: wrap;
   gap: 0.45rem;
+}
+
+.review-focus-text .note-text {
+  font-size: 1.08rem;
+  font-weight: 550;
+  -webkit-line-clamp: unset;
+  overflow: visible;
 }
 
 .review-meta {
@@ -552,6 +594,36 @@ button:hover {
 .review-btn--icon svg {
   width: 16px;
   height: 16px;
+}
+
+/* De-emphasize list action icons by default; promote on card hover/focus */
+.note-item .note-delete--icon,
+.note-item .review-btn--icon {
+  width: 40px;
+  height: 40px;
+  opacity: 0.66;
+  background: transparent;
+  border-color: color-mix(in srgb, var(--border-default) 88%, transparent);
+}
+
+.note-item .note-delete--icon svg,
+.note-item .review-btn--icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.note-item:hover .note-delete--icon,
+.note-item:hover .review-btn--icon {
+  opacity: 1;
+  background: var(--surface-button);
+  border-color: var(--border-default);
+}
+
+.note-item .note-delete--icon:focus-visible,
+.note-item .review-btn--icon:focus-visible {
+  opacity: 1;
+  background: var(--surface-button);
+  border-color: var(--border-default);
 }
 
 .review-btn--todo {
@@ -657,5 +729,12 @@ button:focus {
 
   .note-actions {
     justify-content: flex-start;
+  }
+}
+
+@media (hover: none) {
+  .note-item .note-delete--icon,
+  .note-item .review-btn--icon {
+    opacity: 0.85;
   }
 }

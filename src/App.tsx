@@ -8,8 +8,8 @@ import {
   deleteNote,
   listDecidedNotesByDay,
   listInboxNotes,
-  listNotesByDay,
   listNotesByStatus,
+  listRecentActiveNotes,
   listSearchableNotes,
   listTodoNotes,
   updateNoteStatus,
@@ -121,7 +121,7 @@ export function App() {
     return stored === 'light' ? 'light' : 'dark'
   })
   const [text, setText] = useState('')
-  const [todayNotes, setTodayNotes] = useState<Note[]>([])
+  const [braindumpNotes, setBraindumpNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [inboxCount, setInboxCount] = useState(0)
   const [decidedTodayNotes, setDecidedTodayNotes] = useState<Note[]>([])
@@ -148,11 +148,16 @@ export function App() {
   const undoTimeoutRef = useRef<number | null>(null)
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
+  const yesterdayISO = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 1)
+    return getLocalDayISO(d)
+  }, [])
 
   const refreshAll = async () => {
     try {
-      const [today, inbox, inboxTotal, decidedToday, process, processTotal, todo, archived, archivedTotal, searchable] = await Promise.all([
-        listNotesByDay(todayISO, 500),
+      const [braindump, inbox, inboxTotal, decidedToday, process, processTotal, todo, archived, archivedTotal, searchable] = await Promise.all([
+        listRecentActiveNotes(500),
         listInboxNotes(REVIEW_LIMIT),
         countInboxNotes(),
         listDecidedNotesByDay(todayISO, 200),
@@ -163,7 +168,7 @@ export function App() {
         countNotesByStatus('ARCHIVE'),
         listSearchableNotes(),
       ])
-      setTodayNotes(today)
+      setBraindumpNotes(braindump)
       setInboxNotes(inbox)
       setInboxCount(inboxTotal)
       setDecidedTodayNotes(decidedToday)
@@ -410,6 +415,26 @@ export function App() {
   const isSearchMode = searchQuery.trim().length > 0
   const currentReviewNote = orderedInbox[effectiveReviewIndex] ?? null
   const currentReviewCategory = currentReviewNote ? getReviewAgeCategory(currentReviewNote) : null
+  const braindumpGroups = useMemo(() => {
+    const groups: Array<{ key: string; label: string; notes: Note[] }> = []
+    for (const note of braindumpNotes) {
+      const dayISO = note.dayISO
+      let label = dayISO
+      if (dayISO === todayISO) {
+        label = 'Heute'
+      } else if (dayISO === yesterdayISO) {
+        label = 'Gestern'
+      }
+
+      const last = groups[groups.length - 1]
+      if (last && last.key === dayISO) {
+        last.notes.push(note)
+      } else {
+        groups.push({ key: dayISO, label, notes: [note] })
+      }
+    }
+    return groups
+  }, [braindumpNotes, todayISO, yesterdayISO])
 
   const searchEngine = useMemo(
     () =>
@@ -446,7 +471,7 @@ export function App() {
       window.removeEventListener('focus', focusInput)
       document.removeEventListener('visibilitychange', focusInput)
     }
-  }, [activeTab, isSearchMode, todayNotes.length])
+  }, [activeTab, isSearchMode, braindumpNotes.length])
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -704,59 +729,65 @@ export function App() {
               </div>
             </form>
 
-            <h2>Heute ({todayNotes.length})</h2>
-            {todayNotes.length === 0 ? <p className="empty-text">Noch keine Notizen heute.</p> : null}
-            <ul className="notes-list" aria-label="Heutige Notizen">
-              {todayNotes.map((note) => (
-                <li key={note.id} className="note-item">
-                  <span className="note-time">{toClockLabel(note.createdAt)}</span>
-                  <span className="note-content">
-                    <span className="note-text">{note.text}</span>
-                    {renderTypeBadge(note)}
-                  </span>
-                  <div className="note-actions">
-                    {isUndoAvailable(note) ? (
-                      <button
-                        type="button"
-                        className="note-delete note-delete--icon"
-                        onClick={() => void handleDelete(note.id, { confirm: false })}
-                        aria-label="Rückgängig"
-                        title="Rückgängig"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path
-                            d="M9 7 4 12l5 5M5 12h8a5 5 0 1 1 0 10h-2"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="note-delete note-delete--icon"
-                      onClick={() => void handleDelete(note.id)}
-                      aria-label="Notiz löschen"
-                      title="Löschen"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M4 7h16M9.5 3h5M8 7v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7M10 11v6M14 11v6"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            {braindumpGroups.length === 0 ? <p className="empty-text">Noch keine Notizen.</p> : null}
+            {braindumpGroups.map((group) => (
+              <section key={group.key} className="note-group">
+                <h3 className="note-group-title">
+                  {group.label} ({group.notes.length})
+                </h3>
+                <ul className="notes-list" aria-label={`${group.label} Notizen`}>
+                  {group.notes.map((note) => (
+                    <li key={note.id} className="note-item">
+                      <span className="note-time">{toClockLabel(note.createdAt)}</span>
+                      <span className="note-content">
+                        <span className="note-text">{note.text}</span>
+                        {renderTypeBadge(note)}
+                      </span>
+                      <div className="note-actions">
+                        {isUndoAvailable(note) ? (
+                          <button
+                            type="button"
+                            className="note-delete note-delete--icon"
+                            onClick={() => void handleDelete(note.id, { confirm: false })}
+                            aria-label="Rückgängig"
+                            title="Rückgängig"
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path
+                                d="M9 7 4 12l5 5M5 12h8a5 5 0 1 1 0 10h-2"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="note-delete note-delete--icon"
+                          onClick={() => void handleDelete(note.id)}
+                          aria-label="Notiz löschen"
+                          title="Löschen"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                              d="M4 7h16M9.5 3h5M8 7v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7M10 11v6M14 11v6"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
             </>
           ) : null}
 

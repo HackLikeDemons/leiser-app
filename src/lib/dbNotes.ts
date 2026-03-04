@@ -233,6 +233,36 @@ export async function listAllNotes(): Promise<Note[]> {
   })
 }
 
+export async function listRecentActiveNotes(limit = 500): Promise<Note[]> {
+  const db = await openDb()
+
+  return new Promise<Note[]>((resolve, reject) => {
+    const notes: Note[] = []
+    const transaction = db.transaction(NOTES_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_STORE)
+    const index = store.index(CREATED_AT_INDEX)
+    const request = index.openCursor(null, 'prev')
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve(notes)
+
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor || notes.length >= limit) {
+        return
+      }
+
+      const note = asActiveNote(cursor.value)
+      if (note) {
+        notes.push(note)
+      }
+      cursor.continue()
+    }
+  })
+}
+
 export async function listSearchableNotes(): Promise<Note[]> {
   const db = await openDb()
 
