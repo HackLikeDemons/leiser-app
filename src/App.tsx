@@ -57,6 +57,15 @@ function toDayClockLabel(isoTimestamp: string) {
   return `${day}.${month}. · ${toClockLabel(isoTimestamp)}`
 }
 
+function daysBetween(dateA: Date, dateB: Date) {
+  const a = new Date(dateA)
+  const b = new Date(dateB)
+  a.setHours(12, 0, 0, 0)
+  b.setHours(12, 0, 0, 0)
+  const diffMs = Math.abs(a.getTime() - b.getTime())
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24))
+}
+
 function isUndoAvailable(note: Note) {
   const createdMs = Date.parse(note.createdAt)
   if (Number.isNaN(createdMs)) {
@@ -829,6 +838,10 @@ function AppContent() {
   }, [todoNotes, todayISO, weekStartISO])
 
   const useGroupedTodos = todoNotes.length > 10
+  const olderOldTodoCount = useMemo(() => {
+    const today = new Date()
+    return groupedTodos.OLDER.filter((todo) => daysBetween(today, new Date(todo.createdAt)) > 14).length
+  }, [groupedTodos.OLDER, todayISO])
 
   useEffect(() => {
     if (activeTab !== 'BRAINDUMP' || isSearchMode) {
@@ -1560,6 +1573,9 @@ function AppContent() {
                 <section className="todo-group">
                   <button type="button" className="todo-group-toggle" onClick={() => setShowTodoOlder((prev) => !prev)}>
                     Älter ({groupedTodos.OLDER.length})
+                    {olderOldTodoCount > 0 ? (
+                      <span className="todo-group-age-hint"> · &gt;14 Tage: {olderOldTodoCount}</span>
+                    ) : null}
                   </button>
                   {showTodoOlder ? (
                     <ul className="notes-list" aria-label="To-Do Älter">
