@@ -283,6 +283,12 @@ body {
   gap: 0.45rem;
 }
 
+.dev-sync-panel {
+  margin-top: 0.4rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-default) 72%, transparent);
+}
+
 .import-mode-option {
   display: inline-flex;
   gap: 0.45rem;

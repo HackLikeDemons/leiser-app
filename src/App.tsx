@@ -7,6 +7,7 @@ import {
   countInboxNotes,
   countNotesByStatus,
   deleteNote,
+  getSyncDebugInfo,
   listDecidedNotesByDay,
   listInboxNotes,
   listNotesByStatus,
@@ -43,6 +44,12 @@ type NoteActionItem = {
   label: string
   onSelect: () => void
   destructive?: boolean
+}
+
+type DevSyncInfo = {
+  deviceId: string
+  roomId: string
+  lastPulledSeq: number
 }
 
 function toClockLabel(isoTimestamp: string) {
@@ -718,6 +725,7 @@ function AppContent() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
+  const [devSyncInfo, setDevSyncInfo] = useState<DevSyncInfo | null>(null)
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null)
   const [staleReviewMode, setStaleReviewMode] = useState(false)
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
@@ -767,6 +775,10 @@ function AppContent() {
       setArchivedNotes(archived)
       setArchiveCount(archivedTotal)
       setSearchableNotes(searchable)
+      if (import.meta.env.DEV) {
+        const syncInfo = await getSyncDebugInfo()
+        setDevSyncInfo(syncInfo)
+      }
     } catch {
       setError('Daten konnten nicht geladen werden.')
     }
@@ -1540,6 +1552,13 @@ function AppContent() {
                   ) : null}
                   {info ? <p className="hint">{info}</p> : null}
                   {offlineReady ? <p className="hint">Offline bereit.</p> : null}
+                  {import.meta.env.DEV && devSyncInfo ? (
+                    <div className="dev-sync-panel">
+                      <p className="hint">Device ID: {devSyncInfo.deviceId}</p>
+                      <p className="hint">Room ID: {devSyncInfo.roomId}</p>
+                      <p className="hint">Last Pulled Seq: {devSyncInfo.lastPulledSeq}</p>
+                    </div>
+                  ) : null}
                 </div>
               </section>
             ) : null}
