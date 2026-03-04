@@ -199,15 +199,15 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
       if (snapshot) {
         await upsertNote(snapshot)
         snapshotApplied += 1
+        seenKeys.push(dedupeKey)
+        remoteEnvelopes.push(item)
+        applied = true
+        continue
       }
 
       const bytes = decodeChangePayload(item.payload)
-      const appliedNote = await applyRemoteChanges(item.noteId, bytes)
+      await applyRemoteChanges(item.noteId, bytes)
       changeApplied += 1
-      if (snapshot && appliedNote && !appliedNote.text && snapshot.text) {
-        await upsertNote(snapshot)
-        snapshotRescues += 1
-      }
       seenKeys.push(dedupeKey)
       remoteEnvelopes.push(item)
       applied = true
@@ -431,15 +431,15 @@ export async function syncNow(options: SyncNowOptions = {}) {
           if (snapshot) {
             await upsertNote(snapshot)
             snapshotApplied += 1
+            seenKeys.push(dedupeKey)
+            remoteEnvelopes.push(item)
+            applied = true
+            continue
           }
 
           const bytes = decodeChangePayload(item.payload)
-          const appliedNote = await applyRemoteChanges(item.noteId, bytes)
+          await applyRemoteChanges(item.noteId, bytes)
           changeApplied += 1
-          if (snapshot && appliedNote && !appliedNote.text && snapshot.text) {
-            await upsertNote(snapshot)
-            snapshotRescues += 1
-          }
           seenKeys.push(dedupeKey)
           remoteEnvelopes.push(item)
           applied = true
