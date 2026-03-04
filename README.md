@@ -173,6 +173,34 @@ npm run build
 npm run preview
 ```
 
+## Deploy (Netlify)
+
+### Build Einstellungen
+- Build command: `npm run build`
+- Publish directory: `dist`
+
+### SPA Routing
+Damit Reloads auf Unterseiten nicht brechen, liegt in `public/_redirects`:
+
+```text
+/* /index.html 200
+```
+
+Netlify übernimmt diese Datei beim Build automatisch nach `dist/_redirects`.
+
+### HTTPS Hinweis (iPhone / PWA)
+iOS Safari benötigt eine HTTPS-URL für:
+- Service Worker Registrierung
+- Offline-Start aus dem Homescreen
+
+### Netlify Setup (Kurzablauf)
+1. Repository nach GitHub pushen.
+2. In Netlify: **New site from Git**.
+3. Repo auswählen.
+4. Build command auf `npm run build` setzen.
+5. Publish directory auf `dist` setzen.
+6. Deploy starten.
+
 ## Manuelles Testen (Kurz-Check)
 
 1. Braindump: Eintrag erfassen, Reload -> Eintrag bleibt erhalten.
@@ -181,6 +209,21 @@ npm run preview
 4. To-Do-Gruppen: Bei >10 To-Dos erscheinen Gruppen + einklappen.
 5. Backup: Exportieren, dann Import (`MERGE`/`REPLACE`) testen.
 6. Offline: Seite laden, Netzwerk trennen, weiter nutzen.
+
+## iPhone Install / Offline Test (Checklist)
+
+- Install ok (ja/nein): `offen`
+- Offline start ok (ja/nein): `offen`
+- Safe Area ok (ja/nein): `offen`
+
+Empfohlener Ablauf:
+1. Netlify HTTPS-URL in Safari öffnen.
+2. Teilen -> **Zum Home-Bildschirm**.
+3. App vom Homescreen starten.
+4. Einmal durch Tabs klicken (Assets cachen).
+5. Flugmodus aktivieren.
+6. App im App-Switcher schließen.
+7. App erneut vom Homescreen starten und prüfen.
 
 ## Datenschutz
 

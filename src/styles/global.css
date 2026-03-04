@@ -33,6 +33,8 @@
   --card-padding-x: 0.56rem;
   --card-list-gap: 0.34rem;
   --card-radius: 9px;
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
   color: var(--text-primary);
   background: var(--surface-page-top);
 }
@@ -64,23 +66,29 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  overflow: hidden;
+  overscroll-behavior: none;
   background: linear-gradient(180deg, var(--surface-page-top) 0%, var(--surface-page-bottom) 100%);
   color: var(--text-primary);
 }
 
 #root {
+  height: 100%;
   min-height: 100vh;
   min-height: 100dvh;
 }
 
 .app-shell {
-  height: 100vh;
-  height: 100dvh;
+  height: var(--vvh, 100dvh);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -90,20 +98,22 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 0.7rem 0.75rem 1rem;
 }
 
 .app-main--with-footer {
-  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  padding-bottom: calc(96px + var(--safe-bottom) + var(--keyboard-inset, 0px));
 }
 
 .app-header {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: color-mix(in srgb, var(--surface-card) 96%, transparent);
+  background: var(--surface);
   border-bottom: 1px solid color-mix(in srgb, var(--border-default) 88%, transparent);
-  padding: 0.55rem 0.75rem;
+  padding: calc(0.55rem + var(--safe-top)) 0.75rem 0.55rem;
 }
 
 .app-header-inner {
@@ -120,11 +130,55 @@ body {
 
 .app-footer {
   position: sticky;
-  bottom: 0;
+  bottom: var(--keyboard-inset, 0px);
   z-index: 20;
   background: var(--surface);
   border-top: 1px solid color-mix(in srgb, var(--border-default) 88%, transparent);
-  padding: 0.15rem 0.75rem calc(env(safe-area-inset-bottom) + 0.2rem);
+  padding: 0.15rem 0.75rem calc(12px + var(--safe-bottom));
+}
+
+.app-update-bar {
+  z-index: 19;
+  background: var(--surface);
+  border-top: 1px solid color-mix(in srgb, var(--border-default) 88%, transparent);
+  padding: 0.35rem 0.75rem calc(8px + var(--safe-bottom) + var(--keyboard-inset, 0px));
+}
+
+.app-update-bar--with-footer {
+  padding-bottom: 0.35rem;
+}
+
+.update-notice-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.update-notice-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.update-notice-refresh,
+.update-notice-later {
+  font-size: 0.78rem;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+}
+
+.update-notice-refresh {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border-default));
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-button));
+}
+
+.update-notice-later {
+  border-color: var(--border-default);
+  background: transparent;
+  opacity: 0.8;
 }
 
 .header-actions {
@@ -845,6 +899,10 @@ button:focus {
 
   .header-actions {
     justify-content: flex-end;
+  }
+
+  .update-notice-inner {
+    flex-wrap: wrap;
   }
 
   .header-search {

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ClipboardEvent, FormEvent, KeyboardEvent, RefObject } from 'react'
 import Fuse from 'fuse.js'
+import { useRegisterSW } from 'virtual:pwa-register/react'
 import {
   addNote,
   countInboxNotes,
@@ -399,47 +400,139 @@ function TodoNoteRow({
   )
 }
 
-function TodoGroupSection({
-  title,
-  count,
-  expanded,
-  onToggle,
-  notes,
-  todayISO,
-  onDone,
-  onBack,
-  trailingHint,
+function ThinkingNoteRow({
+  note,
+  onArchive,
+  onTodo,
+  onDiscard,
 }: {
-  title: string
-  count: number
-  expanded: boolean
-  onToggle: () => void
-  notes: Note[]
-  todayISO: string
-  onDone: (id: string) => void
-  onBack: (id: string) => void
-  trailingHint?: string
+  note: Note
+  onArchive: (id: string) => void
+  onTodo: (id: string) => void
+  onDiscard: (id: string) => void
 }) {
   return (
-    <section className="todo-group">
-      <button type="button" className="todo-group-toggle" onClick={onToggle}>
-        {title} ({count})
-        {trailingHint ? <span className="todo-group-age-hint">{trailingHint}</span> : null}
-      </button>
-      {expanded ? (
-        <ul className="notes-list" aria-label={`To-Do ${title}`}>
-          {notes.map((note) => (
-            <TodoNoteRow
-              key={note.id}
-              note={note}
-              todayISO={todayISO}
-              onDone={onDone}
-              onBack={onBack}
+    <li className="note-item note-item--todo">
+      <span className="note-time">{toClockLabel(note.createdAt)}</span>
+      <span className="note-content">
+        <span className="note-text">{note.text}</span>
+        <NoteTypeBadge note={note} />
+      </span>
+      <div className="todo-actions">
+        <button
+          type="button"
+          className="review-btn review-btn--archive review-btn--icon"
+          onClick={() => onArchive(note.id)}
+          aria-label="Archivieren"
+          title="Archivieren"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M3 7h18v4H3V7Zm3 4h12v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8Zm4 3h4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
-          ))}
-        </ul>
-      ) : null}
-    </section>
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="review-btn review-btn--todo review-btn--icon"
+          onClick={() => onTodo(note.id)}
+          aria-label="Zu To-Do verschieben"
+          title="Zu To-Do"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="review-btn review-btn--discard review-btn--icon"
+          onClick={() => onDiscard(note.id)}
+          aria-label="Verwerfen"
+          title="Verwerfen"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M6 6l12 12M18 6 6 18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+    </li>
+  )
+}
+
+function ArchivedThinkingNoteRow({
+  note,
+  onBackToThinking,
+  onDiscard,
+}: {
+  note: Note
+  onBackToThinking: (id: string) => void
+  onDiscard: (id: string) => void
+}) {
+  return (
+    <li className="note-item note-item--todo">
+      <span className="note-time">{toClockLabel(note.createdAt)}</span>
+      <span className="note-content">
+        <span className="note-text">{note.text}</span>
+        <NoteTypeBadge note={note} />
+      </span>
+      <div className="todo-actions">
+        <button
+          type="button"
+          className="review-btn review-btn--back review-btn--icon"
+          onClick={() => onBackToThinking(note.id)}
+          aria-label="Weiterdenken"
+          title="Weiterdenken"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M10 7 5 12l5 5M6 12h13"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="review-btn review-btn--discard review-btn--icon"
+          onClick={() => onDiscard(note.id)}
+          aria-label="Verwerfen"
+          title="Verwerfen"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M6 6l12 12M18 6 6 18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+    </li>
   )
 }
 
@@ -450,6 +543,7 @@ function BraindumpComposer({
 }) {
   const [text, setText] = useState('')
   const [flashInput, setFlashInput] = useState(false)
+  const composerRef = useRef<HTMLFormElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
@@ -506,9 +600,18 @@ function BraindumpComposer({
     void submit([text])
   }
 
+  const handleComposerFocus = () => {
+    if (typeof window === 'undefined' || !window.visualViewport) {
+      return
+    }
+    requestAnimationFrame(() => {
+      composerRef.current?.scrollIntoView({ block: 'end' })
+    })
+  }
+
   return (
     <div className="app-content">
-      <form className="capture-form braindump-composer" onSubmit={handleSubmit}>
+      <form className="capture-form braindump-composer" onSubmit={handleSubmit} ref={composerRef}>
         <textarea
           rows={2}
           ref={inputRef}
@@ -518,6 +621,7 @@ function BraindumpComposer({
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleTextKeyDown}
           onPaste={handlePaste}
+          onFocus={handleComposerFocus}
         />
         <div className="capture-actions">
           <div className="capture-meta-row">
@@ -577,16 +681,12 @@ function BraindumpPage({
   )
 }
 
-function getWeekStartISO(date = new Date()) {
-  const normalized = new Date(date)
-  normalized.setHours(12, 0, 0, 0)
-  const day = normalized.getDay()
-  const distanceToMonday = day === 0 ? 6 : day - 1
-  normalized.setDate(normalized.getDate() - distanceToMonday)
-  return getLocalDayISO(normalized)
-}
-
 function AppContent() {
+  const {
+    needRefresh: [needRefresh],
+    offlineReady: [offlineReady],
+    updateServiceWorker,
+  } = useRegisterSW()
   const [activeTab, setActiveTab] = useState<TabKey>('BRAINDUMP')
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const stored = localStorage.getItem(THEME_KEY)
@@ -607,9 +707,6 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchableNotes, setSearchableNotes] = useState<Note[]>([])
   const [showArchive, setShowArchive] = useState(false)
-  const [showTodoToday, setShowTodoToday] = useState(true)
-  const [showTodoWeek, setShowTodoWeek] = useState(true)
-  const [showTodoOlder, setShowTodoOlder] = useState(false)
   const [showDataPanel, setShowDataPanel] = useState(false)
   const [showImportPanel, setShowImportPanel] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
@@ -620,6 +717,7 @@ function AppContent() {
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
   const [staleReviewTotal, setStaleReviewTotal] = useState(0)
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
+  const [dismissedUpdateNotice, setDismissedUpdateNotice] = useState(false)
   const [undoBusy, setUndoBusy] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
@@ -635,7 +733,6 @@ function AppContent() {
     d.setDate(d.getDate() - 1)
     return getLocalDayISO(d)
   }, [])
-  const weekStartISO = useMemo(() => getWeekStartISO(), [])
 
   const refreshAll = useCallback(async () => {
     try {
@@ -844,15 +941,31 @@ function AppContent() {
     setError('')
     try {
       const backup = await buildBackupData()
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
       const day = getLocalDayISO()
-      link.href = url
-      link.download = `leiser-backup-${day}.json`
-      link.click()
-      URL.revokeObjectURL(url)
-    } catch {
+      const filename = `leiser-backup-${day}.json`
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+      const file = new File([blob], filename, { type: 'application/json' })
+      const canShareFiles =
+        typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })
+
+      if (typeof navigator.share === 'function' && canShareFiles) {
+        await navigator.share({
+          files: [file],
+          title: 'Leiser Backup',
+        })
+      } else {
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        link.click()
+        URL.revokeObjectURL(url)
+      }
+      setInfo('Backup erzeugt.')
+    } catch (exportError) {
+      if (exportError instanceof DOMException && exportError.name === 'AbortError') {
+        return
+      }
       setError('Backup konnte nicht exportiert werden.')
     }
   }
@@ -897,6 +1010,7 @@ function AppContent() {
   const isSearchMode = searchQuery.trim().length > 0
   const currentReviewNote = orderedInbox[effectiveReviewIndex] ?? null
   const currentReviewCategory = currentReviewNote ? getReviewAgeCategory(currentReviewNote) : null
+  const showUpdateNotice = needRefresh && !dismissedUpdateNotice
   const braindumpGroups = useMemo(() => {
     const grouped = new Map<string, Note[]>()
     for (const note of braindumpNotes) {
@@ -923,6 +1037,42 @@ function AppContent() {
     todayISO,
     yesterdayISO,
   ])
+  const thinkingGroups = useMemo(() => {
+    const grouped = new Map<string, Note[]>()
+    for (const note of processNotes) {
+      const dayNotes = grouped.get(note.dayISO)
+      if (dayNotes) {
+        dayNotes.push(note)
+      } else {
+        grouped.set(note.dayISO, [note])
+      }
+    }
+    return [...grouped.entries()]
+      .sort(([dayA], [dayB]) => dayB.localeCompare(dayA))
+      .map(([dayISO, notes]) => ({
+      dayISO,
+      label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
+      notes,
+      }))
+  }, [processNotes, todayISO, yesterdayISO])
+  const archivedThinkingGroups = useMemo(() => {
+    const grouped = new Map<string, Note[]>()
+    for (const note of archivedNotes) {
+      const dayNotes = grouped.get(note.dayISO)
+      if (dayNotes) {
+        dayNotes.push(note)
+      } else {
+        grouped.set(note.dayISO, [note])
+      }
+    }
+    return [...grouped.entries()]
+      .sort(([dayA], [dayB]) => dayB.localeCompare(dayA))
+      .map(([dayISO, notes]) => ({
+      dayISO,
+      label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
+      notes,
+      }))
+  }, [archivedNotes, todayISO, yesterdayISO])
 
   const handleUndoDelete = useCallback((id: string) => {
     void handleDelete(id, { confirm: false })
@@ -1018,6 +1168,30 @@ function AppContent() {
     },
     [handleReviewDecision],
   )
+  const handleThinkingArchive = useCallback(
+    (id: string) => {
+      void handleReviewDecision(id, 'ARCHIVE')
+    },
+    [handleReviewDecision],
+  )
+  const handleThinkingToTodo = useCallback(
+    (id: string) => {
+      void handleReviewDecision(id, 'TODO')
+    },
+    [handleReviewDecision],
+  )
+  const handleThinkingDiscard = useCallback(
+    (id: string) => {
+      void handleReviewDecision(id, 'DISCARD')
+    },
+    [handleReviewDecision],
+  )
+  const handleArchivedBackToThinking = useCallback(
+    (id: string) => {
+      void handleReviewDecision(id, 'PROCESS')
+    },
+    [handleReviewDecision],
+  )
 
   const searchEngine = useMemo(
     () =>
@@ -1036,36 +1210,24 @@ function AppContent() {
     return searchEngine.search(searchQuery.trim(), { limit: SEARCH_RESULT_LIMIT })
   }, [isSearchMode, searchEngine, searchQuery])
 
-  const groupedTodos = useMemo(() => {
-    const groups: Record<'TODAY' | 'THIS_WEEK' | 'OLDER', Note[]> = {
-      TODAY: [],
-      THIS_WEEK: [],
-      OLDER: [],
-    }
-
-    for (const todo of todoNotes) {
-      if (todo.dayISO === todayISO) {
-        groups.TODAY.push(todo)
-      } else if (todo.dayISO >= weekStartISO) {
-        groups.THIS_WEEK.push(todo)
+  const todoGroups = useMemo(() => {
+    const grouped = new Map<string, Note[]>()
+    for (const note of todoNotes) {
+      const dayNotes = grouped.get(note.dayISO)
+      if (dayNotes) {
+        dayNotes.push(note)
       } else {
-        groups.OLDER.push(todo)
+        grouped.set(note.dayISO, [note])
       }
     }
-
-    const byCreatedDesc = (a: Note, b: Note) => b.createdAt.localeCompare(a.createdAt)
-    groups.TODAY.sort(byCreatedDesc)
-    groups.THIS_WEEK.sort(byCreatedDesc)
-    groups.OLDER.sort(byCreatedDesc)
-
-    return groups
-  }, [todoNotes, todayISO, weekStartISO])
-
-  const useGroupedTodos = todoNotes.length > 10
-  const olderOldTodoCount = useMemo(() => {
-    const today = new Date()
-    return groupedTodos.OLDER.filter((todo) => daysBetween(today, new Date(todo.createdAt)) > 14).length
-  }, [groupedTodos.OLDER, todayISO])
+    return [...grouped.entries()]
+      .sort(([dayA], [dayB]) => dayB.localeCompare(dayA))
+      .map(([dayISO, notes]) => ({
+      dayISO,
+      label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
+      notes,
+      }))
+  }, [todoNotes, todayISO, yesterdayISO])
 
   useEffect(() => {
     setOpenActionMenuId(null)
@@ -1127,6 +1289,31 @@ function AppContent() {
 
   return (
     <AppShell
+      updateNotice={
+        showUpdateNotice ? (
+          <div className="app-content update-notice-inner" role="status" aria-live="polite">
+            <span>Update verfügbar</span>
+            <div className="update-notice-actions">
+              <button
+                type="button"
+                className="update-notice-refresh"
+                onClick={() => {
+                  void updateServiceWorker(true)
+                }}
+              >
+                Aktualisieren
+              </button>
+              <button
+                type="button"
+                className="update-notice-later"
+                onClick={() => setDismissedUpdateNotice(true)}
+              >
+                Später
+              </button>
+            </div>
+          </div>
+        ) : null
+      }
       mainRef={mainScrollRef}
       onMainScroll={() => {
         if (activeTab === 'BRAINDUMP' && !isSearchMode) {
@@ -1270,6 +1457,7 @@ function AppContent() {
                     </p>
                   ) : null}
                   {info ? <p className="hint">{info}</p> : null}
+                  {offlineReady ? <p className="hint">Offline bereit.</p> : null}
                 </div>
               </section>
             ) : null}
@@ -1537,126 +1725,41 @@ function AppContent() {
               </button>
             </div>
             {processCount === 0 ? <p className="empty-text">Keine offenen Gedanken im Denken.</p> : null}
-            <ul className="notes-list" aria-label="Denken Notizen">
-              {processNotes.map((note) => (
-                <li key={note.id} className="note-item note-item--todo">
-                  <span className="note-time">{formatNoteTime(note, todayISO)}</span>
-                  <span className="note-content">
-                    <span className="note-text">{note.text}</span>
-                    <NoteTypeBadge note={note} />
-                  </span>
-                  <div className="todo-actions">
-                    <button
-                      type="button"
-                      className="review-btn review-btn--archive review-btn--icon"
-                      onClick={() => void handleReviewDecision(note.id, 'ARCHIVE')}
-                      aria-label="Archivieren"
-                      title="Archivieren"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M3 7h18v4H3V7Zm3 4h12v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8Zm4 3h4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className="review-btn review-btn--todo review-btn--icon"
-                      onClick={() => void handleReviewDecision(note.id, 'TODO')}
-                      aria-label="Zu To-Do verschieben"
-                      title="Zu To-Do"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className="review-btn review-btn--discard review-btn--icon"
-                      onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
-                      aria-label="Verwerfen"
-                      title="Verwerfen"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M6 6l12 12M18 6 6 18"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            {thinkingGroups.map((group) => (
+              <section key={group.dayISO} className="note-group">
+                <div className="day-divider">{group.label}</div>
+                <ul className="notes-list" aria-label={`Denken ${group.label}`}>
+                  {group.notes.map((note) => (
+                    <ThinkingNoteRow
+                      key={note.id}
+                      note={note}
+                      onArchive={handleThinkingArchive}
+                      onTodo={handleThinkingToTodo}
+                      onDiscard={handleThinkingDiscard}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
             {showArchive ? (
               <>
                 <h3 className="archive-title">Archiv</h3>
                 {archivedNotes.length === 0 ? <p className="empty-text">Archiv ist leer.</p> : null}
-                <ul className="notes-list" aria-label="Archivierte Gedanken">
-                  {archivedNotes.map((note) => (
-                    <li key={note.id} className="note-item note-item--todo">
-                      <span className="note-time">{formatNoteTime(note, todayISO)}</span>
-                      <span className="note-content">
-                        <span className="note-text">{note.text}</span>
-                        <NoteTypeBadge note={note} />
-                      </span>
-                      <div className="todo-actions">
-                        <button
-                          type="button"
-                          className="review-btn review-btn--back review-btn--icon"
-                          onClick={() => void handleReviewDecision(note.id, 'PROCESS')}
-                          aria-label="Weiterdenken"
-                          title="Weiterdenken"
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path
-                              d="M10 7 5 12l5 5M6 12h13"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.9"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          className="review-btn review-btn--discard review-btn--icon"
-                          onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
-                          aria-label="Verwerfen"
-                          title="Verwerfen"
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path
-                              d="M6 6l12 12M18 6 6 18"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.9"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                {archivedThinkingGroups.map((group) => (
+                  <section key={group.dayISO} className="note-group">
+                    <div className="day-divider">{group.label}</div>
+                    <ul className="notes-list" aria-label={`Archiv ${group.label}`}>
+                      {group.notes.map((note) => (
+                        <ArchivedThinkingNoteRow
+                          key={note.id}
+                          note={note}
+                          onBackToThinking={handleArchivedBackToThinking}
+                          onDiscard={handleThinkingDiscard}
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                ))}
                 {archiveCount > archivedNotes.length ? (
                   <p className="hint">Nur die letzten 50 angezeigt.</p>
                 ) : null}
@@ -1669,56 +1772,22 @@ function AppContent() {
             <>
             <h2>To-Do ({todoNotes.length})</h2>
             {todoNotes.length === 0 ? <p className="empty-text">Keine offenen To-Dos.</p> : null}
-            {!useGroupedTodos ? (
-              <ul className="notes-list" aria-label="To-Do Notizen">
-                {todoNotes.map((note) => (
-                  <TodoNoteRow
-                    key={note.id}
-                    note={note}
-                    todayISO={todayISO}
-                    onDone={handleTodoDone}
-                    onBack={handleTodoBack}
-                  />
-                ))}
-              </ul>
-            ) : null}
-            {useGroupedTodos ? (
-              <>
-                <TodoGroupSection
-                  title="Heute"
-                  count={groupedTodos.TODAY.length}
-                  expanded={showTodoToday}
-                  onToggle={() => setShowTodoToday((prev) => !prev)}
-                  notes={groupedTodos.TODAY}
-                  todayISO={todayISO}
-                  onDone={handleTodoDone}
-                  onBack={handleTodoBack}
-                />
-
-                <TodoGroupSection
-                  title="Diese Woche"
-                  count={groupedTodos.THIS_WEEK.length}
-                  expanded={showTodoWeek}
-                  onToggle={() => setShowTodoWeek((prev) => !prev)}
-                  notes={groupedTodos.THIS_WEEK}
-                  todayISO={todayISO}
-                  onDone={handleTodoDone}
-                  onBack={handleTodoBack}
-                />
-
-                <TodoGroupSection
-                  title="Älter"
-                  count={groupedTodos.OLDER.length}
-                  expanded={showTodoOlder}
-                  onToggle={() => setShowTodoOlder((prev) => !prev)}
-                  notes={groupedTodos.OLDER}
-                  todayISO={todayISO}
-                  onDone={handleTodoDone}
-                  onBack={handleTodoBack}
-                  trailingHint={olderOldTodoCount > 0 ? ` · >14 Tage: ${olderOldTodoCount}` : undefined}
-                />
-              </>
-            ) : null}
+            {todoGroups.map((group) => (
+              <section key={group.dayISO} className="note-group">
+                <div className="day-divider">{group.label}</div>
+                <ul className="notes-list" aria-label={`To-Do ${group.label}`}>
+                  {group.notes.map((note) => (
+                    <TodoNoteRow
+                      key={note.id}
+                      note={note}
+                      todayISO={todayISO}
+                      onDone={handleTodoDone}
+                      onBack={handleTodoBack}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
             </>
           ) : null}
 
