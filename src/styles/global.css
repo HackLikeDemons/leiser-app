@@ -165,6 +165,13 @@ button:hover {
   gap: 0.35rem;
 }
 
+.review-list-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+  align-items: start;
+}
+
 .review-list-item {
   width: 100%;
   text-align: left;
@@ -189,6 +196,22 @@ button:hover {
 
 .review-list-badge--overdue {
   color: #2f4a57;
+}
+
+.review-list-marker {
+  font-size: 0.75rem;
+  color: #2f4a57;
+}
+
+.review-row-actions {
+  display: flex;
+  align-items: center;
+}
+
+.review-row-actions button {
+  white-space: nowrap;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.86rem;
 }
 
 .review-card {
@@ -269,5 +292,9 @@ button:hover {
   .note-item {
     grid-template-columns: 1fr;
     gap: 0.35rem;
+  }
+
+  .review-list-row {
+    grid-template-columns: 1fr;
   }
 }

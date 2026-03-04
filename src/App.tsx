@@ -6,6 +6,7 @@ import {
   listDecidedNotesByDay,
   listInboxNotes,
   listNotesByDay,
+  updateNoteText,
   updateNoteStatus,
 } from './lib/dbNotes'
 import { getLocalDayISO } from './lib/date'
@@ -57,6 +58,7 @@ export function App() {
   const [showDecidedToday, setShowDecidedToday] = useState(false)
   const [reviewSessionTotal, setReviewSessionTotal] = useState(0)
   const [reviewCurrentId, setReviewCurrentId] = useState<string | null>(null)
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
@@ -149,6 +151,30 @@ export function App() {
       await Promise.all([loadInboxNotes(), loadTodayNotes(), loadTodayDecidedNotes()])
     } catch {
       setError('Status konnte nicht aktualisiert werden.')
+    }
+  }
+
+  const handleMergeIntoTarget = async (sourceId: string) => {
+    if (!mergeTargetId || mergeTargetId === sourceId) {
+      return
+    }
+
+    const target = inboxNotes.find((note) => note.id === mergeTargetId)
+    const source = inboxNotes.find((note) => note.id === sourceId)
+    if (!target || !source) {
+      return
+    }
+
+    const mergedText = `${target.text}\n\n${source.text}`
+
+    setError('')
+    try {
+      await updateNoteText(target.id, mergedText)
+      await deleteNote(source.id)
+      setMergeTargetId(null)
+      await Promise.all([loadInboxNotes(), loadTodayNotes(), loadTodayDecidedNotes()])
+    } catch {
+      setError('Zusammenführen fehlgeschlagen.')
     }
   }
 
@@ -323,19 +349,39 @@ export function App() {
                     <ul className="review-list">
                       {overdueNotes.map((note) => (
                         <li key={note.id}>
-                          <button
-                            type="button"
-                            className={
-                              currentReviewNote?.id === note.id
-                                ? 'review-list-item review-list-item--active review-list-item--overdue'
-                                : 'review-list-item review-list-item--overdue'
-                            }
-                            onClick={() => setReviewCurrentId(note.id)}
-                          >
-                            <span>{toClockLabel(note.createdAt)}</span>
-                            <span>{note.text}</span>
-                            <span className="review-list-badge review-list-badge--overdue">ÜBERFÄLLIG</span>
-                          </button>
+                          <div className="review-list-row">
+                            <button
+                              type="button"
+                              className={
+                                currentReviewNote?.id === note.id
+                                  ? 'review-list-item review-list-item--active review-list-item--overdue'
+                                  : 'review-list-item review-list-item--overdue'
+                              }
+                              onClick={() => setReviewCurrentId(note.id)}
+                            >
+                              <span>{toClockLabel(note.createdAt)}</span>
+                              <span>{note.text}</span>
+                              <span className="review-list-badge review-list-badge--overdue">ÜBERFÄLLIG</span>
+                              {mergeTargetId === note.id ? (
+                                <span className="review-list-marker">Merging in diese Notiz</span>
+                              ) : null}
+                            </button>
+                            <div className="review-row-actions">
+                              {mergeTargetId === note.id ? (
+                                <button type="button" onClick={() => setMergeTargetId(null)}>
+                                  Merge beenden
+                                </button>
+                              ) : mergeTargetId ? (
+                                <button type="button" onClick={() => void handleMergeIntoTarget(note.id)}>
+                                  → hierhin zusammenführen
+                                </button>
+                              ) : (
+                                <button type="button" onClick={() => setMergeTargetId(note.id)}>
+                                  Zusammenführen
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -348,18 +394,38 @@ export function App() {
                     <ul className="review-list">
                       {readyNotes.map((note) => (
                         <li key={note.id}>
-                          <button
-                            type="button"
-                            className={
-                              currentReviewNote?.id === note.id
-                                ? 'review-list-item review-list-item--active'
-                                : 'review-list-item'
-                            }
-                            onClick={() => setReviewCurrentId(note.id)}
-                          >
-                            <span>{toClockLabel(note.createdAt)}</span>
-                            <span>{note.text}</span>
-                          </button>
+                          <div className="review-list-row">
+                            <button
+                              type="button"
+                              className={
+                                currentReviewNote?.id === note.id
+                                  ? 'review-list-item review-list-item--active'
+                                  : 'review-list-item'
+                              }
+                              onClick={() => setReviewCurrentId(note.id)}
+                            >
+                              <span>{toClockLabel(note.createdAt)}</span>
+                              <span>{note.text}</span>
+                              {mergeTargetId === note.id ? (
+                                <span className="review-list-marker">Merging in diese Notiz</span>
+                              ) : null}
+                            </button>
+                            <div className="review-row-actions">
+                              {mergeTargetId === note.id ? (
+                                <button type="button" onClick={() => setMergeTargetId(null)}>
+                                  Merge beenden
+                                </button>
+                              ) : mergeTargetId ? (
+                                <button type="button" onClick={() => void handleMergeIntoTarget(note.id)}>
+                                  → hierhin zusammenführen
+                                </button>
+                              ) : (
+                                <button type="button" onClick={() => setMergeTargetId(note.id)}>
+                                  Zusammenführen
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -372,19 +438,39 @@ export function App() {
                     <ul className="review-list">
                       {freshNotes.map((note) => (
                         <li key={note.id}>
-                          <button
-                            type="button"
-                            className={
-                              currentReviewNote?.id === note.id
-                                ? 'review-list-item review-list-item--active'
-                                : 'review-list-item'
-                            }
-                            onClick={() => setReviewCurrentId(note.id)}
-                          >
-                            <span>{toClockLabel(note.createdAt)}</span>
-                            <span>{note.text}</span>
-                            <span className="review-list-badge">FRISCH</span>
-                          </button>
+                          <div className="review-list-row">
+                            <button
+                              type="button"
+                              className={
+                                currentReviewNote?.id === note.id
+                                  ? 'review-list-item review-list-item--active'
+                                  : 'review-list-item'
+                              }
+                              onClick={() => setReviewCurrentId(note.id)}
+                            >
+                              <span>{toClockLabel(note.createdAt)}</span>
+                              <span>{note.text}</span>
+                              <span className="review-list-badge">FRISCH</span>
+                              {mergeTargetId === note.id ? (
+                                <span className="review-list-marker">Merging in diese Notiz</span>
+                              ) : null}
+                            </button>
+                            <div className="review-row-actions">
+                              {mergeTargetId === note.id ? (
+                                <button type="button" onClick={() => setMergeTargetId(null)}>
+                                  Merge beenden
+                                </button>
+                              ) : mergeTargetId ? (
+                                <button type="button" onClick={() => void handleMergeIntoTarget(note.id)}>
+                                  → hierhin zusammenführen
+                                </button>
+                              ) : (
+                                <button type="button" onClick={() => setMergeTargetId(note.id)}>
+                                  Zusammenführen
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </li>
                       ))}
                     </ul>

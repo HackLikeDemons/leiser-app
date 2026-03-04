@@ -63,6 +63,7 @@ export async function addNote(text: string): Promise<Note> {
   const note: Note = {
     id: crypto.randomUUID(),
     createdAt: now,
+    updatedAt: now,
     dayISO: getLocalDayISO(new Date(now)),
     text: trimmed,
     status: 'INBOX',
@@ -188,6 +189,35 @@ export async function deleteNote(id: string): Promise<void> {
 
     const request = store.delete(id)
     request.onerror = () => reject(request.error)
+  })
+}
+
+export async function updateNoteText(id: string, text: string): Promise<void> {
+  const db = await openDb()
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(NOTES_STORE, 'readwrite')
+    const store = transaction.objectStore(NOTES_STORE)
+    const getRequest = store.get(id)
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve()
+
+    getRequest.onerror = () => reject(getRequest.error)
+    getRequest.onsuccess = () => {
+      const note = getRequest.result as Note | undefined
+      if (!note) {
+        return
+      }
+
+      const putRequest = store.put({
+        ...note,
+        text,
+        updatedAt: new Date().toISOString(),
+      })
+      putRequest.onerror = () => reject(putRequest.error)
+    }
   })
 }
 
