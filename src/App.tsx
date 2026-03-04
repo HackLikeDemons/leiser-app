@@ -3,6 +3,7 @@ import type { ClipboardEvent, FormEvent, KeyboardEvent, RefObject } from 'react'
 import Fuse from 'fuse.js'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import {
+  DEFAULT_SYNC_ROOM_ID,
   addNote,
   countInboxNotes,
   countNotesByStatus,
@@ -14,6 +15,7 @@ import {
   listRecentActiveNotes,
   listSearchableNotes,
   listTodoNotes,
+  setSyncEnabled,
   updateNoteStatus,
 } from './lib/dbNotes'
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
@@ -22,8 +24,9 @@ import type { Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FooterProvider, useFooter } from './app/FooterContext'
 import { seedOlderThoughtsDemo } from './lib/demoNotes'
+import { startSyncEngine, type SyncUiStatus } from './lib/syncEngine'
 
-type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO'
+type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA'
 const SOFT_CHAR_LIMIT = 200
 const THEME_KEY = 'leiser:theme'
 const SEARCH_RESULT_LIMIT = 50
@@ -50,6 +53,7 @@ type DevSyncInfo = {
   deviceId: string
   roomId: string
   lastPulledSeq: number
+  isEnabled: boolean
 }
 
 function toClockLabel(isoTimestamp: string) {
@@ -720,12 +724,14 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchableNotes, setSearchableNotes] = useState<Note[]>([])
   const [showArchive, setShowArchive] = useState(false)
-  const [showDataPanel, setShowDataPanel] = useState(false)
   const [showImportPanel, setShowImportPanel] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
   const [devSyncInfo, setDevSyncInfo] = useState<DevSyncInfo | null>(null)
+  const [syncEnabled, setSyncEnabledState] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<SyncUiStatus>('disabled')
+  const [syncError, setSyncError] = useState<string | null>(null)
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null)
   const [staleReviewMode, setStaleReviewMode] = useState(false)
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
@@ -775,8 +781,9 @@ function AppContent() {
       setArchivedNotes(archived)
       setArchiveCount(archivedTotal)
       setSearchableNotes(searchable)
+      const syncInfo = await getSyncDebugInfo()
+      setSyncEnabledState(syncInfo.isEnabled)
       if (import.meta.env.DEV) {
-        const syncInfo = await getSyncDebugInfo()
         setDevSyncInfo(syncInfo)
       }
     } catch {
@@ -789,9 +796,38 @@ function AppContent() {
   }, [refreshAll])
 
   useEffect(() => {
+    const stop = startSyncEngine({
+      roomId: DEFAULT_SYNC_ROOM_ID,
+      debounceMs: 1200,
+      pullIntervalMs: 90000,
+      onStatusChange: (status, errorMessage) => {
+        setSyncStatus(status)
+        setSyncError(errorMessage ?? null)
+      },
+      onDataChanged: () => {
+        void refreshAll()
+      },
+    })
+    return stop
+  }, [refreshAll])
+
+  useEffect(() => {
     document.documentElement.dataset.theme = theme
     localStorage.setItem(THEME_KEY, theme)
   }, [theme])
+
+  const handleToggleSyncEnabled = useCallback(async () => {
+    setError('')
+    try {
+      const nextEnabled = !syncEnabled
+      const next = await setSyncEnabled(DEFAULT_SYNC_ROOM_ID, nextEnabled)
+      setSyncEnabledState(next.isEnabled)
+      setInfo(next.isEnabled ? 'Sync aktiviert.' : 'Sync deaktiviert.')
+      await refreshAll()
+    } catch {
+      setError('Sync-Status konnte nicht geändert werden.')
+    }
+  }, [refreshAll, syncEnabled])
 
   const orderedInbox = useMemo(() => sortInboxForReview(inboxNotes), [inboxNotes])
   const pinnedReviewIndex = useMemo(() => {
@@ -1466,6 +1502,8 @@ function AppContent() {
           </div>
 
           <div className="header-actions">
+            {syncStatus === 'offline' ? <span className="sync-pill">Offline</span> : null}
+            {syncStatus === 'error' ? <span className="sync-pill sync-pill--error">Sync Fehler</span> : null}
             <NoteActionsMenu
               menuId="header-actions"
               isOpen={openActionMenuId === 'header-actions'}
@@ -1483,13 +1521,13 @@ function AppContent() {
                 {
                   label: 'Backup importieren',
                   onSelect: () => {
-                    setShowDataPanel(true)
+                    setActiveTab('DATA')
                     setShowImportPanel(true)
                   },
                 },
                 {
-                  label: showDataPanel ? 'Datenbereich schließen' : 'Datenbereich öffnen',
-                  onSelect: () => setShowDataPanel((prev) => !prev),
+                  label: 'Daten öffnen',
+                  onSelect: () => setActiveTab('DATA'),
                 },
               ]}
             />
@@ -1498,7 +1536,7 @@ function AppContent() {
       }
     >
       <section className="app-content">
-            {showDataPanel ? (
+            {activeTab === 'DATA' ? (
               <section className="data-section" aria-label="Daten">
                 <div className="data-panel">
                   <div className="data-actions">
@@ -1506,10 +1544,13 @@ function AppContent() {
                       Backup exportieren
                     </button>
                     <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
-                      Backup importieren
+                      {showImportPanel ? 'Import schließen' : 'Backup importieren'}
                     </button>
                     <button type="button" onClick={() => void handleSeedOlderThoughts()}>
                       Ältere Testgedanken laden
+                    </button>
+                    <button type="button" onClick={() => void handleToggleSyncEnabled()}>
+                      {syncEnabled ? 'Sync deaktivieren' : 'Sync aktivieren'}
                     </button>
                   </div>
 
@@ -1552,11 +1593,15 @@ function AppContent() {
                   ) : null}
                   {info ? <p className="hint">{info}</p> : null}
                   {offlineReady ? <p className="hint">Offline bereit.</p> : null}
+                  {syncStatus === 'syncing' ? <p className="hint">Sync läuft im Hintergrund.</p> : null}
+                  {syncStatus === 'offline' ? <p className="hint">Sync pausiert (offline).</p> : null}
+                  {syncStatus === 'error' && syncError ? <p className="error-text">{syncError}</p> : null}
                   {import.meta.env.DEV && devSyncInfo ? (
                     <div className="dev-sync-panel">
                       <p className="hint">Device ID: {devSyncInfo.deviceId}</p>
                       <p className="hint">Room ID: {devSyncInfo.roomId}</p>
                       <p className="hint">Last Pulled Seq: {devSyncInfo.lastPulledSeq}</p>
+                      <p className="hint">Sync enabled: {String(devSyncInfo.isEnabled)}</p>
                     </div>
                   ) : null}
                 </div>
@@ -1904,7 +1949,7 @@ function AppContent() {
             </>
           ) : null}
 
-              {info && !showDataPanel ? <p className="hint">{info}</p> : null}
+              {info && activeTab !== 'DATA' ? <p className="hint">{info}</p> : null}
               {error ? <p className="error-text">{error}</p> : null}
             </>
           ) : null}

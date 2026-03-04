@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Leiser Icon">
+  <rect width="512" height="512" rx="96" fill="#102a43" />
+  <rect x="80" y="80" width="352" height="352" rx="56" fill="#f0f4f8" />
+  <path d="M154 168h204v36H154zM154 232h204v36H154zM154 296h132v36H154z" fill="#102a43" />
+</svg>

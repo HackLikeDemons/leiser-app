@@ -49,6 +49,9 @@ export type ChangeEnvelope = {
   ts: number
   kind: 'automerge_changes_v1'
   payload: string[]
+  signerDeviceId?: string
+  signerPublicKey?: string
+  signature?: string
 }
 
 export type InboxSeen = {

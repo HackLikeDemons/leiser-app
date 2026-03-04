@@ -2,6 +2,7 @@ import * as Automerge from '@automerge/automerge/slim'
 import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64'
 import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
+import { signEnvelope } from './syncSigning'
 import type { ChangeEnvelope, Note, NoteStatus, NoteType } from './types'
 
 const DB_NAME = 'leiser-db'
@@ -55,6 +56,16 @@ type SyncStateRow = {
   lastPushedAt: string | null
   lastError: string | null
   isEnabled: boolean
+}
+
+type OutboxRow = {
+  changeId: string
+  roomId: string
+  noteId: string
+  bytes: ArrayBuffer
+  createdAt: string
+  sentAt: string | null
+  attemptCount: number
 }
 
 function toEpochMs(value: string) {
@@ -491,19 +502,20 @@ async function enqueueAutomergeChanges(
     kind: CHANGE_KIND,
     payload,
   }
+  const signedEnvelope = await signEnvelope(envelope)
 
-  const bytes = new TextEncoder().encode(JSON.stringify(envelope))
+  const bytes = new TextEncoder().encode(JSON.stringify(signedEnvelope))
   const db = await openDb()
 
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(OUTBOX_STORE, 'readwrite')
     const outbox = transaction.objectStore(OUTBOX_STORE)
     const req = outbox.put({
-      changeId: envelope.changeId,
-      roomId: envelope.roomId,
-      noteId: envelope.noteId,
+      changeId: signedEnvelope.changeId,
+      roomId: signedEnvelope.roomId,
+      noteId: signedEnvelope.noteId,
       bytes: bytes.buffer,
-      createdAt: new Date(ts).toISOString(),
+      createdAt: new Date(signedEnvelope.ts).toISOString(),
       sentAt: null,
       attemptCount: 0,
     })
@@ -512,6 +524,30 @@ async function enqueueAutomergeChanges(
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => resolve()
     req.onerror = () => reject(req.error)
+  })
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('leiser:local-change', {
+        detail: { noteId, roomId },
+      }),
+    )
+  }
+}
+
+export function decodeOutboxEnvelope(bytes: ArrayBuffer): ChangeEnvelope {
+  const text = new TextDecoder().decode(new Uint8Array(bytes))
+  return JSON.parse(text) as ChangeEnvelope
+}
+
+export function decodeChangePayload(payload: string[]): Uint8Array[] {
+  return payload.map((part) => {
+    const binary = atob(part)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    return bytes
   })
 }
 
@@ -927,6 +963,7 @@ export type SyncDebugInfo = {
   deviceId: string
   roomId: string
   lastPulledSeq: number
+  isEnabled: boolean
 }
 
 export async function getSyncDebugInfo(roomId = DEFAULT_ROOM_ID): Promise<SyncDebugInfo> {
@@ -954,6 +991,7 @@ export async function getSyncDebugInfo(roomId = DEFAULT_ROOM_ID): Promise<SyncDe
           deviceId: getOrCreateDeviceId(),
           roomId,
           lastPulledSeq: 0,
+          isEnabled: false,
         })
         return
       }
@@ -965,7 +1003,165 @@ export async function getSyncDebugInfo(roomId = DEFAULT_ROOM_ID): Promise<SyncDe
           typeof existing.lastPulledSeq === 'number' && Number.isFinite(existing.lastPulledSeq)
             ? existing.lastPulledSeq
             : 0,
+        isEnabled: Boolean((existing as SyncStateRow).isEnabled),
       })
     }
   })
 }
+
+export async function getSyncState(roomId = DEFAULT_ROOM_ID): Promise<SyncStateRow> {
+  const db = await openDb()
+  return new Promise<SyncStateRow>((resolve, reject) => {
+    const transaction = db.transaction(SYNC_STATE_STORE, 'readwrite')
+    const store = transaction.objectStore(SYNC_STATE_STORE)
+    const request = store.get(roomId)
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const existing = request.result as SyncStateRow | undefined
+      if (existing) {
+        resolve(existing)
+        return
+      }
+      const created: SyncStateRow = {
+        roomId,
+        lastPulledSeq: 0,
+        lastPushedAt: null,
+        lastError: null,
+        isEnabled: false,
+      }
+      store.put(created)
+      resolve(created)
+    }
+  })
+}
+
+export async function updateSyncState(
+  roomId: string,
+  patch: Partial<Omit<SyncStateRow, 'roomId'>>,
+): Promise<SyncStateRow> {
+  const current = await getSyncState(roomId)
+  const next: SyncStateRow = { ...current, ...patch, roomId }
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(SYNC_STATE_STORE, 'readwrite')
+    const store = transaction.objectStore(SYNC_STATE_STORE)
+    const request = store.put(next)
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+  return next
+}
+
+export async function setSyncEnabled(roomId: string, enabled: boolean): Promise<SyncStateRow> {
+  return updateSyncState(roomId, { isEnabled: enabled, lastError: null })
+}
+
+export async function listPendingOutboxChanges(roomId: string, limit = 50): Promise<OutboxRow[]> {
+  const db = await openDb()
+  return new Promise<OutboxRow[]>((resolve, reject) => {
+    const rows: OutboxRow[] = []
+    const transaction = db.transaction(OUTBOX_STORE, 'readonly')
+    const store = transaction.objectStore(OUTBOX_STORE)
+    const index = store.index(ROOM_INDEX)
+    const request = index.openCursor(IDBKeyRange.only(roomId), 'next')
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => {
+      rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      resolve(rows.slice(0, limit))
+    }
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        return
+      }
+      const row = cursor.value as OutboxRow
+      if (row && row.sentAt == null) {
+        rows.push(row)
+      }
+      cursor.continue()
+    }
+  })
+}
+
+export async function markOutboxChangesSent(changeIds: string[], sentAtISO = new Date().toISOString()) {
+  if (!changeIds.length) return
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(OUTBOX_STORE, 'readwrite')
+    const store = transaction.objectStore(OUTBOX_STORE)
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve()
+    for (const changeId of changeIds) {
+      const getRequest = store.get(changeId)
+      getRequest.onerror = () => reject(getRequest.error)
+      getRequest.onsuccess = () => {
+        const row = getRequest.result as OutboxRow | undefined
+        if (!row) return
+        const putRequest = store.put({ ...row, sentAt: sentAtISO })
+        putRequest.onerror = () => reject(putRequest.error)
+      }
+    }
+  })
+}
+
+export async function bumpOutboxAttempt(changeId: string) {
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(OUTBOX_STORE, 'readwrite')
+    const store = transaction.objectStore(OUTBOX_STORE)
+    const getRequest = store.get(changeId)
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve()
+    getRequest.onerror = () => reject(getRequest.error)
+    getRequest.onsuccess = () => {
+      const row = getRequest.result as OutboxRow | undefined
+      if (!row) return
+      const putRequest = store.put({ ...row, attemptCount: (row.attemptCount ?? 0) + 1 })
+      putRequest.onerror = () => reject(putRequest.error)
+    }
+  })
+}
+
+export async function hasInboxSeen(key: string): Promise<boolean> {
+  const db = await openDb()
+  return new Promise<boolean>((resolve, reject) => {
+    const transaction = db.transaction(INBOX_SEEN_STORE, 'readonly')
+    const store = transaction.objectStore(INBOX_SEEN_STORE)
+    const request = store.get(key)
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => resolve(Boolean(request.result))
+  })
+}
+
+export async function markInboxSeen(keys: string[], ttlMs?: number): Promise<void> {
+  if (!keys.length) return
+  const now = new Date()
+  const seenAt = now.toISOString()
+  const expiresAt = typeof ttlMs === 'number' ? new Date(now.getTime() + ttlMs).toISOString() : null
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(INBOX_SEEN_STORE, 'readwrite')
+    const store = transaction.objectStore(INBOX_SEEN_STORE)
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve()
+    for (const key of keys) {
+      const request = store.put({ key, seenAt, expiresAt })
+      request.onerror = () => reject(request.error)
+    }
+  })
+}
+
+export const DEFAULT_SYNC_ROOM_ID = DEFAULT_ROOM_ID
