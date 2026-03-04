@@ -112,6 +112,12 @@ function noteStatusLabel(status: NoteStatus) {
   return 'Verworfen'
 }
 
+function todoActionLabel(status: NoteStatus) {
+  if (status === 'DISCARD') return 'Als erledigt markiert.'
+  if (status === 'INBOX') return 'Zurück in Inbox verschoben.'
+  return 'To-Do aktualisiert.'
+}
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false
@@ -717,11 +723,14 @@ function AppContent() {
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
   const [staleReviewTotal, setStaleReviewTotal] = useState(0)
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
+  const [lastTodoAction, setLastTodoAction] = useState<LastAction | null>(null)
   const [dismissedUpdateNotice, setDismissedUpdateNotice] = useState(false)
   const [undoBusy, setUndoBusy] = useState(false)
+  const [todoUndoBusy, setTodoUndoBusy] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const undoTimeoutRef = useRef<number | null>(null)
+  const todoUndoTimeoutRef = useRef<number | null>(null)
   const mainScrollRef = useRef<HTMLElement | null>(null)
   const braindumpEndRef = useRef<HTMLDivElement | null>(null)
   const shouldAutoScrollRef = useRef(true)
@@ -862,7 +871,20 @@ function AppContent() {
     }
   }
 
-  useEffect(() => () => clearUndoTimeout(), [])
+  const clearTodoUndoTimeout = () => {
+    if (todoUndoTimeoutRef.current !== null) {
+      window.clearTimeout(todoUndoTimeoutRef.current)
+      todoUndoTimeoutRef.current = null
+    }
+  }
+
+  useEffect(
+    () => () => {
+      clearUndoTimeout()
+      clearTodoUndoTimeout()
+    },
+    [],
+  )
 
   const startUndoWindow = (action: LastAction) => {
     clearUndoTimeout()
@@ -876,6 +898,21 @@ function AppContent() {
         return null
       })
       undoTimeoutRef.current = null
+    }, 8000)
+  }
+
+  const startTodoUndoWindow = (action: LastAction) => {
+    clearTodoUndoTimeout()
+    setLastTodoAction(action)
+    todoUndoTimeoutRef.current = window.setTimeout(() => {
+      setLastTodoAction((current) => {
+        if (!current) return null
+        if (current.noteId !== action.noteId || current.at !== action.at) {
+          return current
+        }
+        return null
+      })
+      todoUndoTimeoutRef.current = null
     }, 8000)
   }
 
@@ -1022,7 +1059,7 @@ function AppContent() {
       }
     }
     const byCreatedAsc = (a: Note, b: Note) => a.createdAt.localeCompare(b.createdAt)
-    const days = [...grouped.keys()].sort((a, b) => b.localeCompare(a))
+    const days = [...grouped.keys()].sort((a, b) => a.localeCompare(b))
     return days.map((dayISO) => {
       const notes = grouped.get(dayISO) ?? []
       notes.sort(byCreatedAsc)
@@ -1155,19 +1192,64 @@ function AppContent() {
     [currentStaleNote, refreshAll],
   )
 
+  const handleTodoStatusChange = useCallback(
+    async (id: string, nextStatus: NoteStatus) => {
+      const sourceNote = todoNotes.find((note) => note.id === id)
+      if (!sourceNote) {
+        return
+      }
+
+      setError('')
+      try {
+        await updateNoteStatus(id, nextStatus)
+        startTodoUndoWindow({
+          noteId: sourceNote.id,
+          prevStatus: sourceNote.status,
+          newStatus: nextStatus,
+          at: Date.now(),
+        })
+        await refreshAll()
+      } catch {
+        clearTodoUndoTimeout()
+        setLastTodoAction(null)
+        setError('To-Do konnte nicht aktualisiert werden.')
+      }
+    },
+    [todoNotes, refreshAll],
+  )
+
   const handleTodoDone = useCallback(
     (id: string) => {
-      void handleReviewDecision(id, 'DISCARD')
+      void handleTodoStatusChange(id, 'DISCARD')
     },
-    [handleReviewDecision],
+    [handleTodoStatusChange],
   )
 
   const handleTodoBack = useCallback(
     (id: string) => {
-      void handleReviewDecision(id, 'INBOX')
+      void handleTodoStatusChange(id, 'INBOX')
     },
-    [handleReviewDecision],
+    [handleTodoStatusChange],
   )
+
+  const handleUndoLastTodoAction = async () => {
+    if (!lastTodoAction || todoUndoBusy) {
+      return
+    }
+
+    setTodoUndoBusy(true)
+    setError('')
+    try {
+      await updateNoteStatus(lastTodoAction.noteId, lastTodoAction.prevStatus)
+      clearTodoUndoTimeout()
+      setLastTodoAction(null)
+      await refreshAll()
+    } catch {
+      setError('Rückgängig für To-Do fehlgeschlagen.')
+    } finally {
+      setTodoUndoBusy(false)
+    }
+  }
   const handleThinkingArchive = useCallback(
     (id: string) => {
       void handleReviewDecision(id, 'ARCHIVE')
@@ -1771,6 +1853,18 @@ function AppContent() {
           {activeTab === 'TODO' ? (
             <>
             <h2>To-Do ({todoNotes.length})</h2>
+            {lastTodoAction ? (
+              <div className="undo-snackbar undo-snackbar--subtle" role="status" aria-live="polite">
+                <span>{todoActionLabel(lastTodoAction.newStatus)}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleUndoLastTodoAction()}
+                  disabled={todoUndoBusy}
+                >
+                  Rückgängig
+                </button>
+              </div>
+            ) : null}
             {todoNotes.length === 0 ? <p className="empty-text">Keine offenen To-Dos.</p> : null}
             {todoGroups.map((group) => (
               <section key={group.dayISO} className="note-group">

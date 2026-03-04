@@ -16,6 +16,24 @@ Leiser ist ein lokales, offline-fähiges Gedanken-Tool mit Fokus auf schnellen C
 - Tages-Divider in der Liste (`Heute`, `Gestern`, `YYYY-MM-DD`)
 - Direkte Aktionen pro Notiz (z. B. Löschen, ggf. Rückgängig bei frischen Einträgen)
 
+## Capture-Flow (Braindump)
+
+Der Braindump ist als fortlaufender Flow ausgelegt:
+
+1. Eingeben im Composer (unten).
+2. `Enter` speichert sofort.
+3. Fokus bleibt im Eingabefeld.
+4. Die Liste scrollt ans Ende, damit der neue Eintrag direkt sichtbar ist.
+
+Sortierung im Braindump:
+- Tage werden von alt nach neu dargestellt (oben -> unten).
+- Innerhalb eines Tages stehen Einträge ebenfalls chronologisch (alt -> neu).
+- Dadurch ist der neueste Gedanke immer am unteren Ende des Flows sichtbar.
+
+Auto-Scroll-Verhalten:
+- Wenn du am Ende der Liste bist (oder nahe dran), scrollt Leiser nach dem Speichern automatisch weiter nach unten.
+- Wenn du nach oben gescrollt hast, um alte Einträge zu lesen, zieht Leiser dich nicht nach unten weg.
+
 ### Review
 - Single-Card Review für `INBOX`-Notizen
 - Aktionen: `To-Do`, `Denken`, `Verwerfen`, `Überspringen`
@@ -30,8 +48,7 @@ Leiser ist ein lokales, offline-fähiges Gedanken-Tool mit Fokus auf schnellen C
 
 ### To-Do
 - Zeigt `TODO`-Notizen
-- Gruppierung bei längeren Listen: `Heute`, `Diese Woche`, `Älter`
-- Gruppe `Älter` zeigt Hinweis `>14 Tage: X`
+- Tages-Divider in der Liste (`Heute`, `Gestern`, `YYYY-MM-DD`)
 - Direkte Aktionen pro Notiz: Erledigt, Zurück
 
 ### Header-Menü (`...`)
@@ -206,7 +223,7 @@ iOS Safari benötigt eine HTTPS-URL für:
 1. Braindump: Eintrag erfassen, Reload -> Eintrag bleibt erhalten.
 2. Review: INBOX-Notiz entscheiden -> Statuswechsel sichtbar in To-Do/Denken.
 3. Stale-Review: Alte TODOs pruefen (`Erledigt` -> `ARCHIVE`).
-4. To-Do-Gruppen: Bei >10 To-Dos erscheinen Gruppen + einklappen.
+4. To-Do: Einträge sind nach Tagen gruppiert (`Heute`, `Gestern`, Datum).
 5. Backup: Exportieren, dann Import (`MERGE`/`REPLACE`) testen.
 6. Offline: Seite laden, Netzwerk trennen, weiter nutzen.
 

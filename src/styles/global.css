@@ -766,6 +766,13 @@ button:hover {
   font-size: 0.82rem;
 }
 
+.undo-snackbar--subtle {
+  margin-top: 0.5rem;
+  opacity: 0.9;
+  border-color: color-mix(in srgb, var(--border-default) 82%, transparent);
+  background: color-mix(in srgb, var(--surface-card-soft) 88%, transparent);
+}
+
 .decided-toggle {
   font-size: 0.86rem;
   padding: 0.3rem 0.55rem;
