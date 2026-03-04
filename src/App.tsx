@@ -1522,7 +1522,7 @@ function AppContent() {
             </button>
             </div>
 
-          <div className="header-search">
+          <div className={isSearchMode ? 'header-search header-search--active' : 'header-search'}>
             <input
               type="search"
               value={searchQuery}

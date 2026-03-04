@@ -206,8 +206,15 @@ body {
 }
 
 .header-search {
-  flex: 1 1 220px;
-  max-width: 340px;
+  flex: 0 1 auto;
+  width: 180px;
+  max-width: min(42vw, 360px);
+  transition: width 180ms ease;
+}
+
+.header-search:focus-within,
+.header-search--active {
+  width: min(42vw, 360px);
 }
 
 .header-search input {
@@ -950,7 +957,13 @@ button:focus {
   }
 
   .header-search {
-    max-width: 190px;
+    width: 130px;
+    max-width: 60vw;
+  }
+
+  .header-search:focus-within,
+  .header-search--active {
+    width: min(60vw, 240px);
   }
 
   .capture-actions {
