@@ -146,6 +146,13 @@ button:hover {
   color: #4d635b;
 }
 
+.review-session-box {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+
 .review-groups {
   margin: 0.3rem 0 0.6rem;
   display: grid;

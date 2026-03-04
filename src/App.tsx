@@ -15,6 +15,7 @@ import type { Note, NoteStatus } from './lib/types'
 
 const FRESH_HOURS = 12
 const OVERDUE_DAYS = 3
+const SESSION_SIZE = 10
 
 function toClockLabel(isoTimestamp: string) {
   const date = new Date(isoTimestamp)
@@ -58,8 +59,9 @@ export function App() {
   const [todayDecidedNotes, setTodayDecidedNotes] = useState<Note[]>([])
   const [hasMoreInboxNotes, setHasMoreInboxNotes] = useState(false)
   const [showDecidedToday, setShowDecidedToday] = useState(false)
-  const [reviewSessionTotal, setReviewSessionTotal] = useState(0)
   const [reviewCurrentId, setReviewCurrentId] = useState<string | null>(null)
+  const [sessionCount, setSessionCount] = useState(0)
+  const [isSessionRunning, setIsSessionRunning] = useState(false)
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
@@ -80,7 +82,6 @@ export function App() {
       setInboxNotes(openNotes)
       setHasMoreInboxNotes(totalInbox > openNotes.length)
       if (options?.resetProgress) {
-        setReviewSessionTotal(openNotes.length)
         setReviewCurrentId(null)
       }
     } catch {
@@ -143,7 +144,7 @@ export function App() {
   }
 
   const handleReviewDecision = async (noteId: string, status: Exclude<NoteStatus, 'INBOX'>) => {
-    if (!noteId) {
+    if (!noteId || !isSessionRunning || sessionCount >= SESSION_SIZE) {
       return
     }
 
@@ -151,6 +152,7 @@ export function App() {
     try {
       await updateNoteStatus(noteId, status)
       setReviewCurrentId(null)
+      setSessionCount((prev) => prev + 1)
       await Promise.all([loadInboxNotes(), loadTodayNotes(), loadTodayDecidedNotes()])
     } catch {
       setError('Status konnte nicht aktualisiert werden.')
@@ -210,7 +212,7 @@ export function App() {
   )
 
   useEffect(() => {
-    if (mode !== 'REVIEW') {
+    if (mode !== 'REVIEW' || !isSessionRunning || sessionCount >= SESSION_SIZE) {
       return
     }
 
@@ -273,10 +275,16 @@ export function App() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [currentReviewNote, mode, reviewSequence])
+  }, [currentReviewNote, isSessionRunning, mode, reviewSequence, sessionCount])
 
-  const reviewTotal = reviewSessionTotal
-  const reviewedCount = Math.max(0, reviewSessionTotal - inboxNotes.length)
+  const isSessionEnded = sessionCount >= SESSION_SIZE
+
+  const startSession = async () => {
+    setSessionCount(0)
+    setIsSessionRunning(true)
+    setError('')
+    await loadInboxNotes({ resetProgress: true })
+  }
 
   return (
     <main className="daily-shell">
@@ -298,6 +306,8 @@ export function App() {
             onClick={() => {
               setMode('REVIEW')
               void loadInboxNotes({ resetProgress: true })
+              setIsSessionRunning(false)
+              setSessionCount(0)
             }}
           >
             Review
@@ -338,6 +348,23 @@ export function App() {
           </>
         ) : (
           <>
+            {!isSessionRunning ? (
+              <div className="review-session-box">
+                <button type="button" onClick={() => void startSession()}>
+                  Review starten
+                </button>
+              </div>
+            ) : null}
+
+            {isSessionRunning && isSessionEnded ? (
+              <div className="review-session-box">
+                <p className="empty-text">Session beendet.</p>
+                <button type="button" onClick={() => setSessionCount(0)}>
+                  Weiter reviewen
+                </button>
+              </div>
+            ) : null}
+
             <h2>Offen</h2>
             {inboxNotes.length === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
             {overdueNotes.length === 0 && readyNotes.length === 0 && freshNotes.length > 0 ? (
@@ -483,10 +510,10 @@ export function App() {
             ) : null}
             {hasMoreInboxNotes ? <p className="hint">Weitere Gedanken vorhanden</p> : null}
 
-            {currentReviewNote ? (
+            {currentReviewNote && isSessionRunning && !isSessionEnded ? (
               <>
                 <p className="review-progress">
-                  {reviewedCount} von {reviewTotal} Gedanken geprüft
+                  {sessionCount} von {SESSION_SIZE} Gedanken
                 </p>
                 <article className="review-card">
                   <p className="review-meta">
