@@ -3,12 +3,14 @@ import { getOrCreateDeviceId } from './device'
 import type { Note, NoteStatus, NoteType } from './types'
 
 const DB_NAME = 'leiser-db'
-const DB_VERSION = 5
+const DB_VERSION = 6
 const NOTES_STORE = 'notes'
 const DAY_INDEX = 'dayISO'
 const STATUS_INDEX = 'status'
 const CREATED_AT_INDEX = 'createdAt'
+const UPDATED_AT_INDEX = 'updatedAt'
 const STATUS_CREATED_AT_INDEX = 'status_createdAt'
+const STATUS_UPDATED_AT_INDEX = 'status_updatedAt'
 const ALLOWED_NOTE_TYPES: NoteType[] = ['NOTE', 'QUESTION', 'IDEA', 'TASK']
 
 let dbPromise: Promise<IDBDatabase> | null = null
@@ -92,7 +94,9 @@ function openDb() {
         store.createIndex(DAY_INDEX, DAY_INDEX, { unique: false })
         store.createIndex(STATUS_INDEX, STATUS_INDEX, { unique: false })
         store.createIndex(CREATED_AT_INDEX, CREATED_AT_INDEX, { unique: false })
+        store.createIndex(UPDATED_AT_INDEX, UPDATED_AT_INDEX, { unique: false })
         store.createIndex(STATUS_CREATED_AT_INDEX, [STATUS_INDEX, CREATED_AT_INDEX], { unique: false })
+        store.createIndex(STATUS_UPDATED_AT_INDEX, [STATUS_INDEX, UPDATED_AT_INDEX], { unique: false })
         return
       }
 
@@ -111,8 +115,14 @@ function openDb() {
       if (!store.indexNames.contains(CREATED_AT_INDEX)) {
         store.createIndex(CREATED_AT_INDEX, CREATED_AT_INDEX, { unique: false })
       }
+      if (!store.indexNames.contains(UPDATED_AT_INDEX)) {
+        store.createIndex(UPDATED_AT_INDEX, UPDATED_AT_INDEX, { unique: false })
+      }
       if (!store.indexNames.contains(STATUS_CREATED_AT_INDEX)) {
         store.createIndex(STATUS_CREATED_AT_INDEX, [STATUS_INDEX, CREATED_AT_INDEX], { unique: false })
+      }
+      if (!store.indexNames.contains(STATUS_UPDATED_AT_INDEX)) {
+        store.createIndex(STATUS_UPDATED_AT_INDEX, [STATUS_INDEX, UPDATED_AT_INDEX], { unique: false })
       }
     }
 
@@ -216,6 +226,35 @@ export async function listAllNotes(): Promise<Note[]> {
 
       const note = asStoredNote(cursor.value)
       if (note) {
+        notes.push(note)
+      }
+      cursor.continue()
+    }
+  })
+}
+
+export async function listSearchableNotes(): Promise<Note[]> {
+  const db = await openDb()
+
+  return new Promise<Note[]>((resolve, reject) => {
+    const notes: Note[] = []
+    const transaction = db.transaction(NOTES_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_STORE)
+    const request = store.openCursor()
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve(notes)
+
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        return
+      }
+
+      const note = asActiveNote(cursor.value)
+      if (note && note.status !== 'DISCARD') {
         notes.push(note)
       }
       cursor.continue()
@@ -375,15 +414,14 @@ export async function listNotesByStatus(status: NoteStatus, limit = 200): Promis
     const notes: Note[] = []
     const transaction = db.transaction(NOTES_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_STORE)
-    const index = store.index(STATUS_INDEX)
-    const request = index.openCursor(IDBKeyRange.only(status), 'next')
+    const index = store.index(STATUS_UPDATED_AT_INDEX)
+    const lower = [status, '']
+    const upper = [status, '\uffff']
+    const request = index.openCursor(IDBKeyRange.bound(lower, upper), 'prev')
 
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
-    transaction.oncomplete = () => {
-      notes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      resolve(notes)
-    }
+    transaction.oncomplete = () => resolve(notes)
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {

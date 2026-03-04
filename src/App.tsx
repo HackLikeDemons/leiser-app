@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ClipboardEvent, FormEvent, KeyboardEvent } from 'react'
+import Fuse from 'fuse.js'
 import {
   addNote,
+  countInboxNotes,
   countNotesByStatus,
   deleteNote,
+  listDecidedNotesByDay,
   listInboxNotes,
   listNotesByDay,
   listNotesByStatus,
+  listSearchableNotes,
   listTodoNotes,
-  updateNoteText,
   updateNoteStatus,
 } from './lib/dbNotes'
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
@@ -18,6 +21,18 @@ import type { Note, NoteStatus, NoteType } from './lib/types'
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO'
 const SOFT_CHAR_LIMIT = 200
 const THEME_KEY = 'leiser:theme'
+const SEARCH_RESULT_LIMIT = 50
+const REVIEW_LIMIT = 50
+const FRESH_HOURS = 12
+const OVERDUE_DAYS = 3
+
+type ReviewAgeCategory = 'OVERDUE' | 'READY' | 'FRESH'
+type LastAction = {
+  noteId: string
+  prevStatus: NoteStatus
+  newStatus: NoteStatus
+  at: number
+}
 
 function toClockLabel(isoTimestamp: string) {
   const date = new Date(isoTimestamp)
@@ -47,6 +62,58 @@ function noteTypeLabel(type: NoteType) {
   return null
 }
 
+function noteStatusLabel(status: NoteStatus) {
+  if (status === 'INBOX') return 'Inbox'
+  if (status === 'TODO') return 'To-Do'
+  if (status === 'PROCESS') return 'Denken'
+  if (status === 'ARCHIVE') return 'Archiv'
+  return 'Verworfen'
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+  const tag = target.tagName
+  return target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
+function getReviewAgeCategory(note: Note): ReviewAgeCategory {
+  const createdMs = Date.parse(note.createdAt)
+  if (Number.isNaN(createdMs)) {
+    return 'READY'
+  }
+  const ageMs = Date.now() - createdMs
+  const freshMs = FRESH_HOURS * 60 * 60 * 1000
+  const overdueMs = OVERDUE_DAYS * 24 * 60 * 60 * 1000
+  if (ageMs >= overdueMs) return 'OVERDUE'
+  if (ageMs < freshMs) return 'FRESH'
+  return 'READY'
+}
+
+function reviewAgeLabel(category: ReviewAgeCategory) {
+  if (category === 'OVERDUE') return 'Überfällig'
+  if (category === 'READY') return 'Bereit'
+  return 'Frisch'
+}
+
+function sortInboxForReview(notes: Note[]) {
+  const overdue: Note[] = []
+  const ready: Note[] = []
+  const fresh: Note[] = []
+  for (const note of notes) {
+    const category = getReviewAgeCategory(note)
+    if (category === 'OVERDUE') overdue.push(note)
+    else if (category === 'READY') ready.push(note)
+    else fresh.push(note)
+  }
+  const byOldest = (a: Note, b: Note) => a.createdAt.localeCompare(b.createdAt)
+  overdue.sort(byOldest)
+  ready.sort(byOldest)
+  fresh.sort(byOldest)
+  return [...overdue, ...ready, ...fresh]
+}
+
 export function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('BRAINDUMP')
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -56,37 +123,56 @@ export function App() {
   const [text, setText] = useState('')
   const [todayNotes, setTodayNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
+  const [inboxCount, setInboxCount] = useState(0)
+  const [decidedTodayNotes, setDecidedTodayNotes] = useState<Note[]>([])
+  const [reviewIndex, setReviewIndex] = useState(0)
+  const [currentNoteId, setCurrentNoteId] = useState<string | null>(null)
+  const [showDecidedToday, setShowDecidedToday] = useState(false)
   const [processNotes, setProcessNotes] = useState<Note[]>([])
+  const [processCount, setProcessCount] = useState(0)
   const [todoNotes, setTodoNotes] = useState<Note[]>([])
   const [archivedNotes, setArchivedNotes] = useState<Note[]>([])
   const [archiveCount, setArchiveCount] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchableNotes, setSearchableNotes] = useState<Note[]>([])
   const [showArchive, setShowArchive] = useState(false)
-  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
   const [showDataPanel, setShowDataPanel] = useState(false)
   const [showImportPanel, setShowImportPanel] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
+  const [lastAction, setLastAction] = useState<LastAction | null>(null)
+  const [undoBusy, setUndoBusy] = useState(false)
   const [error, setError] = useState('')
+  const captureInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const undoTimeoutRef = useRef<number | null>(null)
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
 
   const refreshAll = async () => {
     try {
-      const [today, inbox, process, todo, archived, archivedTotal] = await Promise.all([
+      const [today, inbox, inboxTotal, decidedToday, process, processTotal, todo, archived, archivedTotal, searchable] = await Promise.all([
         listNotesByDay(todayISO, 500),
-        listInboxNotes(200),
+        listInboxNotes(REVIEW_LIMIT),
+        countInboxNotes(),
+        listDecidedNotesByDay(todayISO, 200),
         listNotesByStatus('PROCESS', 200),
+        countNotesByStatus('PROCESS'),
         listTodoNotes(200),
         listNotesByStatus('ARCHIVE', 50),
         countNotesByStatus('ARCHIVE'),
+        listSearchableNotes(),
       ])
       setTodayNotes(today)
       setInboxNotes(inbox)
+      setInboxCount(inboxTotal)
+      setDecidedTodayNotes(decidedToday)
       setProcessNotes(process)
+      setProcessCount(processTotal)
       setTodoNotes(todo)
       setArchivedNotes(archived)
       setArchiveCount(archivedTotal)
+      setSearchableNotes(searchable)
     } catch {
       setError('Daten konnten nicht geladen werden.')
     }
@@ -100,6 +186,26 @@ export function App() {
     document.documentElement.dataset.theme = theme
     localStorage.setItem(THEME_KEY, theme)
   }, [theme])
+
+  const orderedInbox = useMemo(() => sortInboxForReview(inboxNotes), [inboxNotes])
+  const pinnedReviewIndex = useMemo(() => {
+    if (!currentNoteId) {
+      return -1
+    }
+    return orderedInbox.findIndex((note) => note.id === currentNoteId)
+  }, [currentNoteId, orderedInbox])
+  const effectiveReviewIndex = pinnedReviewIndex >= 0 ? pinnedReviewIndex : reviewIndex
+
+  useEffect(() => {
+    if (orderedInbox.length === 0) {
+      setReviewIndex(0)
+      setCurrentNoteId(null)
+      return
+    }
+    if (reviewIndex >= orderedInbox.length) {
+      setReviewIndex(orderedInbox.length - 1)
+    }
+  }, [orderedInbox, reviewIndex])
 
   const handleSubmit = async (event?: FormEvent) => {
     event?.preventDefault()
@@ -172,36 +278,85 @@ export function App() {
     }
   }
 
-  const handleReviewDecision = async (id: string, status: NoteStatus) => {
+  const clearUndoTimeout = () => {
+    if (undoTimeoutRef.current !== null) {
+      window.clearTimeout(undoTimeoutRef.current)
+      undoTimeoutRef.current = null
+    }
+  }
+
+  useEffect(() => () => clearUndoTimeout(), [])
+
+  const startUndoWindow = (action: LastAction) => {
+    clearUndoTimeout()
+    setLastAction(action)
+    undoTimeoutRef.current = window.setTimeout(() => {
+      setLastAction((current) => {
+        if (!current) return null
+        if (current.noteId !== action.noteId || current.at !== action.at) {
+          return current
+        }
+        return null
+      })
+      undoTimeoutRef.current = null
+    }, 8000)
+  }
+
+  const handleReviewDecision = async (
+    id: string,
+    status: NoteStatus,
+    options?: { enableUndo?: boolean; sourceNote?: Note | null },
+  ) => {
     setError('')
     try {
+      if (options?.enableUndo) {
+        const snapshot = options.sourceNote
+        if (snapshot) {
+          startUndoWindow({
+            noteId: snapshot.id,
+            prevStatus: snapshot.status,
+            newStatus: status,
+            at: Date.now(),
+          })
+        }
+      }
       await updateNoteStatus(id, status)
       await refreshAll()
     } catch {
+      if (options?.enableUndo) {
+        clearUndoTimeout()
+        setLastAction(null)
+      }
       setError('Status konnte nicht aktualisiert werden.')
     }
   }
 
-  const handleMergeIntoTarget = async (sourceId: string) => {
-    if (!mergeTargetId || mergeTargetId === sourceId) {
+  const handleUndoLastReviewAction = async () => {
+    if (!lastAction || undoBusy) {
       return
     }
 
-    const target = inboxNotes.find((note) => note.id === mergeTargetId)
-    const source = inboxNotes.find((note) => note.id === sourceId)
-    if (!target || !source) {
-      return
-    }
-
+    setUndoBusy(true)
     setError('')
     try {
-      await updateNoteText(target.id, `${target.text}\n\n${source.text}`)
-      await deleteNote(source.id)
-      setMergeTargetId(null)
+      await updateNoteStatus(lastAction.noteId, lastAction.prevStatus)
+      setCurrentNoteId(lastAction.noteId)
+      clearUndoTimeout()
+      setLastAction(null)
       await refreshAll()
     } catch {
-      setError('Zusammenführen fehlgeschlagen.')
+      setError('Rückgängig fehlgeschlagen.')
+    } finally {
+      setUndoBusy(false)
     }
+  }
+
+  const handleSkipReview = () => {
+    if (orderedInbox.length <= 1) {
+      return
+    }
+    setCurrentNoteId(null)
+    setReviewIndex((effectiveReviewIndex + 1) % orderedInbox.length)
   }
 
   const handleExport = async () => {
@@ -252,84 +407,129 @@ export function App() {
     return <span className="note-type-badge">{label}</span>
   }
 
+  const isSearchMode = searchQuery.trim().length > 0
+  const currentReviewNote = orderedInbox[effectiveReviewIndex] ?? null
+  const currentReviewCategory = currentReviewNote ? getReviewAgeCategory(currentReviewNote) : null
+
+  const searchEngine = useMemo(
+    () =>
+      new Fuse(searchableNotes, {
+        keys: ['text'],
+        threshold: 0.3,
+        ignoreLocation: true,
+      }),
+    [searchableNotes],
+  )
+
+  const searchResults = useMemo(() => {
+    if (!isSearchMode) {
+      return []
+    }
+    return searchEngine.search(searchQuery.trim(), { limit: SEARCH_RESULT_LIMIT })
+  }, [isSearchMode, searchEngine, searchQuery])
+
+  useEffect(() => {
+    if (activeTab !== 'BRAINDUMP' || isSearchMode) {
+      return
+    }
+
+    const focusInput = () => {
+      captureInputRef.current?.focus({ preventScroll: true })
+    }
+
+    const frameId = requestAnimationFrame(focusInput)
+    window.addEventListener('focus', focusInput)
+    document.addEventListener('visibilitychange', focusInput)
+
+    return () => {
+      cancelAnimationFrame(frameId)
+      window.removeEventListener('focus', focusInput)
+      document.removeEventListener('visibilitychange', focusInput)
+    }
+  }, [activeTab, isSearchMode, todayNotes.length])
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (activeTab !== 'REVIEW' || isSearchMode) return
+      if (isTypingTarget(event.target)) return
+      if (!currentReviewNote && event.key.toLowerCase() !== 'escape') return
+
+      const key = event.key.toLowerCase()
+      if (key === 't' && currentReviewNote) {
+        event.preventDefault()
+        void handleReviewDecision(currentReviewNote.id, 'TODO', { enableUndo: true, sourceNote: currentReviewNote })
+      } else if (key === 'p' && currentReviewNote) {
+        event.preventDefault()
+        void handleReviewDecision(currentReviewNote.id, 'PROCESS', { enableUndo: true, sourceNote: currentReviewNote })
+      } else if (key === 'd' && currentReviewNote) {
+        event.preventDefault()
+        void handleReviewDecision(currentReviewNote.id, 'DISCARD', { enableUndo: true, sourceNote: currentReviewNote })
+      } else if (key === 's' && currentReviewNote) {
+        event.preventDefault()
+        handleSkipReview()
+      } else if (key === 'escape') {
+        event.preventDefault()
+        setShowDecidedToday(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeTab, currentReviewNote, isSearchMode, orderedInbox.length])
+
   return (
     <main className="daily-shell">
       <section className="daily-card">
         <header className="app-header">
-          <div className="mode-tabs" role="tablist" aria-label="Bereiche">
+          {!isSearchMode ? (
+            <div className="mode-tabs" role="tablist" aria-label="Bereiche">
             <button
               type="button"
-              className={activeTab === 'BRAINDUMP' ? 'tab-button tab-button--icon tab-button--active' : 'tab-button tab-button--icon'}
+              className={activeTab === 'BRAINDUMP' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('BRAINDUMP')}
               aria-label="Braindump"
               title="Braindump"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="m4 20 4.2-1 9.9-9.9a1.7 1.7 0 0 0 0-2.4l-.8-.8a1.7 1.7 0 0 0-2.4 0L5 15.8 4 20Z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              Braindump
             </button>
             <button
               type="button"
-              className={activeTab === 'REVIEW' ? 'tab-button tab-button--icon tab-button--active' : 'tab-button tab-button--icon'}
+              className={activeTab === 'REVIEW' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('REVIEW')}
               aria-label="Review"
               title="Review"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M9 3h6l1 2h3v16H5V5h3l1-2Zm-1 9 2.4 2.4L16 9"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              Review
             </button>
             <button
               type="button"
-              className={activeTab === 'THINKING' ? 'tab-button tab-button--icon tab-button--active' : 'tab-button tab-button--icon'}
+              className={activeTab === 'THINKING' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('THINKING')}
               aria-label="Denken"
               title="Denken"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M12 4c-1.8 0-3.3 1-4 2.6a3.6 3.6 0 0 0-2.9 3.5c0 .9.3 1.7.9 2.4-.3.5-.4 1-.4 1.6 0 1.7 1.3 3 3 3h1.2V20h4.6v-2.9H16a3 3 0 0 0 3-3c0-.6-.2-1.1-.4-1.6.5-.7.8-1.5.8-2.4a3.6 3.6 0 0 0-2.9-3.5A4.4 4.4 0 0 0 12 4Z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path d="M10.5 8.8c.7.8.7 2 0 2.8m3-2.8c.7.8.7 2 0 2.8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
+              Denken
             </button>
             <button
               type="button"
-              className={activeTab === 'TODO' ? 'tab-button tab-button--icon tab-button--active' : 'tab-button tab-button--icon'}
+              className={activeTab === 'TODO' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('TODO')}
               aria-label="To-Do"
               title="To-Do"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              To-Do
             </button>
+            </div>
+          ) : null}
+
+          <div className="header-search">
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Suche Gedanken..."
+              aria-label="Suche Gedanken"
+            />
           </div>
 
           <div className="header-actions">
@@ -439,11 +639,35 @@ export function App() {
         ) : null}
 
         <div className="tab-content">
+          {isSearchMode ? (
+            <>
+              <h2>Treffer ({searchResults.length})</h2>
+              {searchResults.length === 0 ? <p className="empty-text">Keine passenden Gedanken gefunden.</p> : null}
+              <ul className="notes-list" aria-label="Suchtreffer">
+                {searchResults.map((result) => {
+                  const note = result.item
+                  return (
+                    <li key={note.id} className="note-item note-item--todo">
+                      <span className="note-time">{toClockLabel(note.createdAt)}</span>
+                      <span className="note-content">
+                        <span className="note-text">{note.text}</span>
+                        <span className="status-badge">{noteStatusLabel(note.status)}</span>
+                        {renderTypeBadge(note)}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          ) : null}
+          {!isSearchMode ? (
+            <>
           {activeTab === 'BRAINDUMP' ? (
             <>
             <form className="capture-form" onSubmit={(event) => void handleSubmit(event)}>
               <textarea
                 rows={2}
+                ref={captureInputRef}
                 placeholder="Gedanken festhalten..."
                 value={text}
                 onChange={(event) => setText(event.target.value)}
@@ -494,10 +718,21 @@ export function App() {
                     {isUndoAvailable(note) ? (
                       <button
                         type="button"
-                        className="note-delete"
+                        className="note-delete note-delete--icon"
                         onClick={() => void handleDelete(note.id, { confirm: false })}
+                        aria-label="Rückgängig"
+                        title="Rückgängig"
                       >
-                        Rückgängig
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path
+                            d="M9 7 4 12l5 5M5 12h8a5 5 0 1 1 0 10h-2"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
                       </button>
                     ) : null}
                     <button
@@ -527,70 +762,164 @@ export function App() {
 
           {activeTab === 'REVIEW' ? (
             <>
-            <h2>Offen ({inboxNotes.length})</h2>
-            {inboxNotes.length === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
-            <ul className="notes-list" aria-label="Offene Gedanken">
-              {inboxNotes.map((note) => (
-                <li key={note.id} className="note-item note-item--review">
-                  <span className="note-time">{toClockLabel(note.createdAt)}</span>
-                  <span className="note-content">
-                    <span className="note-text">{note.text}</span>
-                    {renderTypeBadge(note)}
-                  </span>
+              <h2>Review</h2>
+              {currentReviewNote ? (
+                <article className="review-focus-card" aria-label="Aktueller Gedanke">
+                  <div className="review-focus-head">
+                    <span className="note-time">{toClockLabel(currentReviewNote.createdAt)}</span>
+                    <span className={`age-badge age-badge--${currentReviewCategory?.toLowerCase()}`}>
+                      {reviewAgeLabel(currentReviewCategory ?? 'READY')}
+                    </span>
+                  </div>
+                  <div className="review-focus-text">
+                    <span className="note-text">{currentReviewNote.text}</span>
+                    {renderTypeBadge(currentReviewNote)}
+                  </div>
                   <div className="review-actions-inline">
                     <button
                       type="button"
                       className="review-btn review-btn--todo"
-                      onClick={() => void handleReviewDecision(note.id, 'TODO')}
+                      onClick={() =>
+                        void handleReviewDecision(currentReviewNote.id, 'TODO', {
+                          enableUndo: true,
+                          sourceNote: currentReviewNote,
+                        })
+                      }
                     >
-                      <span aria-hidden="true">✓</span>
-                      <span>TODO</span>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      To-Do
                     </button>
                     <button
                       type="button"
                       className="review-btn review-btn--process"
-                      onClick={() => void handleReviewDecision(note.id, 'PROCESS')}
+                      onClick={() =>
+                        void handleReviewDecision(currentReviewNote.id, 'PROCESS', {
+                          enableUndo: true,
+                          sourceNote: currentReviewNote,
+                        })
+                      }
                     >
-                      <span aria-hidden="true">◎</span>
-                      <span>PROCESS</span>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M12 4c-1.8 0-3.3 1-4 2.6a3.6 3.6 0 0 0-2.9 3.5c0 .9.3 1.7.9 2.4-.3.5-.4 1-.4 1.6 0 1.7 1.3 3 3 3h1.2V20h4.6v-2.9H16a3 3 0 0 0 3-3c0-.6-.2-1.1-.4-1.6.5-.7.8-1.5.8-2.4a3.6 3.6 0 0 0-2.9-3.5A4.4 4.4 0 0 0 12 4Z"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M10.5 8.8c.7.8.7 2 0 2.8m3-2.8c.7.8.7 2 0 2.8"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      Denken
                     </button>
                     <button
                       type="button"
                       className="review-btn review-btn--discard"
-                      onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
+                      onClick={() =>
+                        void handleReviewDecision(currentReviewNote.id, 'DISCARD', {
+                          enableUndo: true,
+                          sourceNote: currentReviewNote,
+                        })
+                      }
                     >
-                      <span aria-hidden="true">×</span>
-                      <span>DISCARD</span>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M6 6l12 12M18 6 6 18"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      Verwerfen
                     </button>
-                    {mergeTargetId === note.id ? (
-                      <button type="button" className="review-btn review-btn--merge" onClick={() => setMergeTargetId(null)}>
-                        Merge beenden
-                      </button>
-                    ) : mergeTargetId ? (
-                      <button
-                        type="button"
-                        className="review-btn review-btn--merge"
-                        onClick={() => void handleMergeIntoTarget(note.id)}
-                      >
-                        → hierhin zusammenführen
-                      </button>
-                    ) : (
-                      <button type="button" className="review-btn review-btn--merge" onClick={() => setMergeTargetId(note.id)}>
-                        Zusammenführen
-                      </button>
-                    )}
-                    {mergeTargetId === note.id ? <span className="merge-label">Merging in diese Notiz</span> : null}
+                    <button type="button" className="review-btn review-btn--skip" onClick={handleSkipReview}>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M5 12h12m0 0-4-4m4 4-4 4M19 7v10"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      Überspringen
+                    </button>
                   </div>
-                </li>
-              ))}
-            </ul>
+                  <p className="review-meta">
+                    Kategorie: {reviewAgeLabel(currentReviewCategory ?? 'READY')} ·{' '}
+                    {Math.min(effectiveReviewIndex + 1, orderedInbox.length)} von {inboxCount} offen
+                  </p>
+                  {inboxCount > inboxNotes.length ? (
+                    <p className="hint">Weitere offene Gedanken vorhanden.</p>
+                  ) : null}
+                </article>
+              ) : (
+                <p className="empty-text">Keine offenen Gedanken.</p>
+              )}
+
+              {lastAction ? (
+                <div className="undo-snackbar" role="status" aria-live="polite">
+                  <span>Gespeichert.</span>
+                  <button type="button" onClick={() => void handleUndoLastReviewAction()} disabled={undoBusy}>
+                    Rückgängig
+                  </button>
+                </div>
+              ) : null}
+
+              <section className="decided-section">
+                <button
+                  type="button"
+                  className="decided-toggle"
+                  onClick={() => setShowDecidedToday((prev) => !prev)}
+                >
+                  Heute entschieden ({decidedTodayNotes.length})
+                </button>
+                {showDecidedToday ? (
+                  <>
+                    {decidedTodayNotes.length === 0 ? (
+                      <p className="empty-text">Heute noch nichts entschieden.</p>
+                    ) : (
+                      <ul className="notes-list" aria-label="Heute entschiedene Gedanken">
+                        {decidedTodayNotes.map((note) => (
+                          <li key={note.id} className="note-item note-item--todo">
+                            <span className="note-time">{toClockLabel(note.createdAt)}</span>
+                            <span className="note-content">
+                              <span className="note-text">{note.text}</span>
+                              <span className="status-badge">{noteStatusLabel(note.status)}</span>
+                              {renderTypeBadge(note)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                ) : null}
+              </section>
             </>
           ) : null}
 
           {activeTab === 'THINKING' ? (
             <>
             <div className="section-headline">
-              <h2>Denken ({processNotes.length})</h2>
+              <h2>Denken ({processCount})</h2>
               <button
                 type="button"
                 className="archive-toggle"
@@ -599,7 +928,7 @@ export function App() {
                 {showArchive ? `Archiv ausblenden (${archiveCount})` : `Archiv anzeigen (${archiveCount})`}
               </button>
             </div>
-            {processNotes.length === 0 ? <p className="empty-text">Keine offenen Gedanken im Denken.</p> : null}
+            {processCount === 0 ? <p className="empty-text">Keine offenen Gedanken im Denken.</p> : null}
             <ul className="notes-list" aria-label="Denken Notizen">
               {processNotes.map((note) => (
                 <li key={note.id} className="note-item">
@@ -684,8 +1013,8 @@ export function App() {
                           type="button"
                           className="review-btn review-btn--back review-btn--icon"
                           onClick={() => void handleReviewDecision(note.id, 'PROCESS')}
-                          aria-label="Zurück zu Denken"
-                          title="Zurück zu Denken"
+                          aria-label="Weiterdenken"
+                          title="Weiterdenken"
                         >
                           <svg viewBox="0 0 24 24" aria-hidden="true">
                             <path
@@ -784,7 +1113,9 @@ export function App() {
             </>
           ) : null}
 
-          {error ? <p className="error-text">{error}</p> : null}
+              {error ? <p className="error-text">{error}</p> : null}
+            </>
+          ) : null}
         </div>
       </section>
     </main>
