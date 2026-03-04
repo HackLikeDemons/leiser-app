@@ -53,6 +53,7 @@ export type ChangeEnvelope = {
   signerDeviceId?: string
   signerPublicKey?: string
   signature?: string
+  snapshot?: Note
 }
 
 export type InboxSeen = {

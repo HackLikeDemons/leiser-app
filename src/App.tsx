@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ClipboardEvent, FormEvent, KeyboardEvent, RefObject } from 'react'
+import type { FormEvent, KeyboardEvent, RefObject } from 'react'
 import Fuse from 'fuse.js'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import {
@@ -25,7 +25,7 @@ import type { Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FooterProvider, useFooter } from './app/FooterContext'
 import { seedOlderThoughtsDemo } from './lib/demoNotes'
-import { startSyncEngine, syncNow, type SyncUiStatus } from './lib/syncEngine'
+import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } from './lib/syncEngine'
 
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA'
 const SOFT_CHAR_LIMIT = 200
@@ -617,17 +617,6 @@ function BraindumpComposer({
     }
   }
 
-  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const pasted = event.clipboardData.getData('text')
-    if (!pasted.includes('\n')) {
-      return
-    }
-
-    event.preventDefault()
-    const lines = pasted.split(/\r?\n/)
-    void submit(lines)
-  }
-
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     void submit([text])
@@ -653,7 +642,6 @@ function BraindumpComposer({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleTextKeyDown}
-          onPaste={handlePaste}
           onFocus={handleComposerFocus}
         />
         <div className="capture-actions">
@@ -663,18 +651,6 @@ function BraindumpComposer({
               {text.length} / {SOFT_CHAR_LIMIT}
             </small>
           </div>
-          <button type="submit" className="capture-submit" aria-label="Notiz hinzufügen" title="Hinzufügen">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M12 5v14M5 12h14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
         </div>
         {text.length > SOFT_CHAR_LIMIT ? (
           <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
@@ -748,6 +724,7 @@ function AppContent() {
   const [syncEnabled, setSyncEnabledState] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncUiStatus>('disabled')
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [syncDiagnostics, setSyncDiagnostics] = useState<SyncDiagnostics | null>(null)
   const [syncPairCode, setSyncPairCode] = useState<string | null>(null)
   const [syncRoomId, setSyncRoomId] = useState(
     () => localStorage.getItem('leiser-sync-id') || DEFAULT_SYNC_ROOM_ID,
@@ -819,11 +796,14 @@ function AppContent() {
   useEffect(() => {
     const stop = startSyncEngine({
       roomId: syncRoomId,
-      debounceMs: 1200,
-      pullIntervalMs: 90000,
+      debounceMs: 600,
+      pullIntervalMs: 4000,
       onStatusChange: (status, errorMessage) => {
         setSyncStatus(status)
         setSyncError(errorMessage ?? null)
+      },
+      onDiagnostics: (diagnostics) => {
+        setSyncDiagnostics(diagnostics)
       },
       onDataChanged: () => {
         void refreshAll()
@@ -863,6 +843,9 @@ function AppContent() {
         onStatusChange: (status, message) => {
           setSyncStatus(status)
           setSyncError(message ?? null)
+        },
+        onDiagnostics: (diagnostics) => {
+          setSyncDiagnostics(diagnostics)
         },
         onDataChanged: () => {
           void refreshAll(syncRoomId)
@@ -1650,6 +1633,25 @@ function AppContent() {
                   {syncStatus === 'offline' ? <p className="hint">Sync pausiert (offline).</p> : null}
                   {syncStatus === 'error' && syncError ? <p className="error-text">{syncError}</p> : null}
                   <p className="hint">Letzter Sync: {toSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p>
+                  {syncDiagnostics ? (
+                    <div className="dev-sync-panel">
+                      <p className="hint">
+                        Sync Diagnose ({syncDiagnostics.mode}) · {toSyncTimeLabel(syncDiagnostics.atISO)}
+                      </p>
+                      <p className="hint">
+                        Remote gesehen: {syncDiagnostics.remoteEnvelopesSeen} · angewendet:{' '}
+                        {syncDiagnostics.remoteEnvelopesApplied}
+                      </p>
+                      <p className="hint">
+                        Snapshot: {syncDiagnostics.snapshotApplied} · Changes: {syncDiagnostics.changeApplied} ·
+                        Snapshot-Rescue: {syncDiagnostics.snapshotRescues}
+                      </p>
+                      <p className="hint">
+                        Retry (remote changed): {syncDiagnostics.remoteChangedRetries} · Pending Outbox:{' '}
+                        {syncDiagnostics.pendingOutboxCount}
+                      </p>
+                    </div>
+                  ) : null}
                   {syncPairCode ? (
                     <div className="import-panel">
                       <label className="hint" htmlFor="sync-pair-code">Pair Code (mit Token)</label>

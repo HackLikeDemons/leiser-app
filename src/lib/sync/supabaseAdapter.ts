@@ -61,7 +61,7 @@ export async function pushSync(
   }
 
   console.error('Supabase pushSync insert error', insertError)
-  throw insertError
+  throw new Error(insertError.message)
 }
 
 export async function pullSync(syncId: string, syncToken: string) {
@@ -74,9 +74,9 @@ export async function pullSync(syncId: string, syncToken: string) {
     .from('sync_spaces')
     .select('blob, version')
     .eq('sync_id', syncId)
-    .single()
+    .maybeSingle()
 
-  if (error && error.code !== 'PGRST116') {
+  if (error) {
     console.error('Supabase pullSync error', error)
     throw error
   }

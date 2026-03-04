@@ -12,7 +12,6 @@ Leiser ist ein lokales, offline-fähiges Gedanken-Tool mit Fokus auf schnellen C
 ### Braindump
 - Schnelles Erfassen von Gedanken (Textarea)
 - `Enter` speichert, `Shift+Enter` macht Zeilenumbruch
-- Mehrzeiliges Paste wird in mehrere Notizen aufgeteilt
 - Tages-Divider in der Liste (`Heute`, `Gestern`, `YYYY-MM-DD`)
 - Direkte Aktionen pro Notiz (z. B. Löschen, ggf. Rückgängig bei frischen Einträgen)
 
@@ -67,8 +66,6 @@ Auto-Scroll-Verhalten:
   - Nach dem Speichern bleibt der Fokus im Eingabefeld.
 - `Shift+Enter`
   - Fügt einen Zeilenumbruch in die aktuelle Notiz ein.
-- Mehrzeiliges Einfügen (Paste)
-  - Wenn der eingefügte Text mehrere Zeilen enthält, wird jede nicht-leere Zeile als eigene Notiz gespeichert.
 
 ### Review (INBOX Single-Card)
 Tastenkürzel sind aktiv, wenn:

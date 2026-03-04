@@ -38,6 +38,13 @@ const ALLOWED_NOTE_STATUSES: NoteStatus[] = ['INBOX', 'TODO', 'PROCESS', 'DISCAR
 let dbPromise: Promise<IDBDatabase> | null = null
 let automergeInitPromise: Promise<void> | null = null
 
+function getActiveSyncRoomId() {
+  if (typeof window === 'undefined') {
+    return DEFAULT_ROOM_ID
+  }
+  return localStorage.getItem('leiser-sync-id') || DEFAULT_ROOM_ID
+}
+
 type CrdtNoteDoc = {
   text: string
   status: NoteStatus
@@ -488,7 +495,8 @@ async function loadDocForNote(noteId: string): Promise<Automerge.Doc<CrdtNoteDoc
 async function enqueueAutomergeChanges(
   noteId: string,
   changes: unknown[],
-  roomId = DEFAULT_ROOM_ID,
+  snapshot?: Note,
+  roomId = getActiveSyncRoomId(),
 ): Promise<void> {
   if (!changes.length) {
     return
@@ -504,6 +512,7 @@ async function enqueueAutomergeChanges(
     ts,
     kind: CHANGE_KIND,
     payload,
+    snapshot,
   }
   const signedEnvelope = await signEnvelope(envelope)
 
@@ -581,7 +590,7 @@ export async function createNote(text: string): Promise<Note> {
   const { base, doc } = buildDocFromPayload(noteToCrdtDoc(note))
   const changes = Automerge.getChanges(base, doc)
   const created = await persistDocAndViews(note.id, doc)
-  await enqueueAutomergeChanges(note.id, changes as unknown[])
+  await enqueueAutomergeChanges(note.id, changes as unknown[], created)
   return created
 }
 
@@ -608,7 +617,7 @@ export async function applyLocalEdit(
 
   const changes = Automerge.getChanges(existing, updatedDoc)
   const updated = await persistDocAndViews(noteId, updatedDoc)
-  await enqueueAutomergeChanges(noteId, changes as unknown[])
+  await enqueueAutomergeChanges(noteId, changes as unknown[], updated)
   return updated
 }
 
@@ -1082,7 +1091,11 @@ export async function updateSyncState(
 
 export async function setSyncEnabled(roomId: string, enabled: boolean): Promise<SyncStateRow> {
   const current = await getSyncState(roomId)
-  const syncToken = enabled ? (current.syncToken ?? generateSyncToken()) : current.syncToken
+  const importedToken =
+    typeof window !== 'undefined' ? localStorage.getItem('leiser-sync-token')?.trim() || null : null
+  const syncToken = enabled
+    ? current.syncToken ?? importedToken ?? generateSyncToken()
+    : current.syncToken
   const next = await updateSyncState(roomId, { isEnabled: enabled, lastError: null, syncToken })
   if (typeof window !== 'undefined') {
     if (enabled && next.syncToken) {
