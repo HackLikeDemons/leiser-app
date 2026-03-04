@@ -2,11 +2,12 @@ import { getLocalDayISO } from './date'
 import type { Note, NoteStatus } from './types'
 
 const DB_NAME = 'leiser-db'
-const DB_VERSION = 4
+const DB_VERSION = 5
 const NOTES_STORE = 'notes'
 const DAY_INDEX = 'dayISO'
 const STATUS_INDEX = 'status'
 const CREATED_AT_INDEX = 'createdAt'
+const STATUS_CREATED_AT_INDEX = 'status_createdAt'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
@@ -27,6 +28,7 @@ function openDb() {
         store.createIndex(DAY_INDEX, DAY_INDEX, { unique: false })
         store.createIndex(STATUS_INDEX, STATUS_INDEX, { unique: false })
         store.createIndex(CREATED_AT_INDEX, CREATED_AT_INDEX, { unique: false })
+        store.createIndex(STATUS_CREATED_AT_INDEX, [STATUS_INDEX, CREATED_AT_INDEX], { unique: false })
         return
       }
 
@@ -44,6 +46,9 @@ function openDb() {
       }
       if (!store.indexNames.contains(CREATED_AT_INDEX)) {
         store.createIndex(CREATED_AT_INDEX, CREATED_AT_INDEX, { unique: false })
+      }
+      if (!store.indexNames.contains(STATUS_CREATED_AT_INDEX)) {
+        store.createIndex(STATUS_CREATED_AT_INDEX, [STATUS_INDEX, CREATED_AT_INDEX], { unique: false })
       }
     }
 
@@ -85,7 +90,7 @@ export async function addNote(text: string): Promise<Note> {
   return note
 }
 
-export async function listNotesByDay(dayISO: string): Promise<Note[]> {
+export async function listNotesByDay(dayISO: string, limit = 500): Promise<Note[]> {
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
@@ -105,7 +110,7 @@ export async function listNotesByDay(dayISO: string): Promise<Note[]> {
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor) {
+      if (!cursor || notes.length >= limit) {
         return
       }
 
@@ -115,7 +120,7 @@ export async function listNotesByDay(dayISO: string): Promise<Note[]> {
   })
 }
 
-export async function listInboxNotes(): Promise<Note[]> {
+export async function listInboxNotes(limit = 50): Promise<Note[]> {
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
@@ -135,7 +140,7 @@ export async function listInboxNotes(): Promise<Note[]> {
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor) {
+      if (!cursor || notes.length >= limit) {
         return
       }
       notes.push(cursor.value as Note)
@@ -144,7 +149,7 @@ export async function listInboxNotes(): Promise<Note[]> {
   })
 }
 
-export async function listDecidedNotesByDay(dayISO: string): Promise<Note[]> {
+export async function listDecidedNotesByDay(dayISO: string, limit = 200): Promise<Note[]> {
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
@@ -164,7 +169,7 @@ export async function listDecidedNotesByDay(dayISO: string): Promise<Note[]> {
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor) {
+      if (!cursor || notes.length >= limit) {
         return
       }
       const note = cursor.value as Note
@@ -173,6 +178,22 @@ export async function listDecidedNotesByDay(dayISO: string): Promise<Note[]> {
       }
       cursor.continue()
     }
+  })
+}
+
+export async function countInboxNotes(): Promise<number> {
+  const db = await openDb()
+
+  return new Promise<number>((resolve, reject) => {
+    const transaction = db.transaction(NOTES_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_STORE)
+    const index = store.index(STATUS_INDEX)
+    const request = index.count(IDBKeyRange.only('INBOX'))
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => resolve(request.result)
   })
 }
 

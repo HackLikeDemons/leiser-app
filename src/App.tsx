@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import {
   addNote,
+  countInboxNotes,
   deleteNote,
   listDecidedNotesByDay,
   listInboxNotes,
@@ -55,6 +56,7 @@ export function App() {
   const [notes, setNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [todayDecidedNotes, setTodayDecidedNotes] = useState<Note[]>([])
+  const [hasMoreInboxNotes, setHasMoreInboxNotes] = useState(false)
   const [showDecidedToday, setShowDecidedToday] = useState(false)
   const [reviewSessionTotal, setReviewSessionTotal] = useState(0)
   const [reviewCurrentId, setReviewCurrentId] = useState<string | null>(null)
@@ -74,8 +76,9 @@ export function App() {
 
   const loadInboxNotes = async (options?: { resetProgress?: boolean }) => {
     try {
-      const openNotes = await listInboxNotes()
+      const [openNotes, totalInbox] = await Promise.all([listInboxNotes(50), countInboxNotes()])
       setInboxNotes(openNotes)
+      setHasMoreInboxNotes(totalInbox > openNotes.length)
       if (options?.resetProgress) {
         setReviewSessionTotal(openNotes.length)
         setReviewCurrentId(null)
@@ -478,6 +481,7 @@ export function App() {
                 ) : null}
               </div>
             ) : null}
+            {hasMoreInboxNotes ? <p className="hint">Weitere Gedanken vorhanden</p> : null}
 
             {currentReviewNote ? (
               <>
