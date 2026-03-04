@@ -1,4 +1,5 @@
-export type NoteStatus = 'INBOX' | 'TODO' | 'PROCESS' | 'DISCARD'
+export type NoteStatus = 'INBOX' | 'TODO' | 'PROCESS' | 'DISCARD' | 'ARCHIVE'
+export type NoteType = 'NOTE' | 'QUESTION' | 'IDEA' | 'TASK'
 
 export type Note = {
   id: string
@@ -10,4 +11,5 @@ export type Note = {
   dayISO: string
   text: string
   status: NoteStatus
+  type: NoteType
 }

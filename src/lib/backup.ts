@@ -1,7 +1,7 @@
 import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
 import { clearNotesStore, getNoteById, listAllNotes, upsertNote } from './dbNotes'
-import type { Note, NoteStatus } from './types'
+import type { Note, NoteStatus, NoteType } from './types'
 
 export type ImportMode = 'MERGE' | 'REPLACE'
 
@@ -20,7 +20,8 @@ export type ImportReport = {
   invalid: number
 }
 
-const ALLOWED_STATUSES: NoteStatus[] = ['INBOX', 'TODO', 'PROCESS', 'DISCARD']
+const ALLOWED_STATUSES: NoteStatus[] = ['INBOX', 'TODO', 'PROCESS', 'DISCARD', 'ARCHIVE']
+const ALLOWED_TYPES: NoteType[] = ['NOTE', 'QUESTION', 'IDEA', 'TASK']
 
 function isValidDayISO(dayISO: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(dayISO)
@@ -54,6 +55,11 @@ function normalizeImportedNote(raw: unknown, nowISO: string): Note | null {
       ? (input.status as NoteStatus)
       : 'INBOX'
 
+  const type =
+    typeof input.type === 'string' && ALLOWED_TYPES.includes(input.type as NoteType)
+      ? (input.type as NoteType)
+      : 'NOTE'
+
   const revision =
     typeof input.revision === 'number' && Number.isFinite(input.revision) && input.revision >= 1
       ? Math.floor(input.revision)
@@ -81,6 +87,7 @@ function normalizeImportedNote(raw: unknown, nowISO: string): Note | null {
     dayISO,
     text: typeof input.text === 'string' ? input.text : '',
     status,
+    type,
   }
 }
 

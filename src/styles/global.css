@@ -192,7 +192,9 @@ button:hover {
   width: 100%;
   border: 1px solid var(--border-soft);
   border-radius: 10px;
-  padding: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  min-height: 92px;
+  max-height: 220px;
   background: var(--surface-input);
   color: var(--text-primary);
   font: inherit;
@@ -311,6 +313,25 @@ button:hover {
   word-break: break-word;
 }
 
+.note-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.note-type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border-default) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-card-soft) 80%, transparent);
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
 .note-actions {
   display: flex;
   gap: 0.35rem;
@@ -357,6 +378,12 @@ button:hover {
   gap: 0.4rem;
 }
 
+.review-btn svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
 .review-btn--icon {
   width: 34px;
   height: 34px;
@@ -388,6 +415,11 @@ button:hover {
 .review-btn--merge {
   background: color-mix(in srgb, #7e6ea8 15%, var(--surface-button));
   border-color: color-mix(in srgb, #7e6ea8 40%, var(--border-default));
+}
+
+.review-btn--archive {
+  background: color-mix(in srgb, #6f7894 16%, var(--surface-button));
+  border-color: color-mix(in srgb, #6f7894 42%, var(--border-default));
 }
 
 .review-btn--done {

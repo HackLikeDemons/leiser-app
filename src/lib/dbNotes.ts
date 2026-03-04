@@ -1,6 +1,6 @@
 import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
-import type { Note, NoteStatus } from './types'
+import type { Note, NoteStatus, NoteType } from './types'
 
 const DB_NAME = 'leiser-db'
 const DB_VERSION = 5
@@ -9,16 +9,13 @@ const DAY_INDEX = 'dayISO'
 const STATUS_INDEX = 'status'
 const CREATED_AT_INDEX = 'createdAt'
 const STATUS_CREATED_AT_INDEX = 'status_createdAt'
+const ALLOWED_NOTE_TYPES: NoteType[] = ['NOTE', 'QUESTION', 'IDEA', 'TASK']
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
 function asStoredNote(value: unknown): Note | null {
   const note = value as Partial<Note> | undefined
   if (!note || typeof note !== 'object') {
-    return null
-  }
-
-  if (note.deletedAt !== null && note.deletedAt !== undefined) {
     return null
   }
 
@@ -32,6 +29,10 @@ function asStoredNote(value: unknown): Note | null {
     dayISO: String(note.dayISO ?? ''),
     text: String(note.text ?? ''),
     status: (note.status as NoteStatus | undefined) ?? 'INBOX',
+    type:
+      typeof note.type === 'string' && ALLOWED_NOTE_TYPES.includes(note.type as NoteType)
+        ? (note.type as NoteType)
+        : 'NOTE',
   }
 }
 
@@ -46,6 +47,32 @@ function asActiveNote(value: unknown): Note | null {
   }
 
   return note
+}
+
+function parseNoteInput(rawText: string): { text: string; type: NoteType; status: NoteStatus } {
+  const leftTrimmed = rawText.trimStart()
+  let type: NoteType = 'NOTE'
+  let remainder = leftTrimmed
+
+  const prefix = leftTrimmed[0]
+  if (prefix === '?') {
+    type = 'QUESTION'
+    remainder = leftTrimmed.slice(1)
+  } else if (prefix === '!') {
+    type = 'IDEA'
+    remainder = leftTrimmed.slice(1)
+  } else if (prefix === '-') {
+    type = 'TASK'
+    remainder = leftTrimmed.slice(1)
+  }
+
+  if (type !== 'NOTE' && remainder.startsWith(' ')) {
+    remainder = remainder.slice(1)
+  }
+
+  const text = remainder.trim()
+  const status: NoteStatus = type === 'TASK' ? 'TODO' : 'INBOX'
+  return { text, type, status }
 }
 
 function openDb() {
@@ -96,8 +123,8 @@ function openDb() {
 }
 
 export async function addNote(text: string): Promise<Note> {
-  const trimmed = text.trim()
-  if (!trimmed) {
+  const parsed = parseNoteInput(text)
+  if (!parsed.text) {
     throw new Error('Leerer Text kann nicht gespeichert werden')
   }
 
@@ -110,8 +137,9 @@ export async function addNote(text: string): Promise<Note> {
     deviceId: getOrCreateDeviceId(),
     revision: 1,
     dayISO: getLocalDayISO(new Date(now)),
-    text: trimmed,
-    status: 'INBOX',
+    text: parsed.text,
+    status: parsed.status,
+    type: parsed.type,
   }
 
   const db = await openDb()

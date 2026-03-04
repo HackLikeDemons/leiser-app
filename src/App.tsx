@@ -12,7 +12,7 @@ import {
 } from './lib/dbNotes'
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO } from './lib/date'
-import type { Note, NoteStatus } from './lib/types'
+import type { Note, NoteStatus, NoteType } from './lib/types'
 
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO'
 const SOFT_CHAR_LIMIT = 200
@@ -31,6 +31,19 @@ function isUndoAvailable(note: Note) {
     return false
   }
   return Date.now() - createdMs <= 5000
+}
+
+function noteTypeLabel(type: NoteType) {
+  if (type === 'QUESTION') {
+    return '? Frage'
+  }
+  if (type === 'IDEA') {
+    return 'Idee'
+  }
+  if (type === 'TASK') {
+    return 'Aufgabe'
+  }
+  return null
 }
 
 export function App() {
@@ -223,6 +236,14 @@ export function App() {
     }
   }
 
+  const renderTypeBadge = (note: Note) => {
+    const label = noteTypeLabel(note.type)
+    if (!label) {
+      return null
+    }
+    return <span className="note-type-badge">{label}</span>
+  }
+
   return (
     <main className="daily-shell">
       <section className="daily-card">
@@ -368,7 +389,7 @@ export function App() {
           <>
             <form className="capture-form" onSubmit={(event) => void handleSubmit(event)}>
               <textarea
-                rows={4}
+                rows={2}
                 placeholder="Gedanken festhalten..."
                 value={text}
                 onChange={(event) => setText(event.target.value)}
@@ -411,7 +432,10 @@ export function App() {
               {todayNotes.map((note) => (
                 <li key={note.id} className="note-item">
                   <span className="note-time">{toClockLabel(note.createdAt)}</span>
-                  <span className="note-text">{note.text}</span>
+                  <span className="note-content">
+                    <span className="note-text">{note.text}</span>
+                    {renderTypeBadge(note)}
+                  </span>
                   <div className="note-actions">
                     {isUndoAvailable(note) ? (
                       <button
@@ -455,7 +479,10 @@ export function App() {
               {inboxNotes.map((note) => (
                 <li key={note.id} className="note-item note-item--review">
                   <span className="note-time">{toClockLabel(note.createdAt)}</span>
-                  <span className="note-text">{note.text}</span>
+                  <span className="note-content">
+                    <span className="note-text">{note.text}</span>
+                    {renderTypeBadge(note)}
+                  </span>
                   <div className="review-actions-inline">
                     <button
                       type="button"
@@ -514,7 +541,63 @@ export function App() {
               {processNotes.map((note) => (
                 <li key={note.id} className="note-item">
                   <span className="note-time">{toClockLabel(note.createdAt)}</span>
-                  <span className="note-text">{note.text}</span>
+                  <span className="note-content">
+                    <span className="note-text">{note.text}</span>
+                    {renderTypeBadge(note)}
+                  </span>
+                  <div className="note-actions">
+                    <button
+                      type="button"
+                      className="review-btn review-btn--archive"
+                      onClick={() => void handleReviewDecision(note.id, 'ARCHIVE')}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M4 8h16M6 8v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8M9 4h6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span>Abgelegt</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="review-btn review-btn--todo"
+                      onClick={() => void handleReviewDecision(note.id, 'TODO')}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span>To-Do</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="review-btn review-btn--discard"
+                      onClick={() => void handleReviewDecision(note.id, 'DISCARD')}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M6 6l12 12M18 6 6 18"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span>Verwerfen</span>
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -529,7 +612,10 @@ export function App() {
               {todoNotes.map((note) => (
                 <li key={note.id} className="note-item note-item--todo">
                   <span className="note-time">{toClockLabel(note.createdAt)}</span>
-                  <span className="note-text">{note.text}</span>
+                  <span className="note-content">
+                    <span className="note-text">{note.text}</span>
+                    {renderTypeBadge(note)}
+                  </span>
                   <div className="todo-actions">
                     <button
                       type="button"
