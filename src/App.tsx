@@ -820,7 +820,9 @@ function BraindumpComposer({
     setText('')
     setFlashInput(true)
     window.setTimeout(() => setFlashInput(false), 120)
-    inputRef.current?.focus({ preventScroll: true })
+    if (!(typeof window !== 'undefined' && window.visualViewport)) {
+      inputRef.current?.focus({ preventScroll: true })
+    }
   }
 
   const handleTextKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -852,10 +854,11 @@ function BraindumpComposer({
         />
         <div className="capture-actions">
           <div className="capture-meta-row">
-            <small className="capture-hint">Enter: speichern</small>
             <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
               {text.length} / {SOFT_CHAR_LIMIT}
             </small>
+            <span className="capture-separator" aria-hidden="true">·</span>
+            <small className="capture-hint">Enter: speichern</small>
           </div>
         </div>
         {text.length > SOFT_CHAR_LIMIT ? (

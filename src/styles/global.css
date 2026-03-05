@@ -518,6 +518,12 @@ button:hover {
   overflow-wrap: anywhere;
 }
 
+.capture-separator {
+  color: var(--text-muted);
+  opacity: 0.7;
+  line-height: 1;
+}
+
 .capture-meta-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1194,19 +1200,13 @@ button:focus {
 
 @media (max-width: 640px) {
   .app-header {
-    position: fixed;
-    left: 0;
-    right: 0;
+    position: sticky;
     top: 0;
     z-index: 40;
   }
 
-  .app-main {
-    padding-top: calc(112px + var(--safe-top));
-  }
-
   .app-main--with-footer {
-    padding-bottom: calc(152px + var(--safe-bottom));
+    padding-bottom: calc(118px + var(--safe-bottom));
   }
 
   .app-footer {
@@ -1230,8 +1230,9 @@ button:focus {
   }
 
   .capture-meta-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.2rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
   }
 
   .counter {
