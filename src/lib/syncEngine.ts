@@ -221,10 +221,11 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
       }
 
       let appliedChange = false
+      let changedNote: Note | null = null
       try {
         const bytes = decodeChangePayload(item.payload)
         if (bytes.length > 0) {
-          await applyRemoteChanges(item.noteId, bytes)
+          changedNote = await applyRemoteChanges(item.noteId, bytes)
           changeApplied += 1
           appliedChange = true
         }
@@ -232,17 +233,19 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
         appliedChange = false
       }
 
-      if (!appliedChange) {
-        const snapshot = asSnapshotNote(item.snapshot, item.noteId)
-        if (snapshot) {
-          await upsertNote(snapshot)
-          snapshotApplied += 1
-          snapshotRescues += 1
-          seenKeys.push(dedupeKey)
-          remoteEnvelopes.push(item)
-          applied = true
-          continue
-        }
+      const snapshot = asSnapshotNote(item.snapshot, item.noteId)
+      const shouldRescueFromSnapshot =
+        Boolean(snapshot) &&
+        (!appliedChange || ((changedNote?.text ?? '').trim().length === 0 && (snapshot?.text ?? '').trim().length > 0))
+
+      if (shouldRescueFromSnapshot && snapshot) {
+        await upsertNote(snapshot)
+        snapshotApplied += 1
+        snapshotRescues += 1
+        seenKeys.push(dedupeKey)
+        remoteEnvelopes.push(item)
+        applied = true
+        continue
       }
 
       if (!appliedChange) {
@@ -495,10 +498,11 @@ export async function syncNow(options: SyncNowOptions = {}) {
           }
 
           let appliedChange = false
+          let changedNote: Note | null = null
           try {
             const bytes = decodeChangePayload(item.payload)
             if (bytes.length > 0) {
-              await applyRemoteChanges(item.noteId, bytes)
+              changedNote = await applyRemoteChanges(item.noteId, bytes)
               changeApplied += 1
               appliedChange = true
             }
@@ -506,17 +510,19 @@ export async function syncNow(options: SyncNowOptions = {}) {
             appliedChange = false
           }
 
-          if (!appliedChange) {
-            const snapshot = asSnapshotNote(item.snapshot, item.noteId)
-            if (snapshot) {
-              await upsertNote(snapshot)
-              snapshotApplied += 1
-              snapshotRescues += 1
-              seenKeys.push(dedupeKey)
-              remoteEnvelopes.push(item)
-              applied = true
-              continue
-            }
+          const snapshot = asSnapshotNote(item.snapshot, item.noteId)
+          const shouldRescueFromSnapshot =
+            Boolean(snapshot) &&
+            (!appliedChange || ((changedNote?.text ?? '').trim().length === 0 && (snapshot?.text ?? '').trim().length > 0))
+
+          if (shouldRescueFromSnapshot && snapshot) {
+            await upsertNote(snapshot)
+            snapshotApplied += 1
+            snapshotRescues += 1
+            seenKeys.push(dedupeKey)
+            remoteEnvelopes.push(item)
+            applied = true
+            continue
           }
 
           if (!appliedChange) {
