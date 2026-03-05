@@ -47,6 +47,7 @@ const SYNC_ID_STORAGE_KEY = 'leiser-sync-id'
 const SYNC_TOKEN_STORAGE_KEY = 'leiser-sync-token'
 const SYNC_KEY_STORAGE_KEY = 'leiser-sync-key'
 const RELOAD_AFTER_INACTIVITY_MS = 20 * 60 * 1000
+const FEEDBACK_VISIBILITY_MS = 3000
 
 type PairingPayloadV1 = {
   v: 1
@@ -1412,7 +1413,7 @@ function AppContent() {
           braindumpCaptureFeedbackTimeoutRef.current = window.setTimeout(() => {
             setBraindumpCaptureFeedback((current) => (current?.id === nextFeedback.id ? null : current))
             braindumpCaptureFeedbackTimeoutRef.current = null
-          }, 2000)
+          }, FEEDBACK_VISIBILITY_MS)
         }
         void refreshAll()
       } catch {
@@ -1449,6 +1450,15 @@ function AppContent() {
       transientInfoTimeoutRef.current = null
     }
   }
+
+  const showTransientInfo = useCallback((message: string) => {
+    setInfo(message)
+    clearTransientInfoTimeout()
+    transientInfoTimeoutRef.current = window.setTimeout(() => {
+      setInfo((current) => (current === message ? '' : current))
+      transientInfoTimeoutRef.current = null
+    }, FEEDBACK_VISIBILITY_MS)
+  }, [])
 
   useEffect(
     () => () => {
@@ -1497,6 +1507,14 @@ function AppContent() {
   ) => {
     setError('')
     try {
+      if (status === 'DISCARD') {
+        clearUndoTimeout()
+        setLastAction(null)
+        await deleteNote(id)
+        await refreshAll()
+        return
+      }
+
       if (options?.enableUndo) {
         const snapshot = options.sourceNote
         if (snapshot) {
@@ -1882,13 +1900,13 @@ function AppContent() {
       setError('')
       try {
         await deleteNote(id)
-        setInfo('Gedanke endgültig gelöscht.')
+        showTransientInfo('Gedanke endgültig gelöscht.')
         await refreshAll()
       } catch {
         setError('Gedanke konnte nicht gelöscht werden.')
       }
     },
-    [refreshAll],
+    [refreshAll, showTransientInfo],
   )
   const handleArchivedBackToTodo = useCallback(
     (id: string) => {
@@ -1901,19 +1919,13 @@ function AppContent() {
       setError('')
       try {
         await deleteNote(id)
-        const message = 'To-Do endgültig gelöscht.'
-        setInfo(message)
-        clearTransientInfoTimeout()
-        transientInfoTimeoutRef.current = window.setTimeout(() => {
-          setInfo((current) => (current === message ? '' : current))
-          transientInfoTimeoutRef.current = null
-        }, 2000)
+        showTransientInfo('To-Do endgültig gelöscht.')
         await refreshAll()
       } catch {
         setError('To-Do konnte nicht gelöscht werden.')
       }
     },
-    [refreshAll],
+    [refreshAll, showTransientInfo],
   )
 
   const visibleTodoNotes = useMemo(
@@ -2272,7 +2284,7 @@ function AppContent() {
           {activeTab === 'REVIEW' ? (
             <>
               <FlowHero
-                title="Jetzt sortieren."
+                title="Sortieren"
                 subtitle="Weiter denken, umsetzen oder verwerfen."
               />
               <div className="section-headline">
