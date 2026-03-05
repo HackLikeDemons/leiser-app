@@ -1199,12 +1199,6 @@ button:focus {
 }
 
 @media (max-width: 640px) {
-  .app-shell {
-    position: fixed;
-    inset: 0;
-    height: auto;
-  }
-
   .header-search input,
   input,
   textarea,
@@ -1213,13 +1207,19 @@ button:focus {
   }
 
   .app-header {
-    position: sticky;
+    position: fixed;
+    left: 0;
+    right: 0;
     top: 0;
     z-index: 40;
   }
 
+  .app-main {
+    padding-top: calc(var(--header-height, 112px) + 0.35rem);
+  }
+
   .app-main--with-footer {
-    padding-bottom: calc(118px + var(--safe-bottom));
+    padding-bottom: calc(var(--footer-height, 118px) + 0.35rem + var(--safe-bottom));
   }
 
   .app-footer {
