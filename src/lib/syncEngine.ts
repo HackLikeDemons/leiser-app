@@ -2,6 +2,7 @@ import {
   DEFAULT_SYNC_ROOM_ID,
   applyRemoteChanges,
   bumpOutboxAttempt,
+  clearInboxSeen,
   decodeChangePayload,
   decodeOutboxEnvelope,
   getSyncState,
@@ -149,6 +150,7 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
   let pushRunning = false
   let pullRunning = false
   let pullInterval: number | null = null
+  let repairedInboxSeenCache = false
 
   const setStatus = (status: SyncUiStatus, error?: string | null) => {
     onStatusChange?.(status, error ?? null)
@@ -282,7 +284,12 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
 
     const remoteState = await pullSync(roomId, syncState.syncToken)
     const blob = asSyncBlob(remoteState?.blob ?? null)
-    const merged = await mergeRemoteBlob(roomId, blob)
+    let merged = await mergeRemoteBlob(roomId, blob)
+    if (!repairedInboxSeenCache && merged.remoteSeen > 0 && merged.seen === 0) {
+      await clearInboxSeen()
+      repairedInboxSeenCache = true
+      merged = await mergeRemoteBlob(roomId, blob)
+    }
 
     await updateSyncState(roomId, {
       lastPulledSeq: syncState.lastPulledSeq + merged.seen,
@@ -429,6 +436,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
     let totalSnapshotRescues = 0
     let remoteChangedRetries = 0
     let pendingOutboxCount = 0
+    let repairedInboxSeenCache = false
 
     while (!synced && attempts <= maxRetries) {
       attempts += 1
@@ -510,6 +518,14 @@ export async function syncNow(options: SyncNowOptions = {}) {
       const localEnvelopes = pending.map((row) => decodeOutboxEnvelope(row.bytes))
       pendingForAck = pending.map((row) => row.changeId)
       pendingOutboxCount = pending.length
+
+      if (!repairedInboxSeenCache && merged.remoteSeen > 0 && merged.seen === 0 && pending.length === 0) {
+        await clearInboxSeen()
+        repairedInboxSeenCache = true
+        attempts -= 1
+        setStatus('syncing', 'Rekonstruiere Sync-Index…')
+        continue
+      }
 
       const combined = new Map<string, ChangeEnvelope>()
       for (const env of merged.remoteEnvelopes) combined.set(env.changeId, env)

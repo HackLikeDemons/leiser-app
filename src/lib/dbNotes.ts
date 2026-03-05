@@ -1293,4 +1293,17 @@ export async function markInboxSeen(keys: string[], ttlMs?: number): Promise<voi
   })
 }
 
+export async function clearInboxSeen(): Promise<void> {
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(INBOX_SEEN_STORE, 'readwrite')
+    const store = transaction.objectStore(INBOX_SEEN_STORE)
+    const request = store.clear()
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+}
+
 export const DEFAULT_SYNC_ROOM_ID = DEFAULT_ROOM_ID
