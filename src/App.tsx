@@ -96,6 +96,13 @@ function formatNoteTime(note: Note, todayISO: string) {
   return toDayClockLabel(note.createdAt)
 }
 
+function formatGroupedNoteTime(note: Note, todayISO: string, yesterdayISO: string) {
+  if (note.dayISO === todayISO || note.dayISO === yesterdayISO) {
+    return toClockLabel(note.createdAt)
+  }
+  return toDayClockLabel(note.createdAt)
+}
+
 function daysBetween(dateA: Date, dateB: Date) {
   const a = new Date(dateA)
   const b = new Date(dateB)
@@ -439,19 +446,21 @@ function NoteActionsMenu({
 function TodoNoteRow({
   note,
   todayISO,
+  yesterdayISO,
   onToggleStar,
   onDone,
   onBack,
 }: {
   note: Note
   todayISO: string
+  yesterdayISO: string
   onToggleStar: (id: string, starred: boolean) => void
   onDone: (id: string) => void
   onBack: (id: string) => void
 }) {
   return (
     <li key={note.id} className="note-item note-item--todo">
-      <span className="note-time">{formatNoteTime(note, todayISO)}</span>
+      <span className="note-time">{formatGroupedNoteTime(note, todayISO, yesterdayISO)}</span>
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
         {note.starred ? <span className="status-badge">Wichtig</span> : null}
@@ -2253,7 +2262,7 @@ function AppContent() {
                 className={todoStarOnly ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
                 onClick={() => setTodoStarOnly((prev) => !prev)}
               >
-                {todoStarOnly ? 'Alle anzeigen' : 'Nur mit Stern'}
+                {todoStarOnly ? 'Alle' : 'Stern'}
               </button>
             </div>
             {lastTodoAction ? (
@@ -2281,6 +2290,7 @@ function AppContent() {
                       key={note.id}
                       note={note}
                       todayISO={todayISO}
+                      yesterdayISO={yesterdayISO}
                       onToggleStar={handleTodoToggleStar}
                       onDone={handleTodoDone}
                       onBack={handleTodoBack}
