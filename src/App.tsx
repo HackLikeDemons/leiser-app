@@ -27,7 +27,6 @@ import { getLocalDayISO, getYesterdayISO, groupNotesByDay } from './lib/date'
 import type { Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FooterProvider } from './app/FooterContext'
-import { seedOlderThoughtsDemo } from './lib/demoNotes'
 import { getSupabaseRuntimeConfig } from './lib/runtimeConfig'
 import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } from './lib/syncEngine'
 
@@ -302,7 +301,7 @@ const BraindumpList = memo(function BraindumpList({
         <h2>Lass es raus</h2>
       </section>
       <section className="braindump-context" aria-label="Status">
-        <button type="button" className="review-btn review-btn--todo" onClick={onStartReview}>
+        <button type="button" className="hero-cta" onClick={onStartReview}>
           Review starten
         </button>
       </section>
@@ -899,7 +898,7 @@ function AppContent() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
-  const [showDebugInfo, setShowDebugInfo] = useState(() => localStorage.getItem(SHOW_DEBUG_INFO_STORAGE_KEY) !== '0')
+  const [showDebugInfo, setShowDebugInfo] = useState(() => localStorage.getItem(SHOW_DEBUG_INFO_STORAGE_KEY) === '1')
   const [devSyncInfo, setDevSyncInfo] = useState<DevSyncInfo | null>(null)
   const [syncEnabled, setSyncEnabledState] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncUiStatus>('disabled')
@@ -1621,18 +1620,6 @@ function AppContent() {
     }
   }
 
-  const handleSeedOlderThoughts = async () => {
-    setInfo('')
-    setError('')
-    try {
-      await seedOlderThoughtsDemo()
-      await refreshAll()
-      setInfo('Ältere Testgedanken geladen.')
-    } catch {
-      setError('Testgedanken konnten nicht geladen werden.')
-    }
-  }
-
   const showUpdateNotice = needRefresh && !dismissedUpdateNotice
   const thinkingGroups = useMemo(() => {
     return groupNotesByDay(processNotes, {
@@ -1808,7 +1795,7 @@ function AppContent() {
           newStatus: 'ARCHIVE',
           at: Date.now(),
         })
-        setInfo('Handlung ins Archiv verschoben.')
+        showTransientInfo('Handlung ins Archiv verschoben.')
         await refreshAll()
       } catch {
         clearTodoUndoTimeout()
@@ -1816,7 +1803,7 @@ function AppContent() {
         setError('Handlung konnte nicht aktualisiert werden.')
       }
     },
-    [todoNotes, refreshAll, startTodoUndoWindow],
+    [todoNotes, refreshAll, showTransientInfo, startTodoUndoWindow],
   )
 
   const handleTodoBack = useCallback(
@@ -2080,9 +2067,6 @@ function AppContent() {
                     <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
                       {showImportPanel ? 'Import schließen' : 'Backup importieren'}
                     </button>
-                    <button type="button" onClick={() => void handleSeedOlderThoughts()}>
-                      Ältere Testgedanken laden
-                    </button>
                     <button type="button" onClick={() => void handleToggleSyncEnabled()}>
                       {syncEnabled ? 'Sync deaktivieren' : 'Sync aktivieren'}
                     </button>
@@ -2133,19 +2117,21 @@ function AppContent() {
                   ) : null}
                   {info ? <p className="hint">{info}</p> : null}
                   {offlineReady ? <p className="hint">Offline bereit.</p> : null}
-                  {syncStatus === 'syncing' ? (
+                  {showDebugInfo && syncStatus === 'syncing' ? (
                     <p className="hint">{syncError ?? 'Sync läuft im Hintergrund.'}</p>
                   ) : null}
                   {syncStatus === 'offline' ? <p className="hint">Sync pausiert (offline).</p> : null}
                   {syncStatus === 'error' && syncError ? <p className="error-text">{syncError}</p> : null}
-                  <p className="hint">
-                    Supabase-Konfiguration:{' '}
-                    {supabaseConfigStatus.configured
-                      ? supabaseConfigStatus.source === 'runtime'
-                        ? 'geladen (runtime.json)'
-                        : 'geladen (VITE)'
-                      : 'fehlt'}
-                  </p>
+                  {showDebugInfo ? (
+                    <p className="hint">
+                      Supabase-Konfiguration:{' '}
+                      {supabaseConfigStatus.configured
+                        ? supabaseConfigStatus.source === 'runtime'
+                          ? 'geladen (runtime.json)'
+                          : 'geladen (VITE)'
+                        : 'fehlt'}
+                    </p>
+                  ) : null}
                   {showDebugInfo ? <p className="hint">Letzter Sync: {toSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p> : null}
                   {showDebugInfo && syncDiagnostics ? (
                     <div className="dev-sync-panel">
@@ -2181,7 +2167,7 @@ function AppContent() {
                     {syncPairCode ? (
                       <div className="import-panel">
                         <label className="hint" htmlFor="sync-pair-code">Pair Code (mit Token)</label>
-                        <textarea id="sync-pair-code" readOnly value={syncPairCode} rows={3} />
+                        <textarea id="sync-pair-code" readOnly value={syncPairCode} rows={2} />
                         <button type="button" onClick={() => void handleCopyPairCode()}>
                           Pair Code kopieren
                         </button>
@@ -2193,7 +2179,7 @@ function AppContent() {
                         id="sync-pair-import"
                         value={syncPairCodeDraft}
                         onChange={(event) => setSyncPairCodeDraft(event.target.value)}
-                        rows={3}
+                        rows={2}
                         placeholder='leiser://pair?... oder {"roomId":"...","token":"..."}'
                       />
                       <div className="data-actions">
@@ -2270,7 +2256,7 @@ function AppContent() {
           {activeTab === 'REVIEW' ? (
             <>
               <FlowHero
-                title="Weiter denken, umsetzen oder verwerfen."
+                title="Weiter denken, umsetzen oder verwerfen"
                 subtitle=""
               />
               {!staleReviewMode && staleTodos.length > 0 ? (
@@ -2524,7 +2510,7 @@ function AppContent() {
             <>
             <FlowHero
               title="Nächste Schritte"
-              subtitle={`${visibleTodoNotes.length}${todoStarOnly ? ` / ${todoNotes.length}` : ''} im Blick behalten.`}
+              subtitle=""
             />
             <div className="section-headline section-headline--todo">
               <div className="view-mode-toggle">
