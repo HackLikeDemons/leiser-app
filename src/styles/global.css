@@ -1199,7 +1199,10 @@ button:focus {
 }
 
 @media (max-width: 640px) {
-  .header-search input {
+  .header-search input,
+  input,
+  textarea,
+  select {
     font-size: 16px;
   }
 
