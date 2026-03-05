@@ -812,22 +812,6 @@ function BraindumpComposer({
   const composerRef = useRef<HTMLFormElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
-  useEffect(() => {
-    const focusInput = () => {
-      inputRef.current?.focus({ preventScroll: true })
-    }
-
-    const frameId = requestAnimationFrame(focusInput)
-    window.addEventListener('focus', focusInput)
-    document.addEventListener('visibilitychange', focusInput)
-
-    return () => {
-      cancelAnimationFrame(frameId)
-      window.removeEventListener('focus', focusInput)
-      document.removeEventListener('visibilitychange', focusInput)
-    }
-  }, [])
-
   const submit = async (entries: string[]) => {
     const cleaned = entries.map((entry) => entry.trim()).filter((entry) => entry.length > 0)
     if (cleaned.length === 0) {
@@ -869,7 +853,7 @@ function BraindumpComposer({
         />
         <div className="capture-actions">
           <div className="capture-meta-row">
-            <small className="capture-hint">Enter: speichern · Shift+Enter: Zeile</small>
+            <small className="capture-hint">Enter: speichern</small>
             <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
               {text.length} / {SOFT_CHAR_LIMIT}
             </small>
@@ -2128,7 +2112,7 @@ function AppContent() {
         }
       }}
       header={
-        <div className="app-content app-header-inner">
+        <div className={isSearchMode ? 'app-content app-header-inner app-header-inner--search' : 'app-content app-header-inner'}>
             <div className="mode-tabs" role="tablist" aria-label="Bereiche">
             <button
               type="button"

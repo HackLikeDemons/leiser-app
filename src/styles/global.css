@@ -145,6 +145,17 @@ h3 {
   gap: 0.45rem 0.5rem;
 }
 
+.app-header-inner--search {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'tabs'
+    'search';
+}
+
+.app-header-inner--search .header-actions {
+  display: none;
+}
+
 .app-content {
   width: min(920px, 100%);
   max-width: 100%;
@@ -245,7 +256,8 @@ h3 {
 
 .header-search:focus-within,
 .header-search--active {
-  width: auto;
+  width: 100%;
+  max-width: 100%;
 }
 
 .header-search input {
@@ -1181,6 +1193,18 @@ button:focus {
 }
 
 @media (max-width: 640px) {
+  .app-main--with-footer {
+    padding-bottom: calc(152px + var(--safe-bottom));
+  }
+
+  .app-footer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+  }
+
   .sync-pill {
     display: none;
   }
