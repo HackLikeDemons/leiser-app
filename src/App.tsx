@@ -40,7 +40,6 @@ const FRESH_HOURS = 12
 const OVERDUE_DAYS = 3
 const AUTOSCROLL_NEAR_BOTTOM_PX = 80
 const BRAINDUMP_FETCH_LIMIT = 300
-const BRAINDUMP_RECENT_ENTRY_LIMIT = 10
 const AUTO_ARCHIVE_DAYS = 90
 const AUTO_ARCHIVE_BATCH_LIMIT = 100
 const AUTO_ARCHIVE_LAST_RUN_KEY = 'leiser:auto-archive-last-run-day'
@@ -284,27 +283,30 @@ function sortInboxForReview(notes: Note[]) {
 }
 
 const BraindumpList = memo(function BraindumpList({
-  groups,
-  onUndoDelete,
-  onDelete,
+  inboxCount,
+  processCount,
+  todoCount,
+  onStartReview,
   endRef,
-  collapsedDays,
-  onToggleDay,
 }: {
-  groups: Array<{ dayISO: string; label: string; notes: Note[] }>
-  onUndoDelete: (id: string) => void
-  onDelete: (id: string) => void
+  inboxCount: number
+  processCount: number
+  todoCount: number
+  onStartReview: () => void
   endRef: RefObject<HTMLDivElement | null>
-  collapsedDays: Record<string, boolean>
-  onToggleDay: (dayISO: string) => void
 }) {
-  void groups
-  void onUndoDelete
-  void onDelete
-  void collapsedDays
-  void onToggleDay
   return (
     <>
+      <section className="braindump-hero" aria-label="Braindump Einführung">
+        <h2>Lass es raus.</h2>
+        <p>Roh rein. Sortieren im Review.</p>
+      </section>
+      <section className="braindump-context" aria-label="Status">
+        <p className="braindump-context-stats">Inbox: {inboxCount} · Denken: {processCount} · To-Do: {todoCount}</p>
+        <button type="button" className="review-btn review-btn--todo" onClick={onStartReview}>
+          Review starten
+        </button>
+      </section>
       <div ref={endRef} />
     </>
   )
@@ -644,13 +646,30 @@ function BraindumpComposer({
 }) {
   const [text, setText] = useState('')
   const [flashInput, setFlashInput] = useState(false)
+  const [isDictating, setIsDictating] = useState(false)
+  const [dictationError, setDictationError] = useState('')
   const composerRef = useRef<HTMLFormElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const recognitionRef = useRef<{
+    stop: () => void
+  } | null>(null)
+
+  const supportsDictation = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+    return 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window
+  }, [])
 
   const submit = async (entries: string[]) => {
     const cleaned = entries.map((entry) => entry.trim()).filter((entry) => entry.length > 0)
     if (cleaned.length === 0) {
       return
+    }
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+      setIsDictating(false)
     }
     await onSubmitEntries(cleaned)
     setText('')
@@ -676,6 +695,81 @@ function BraindumpComposer({
     void submit([text])
   }
 
+  const stopDictation = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+    setIsDictating(false)
+  }, [])
+
+  const startDictation = useCallback(() => {
+    if (!supportsDictation || typeof window === 'undefined') {
+      setDictationError('Diktieren wird auf diesem Gerät nicht unterstützt.')
+      return
+    }
+    const RecognitionCtor = (window as Window & {
+      webkitSpeechRecognition?: new () => {
+        lang: string
+        continuous: boolean
+        interimResults: boolean
+        onresult: ((event: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+        onerror: (() => void) | null
+        onend: (() => void) | null
+        start: () => void
+        stop: () => void
+      }
+      SpeechRecognition?: new () => {
+        lang: string
+        continuous: boolean
+        interimResults: boolean
+        onresult: ((event: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+        onerror: (() => void) | null
+        onend: (() => void) | null
+        start: () => void
+        stop: () => void
+      }
+    }).SpeechRecognition ?? (window as Window & { webkitSpeechRecognition?: new () => never }).webkitSpeechRecognition
+
+    if (!RecognitionCtor) {
+      setDictationError('Diktieren wird auf diesem Gerät nicht unterstützt.')
+      return
+    }
+
+    const recognition = new RecognitionCtor()
+    const prefix = text.trim().length > 0 ? `${text.trim()} ` : ''
+    setDictationError('')
+    recognition.lang = navigator.language || 'de-DE'
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.onresult = (event) => {
+      let transcript = ''
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        transcript += event.results[index]?.[0]?.transcript ?? ''
+      }
+      setText(`${prefix}${transcript}`.trimStart())
+    }
+    recognition.onerror = () => {
+      setDictationError('Diktieren konnte nicht gestartet werden.')
+      setIsDictating(false)
+      recognitionRef.current = null
+    }
+    recognition.onend = () => {
+      setIsDictating(false)
+      recognitionRef.current = null
+    }
+    recognition.start()
+    recognitionRef.current = recognition
+    setIsDictating(true)
+  }, [supportsDictation, text])
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop()
+      recognitionRef.current = null
+    }
+  }, [])
+
   return (
     <div className="app-content">
       <form className="capture-form braindump-composer" onSubmit={handleSubmit} ref={composerRef}>
@@ -689,6 +783,25 @@ function BraindumpComposer({
           onKeyDown={handleTextKeyDown}
         />
         <div className="capture-actions">
+          <button
+            type="button"
+            className={isDictating ? 'capture-dictate capture-dictate--active' : 'capture-dictate'}
+            onClick={isDictating ? stopDictation : startDictation}
+            aria-label={isDictating ? 'Diktieren stoppen' : 'Diktieren starten'}
+            title={isDictating ? 'Diktieren stoppen' : 'Diktieren starten'}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M12 3.5a3 3 0 0 1 3 3v5a3 3 0 1 1-6 0v-5a3 3 0 0 1 3-3ZM6 11.5a6 6 0 1 0 12 0M12 19v2.5M9 21.5h6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>{isDictating ? 'Stop' : 'Diktieren'}</span>
+          </button>
           <div className="capture-meta-row">
             <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
               {text.length} / {SOFT_CHAR_LIMIT}
@@ -696,6 +809,7 @@ function BraindumpComposer({
             <small className="capture-hint">Enter: speichern</small>
           </div>
         </div>
+        {dictationError ? <small className="soft-limit-hint">{dictationError}</small> : null}
         {text.length > SOFT_CHAR_LIMIT ? (
           <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
         ) : null}
@@ -705,54 +819,21 @@ function BraindumpComposer({
 }
 
 function BraindumpPage({
-  groups,
-  todayISO,
-  yesterdayISO,
-  onUndoDelete,
-  onDelete,
+  inboxCount,
+  processCount,
+  todoCount,
+  onStartReview,
   endRef,
   onSubmitEntries,
 }: {
-  groups: Array<{ dayISO: string; label: string; notes: Note[] }>
-  todayISO: string
-  yesterdayISO: string
-  onUndoDelete: (id: string) => void
-  onDelete: (id: string) => void
+  inboxCount: number
+  processCount: number
+  todoCount: number
+  onStartReview: () => void
   endRef: RefObject<HTMLDivElement | null>
   onSubmitEntries: (entries: string[]) => Promise<void>
 }) {
   const { setFooter } = useFooter()
-  const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({})
-  const recentGroups = useMemo(() => {
-    const latestNotes = groups.flatMap((group) => group.notes).slice(-BRAINDUMP_RECENT_ENTRY_LIMIT)
-    return groupNotesByDay(latestNotes, {
-      todayISO,
-      yesterdayISO,
-      daySort: 'asc',
-      noteSort: (a, b) => a.createdAt.localeCompare(b.createdAt),
-    })
-  }, [groups, todayISO, yesterdayISO])
-
-  const collapsedDays = useMemo(() => {
-    const next: Record<string, boolean> = {}
-    for (const group of recentGroups) {
-      const defaultCollapsed = true
-      next[group.dayISO] =
-        group.dayISO in collapsedOverrides ? collapsedOverrides[group.dayISO] : defaultCollapsed
-    }
-    return next
-  }, [collapsedOverrides, recentGroups])
-
-  const handleToggleDay = useCallback((dayISO: string) => {
-    setCollapsedOverrides((prev) => {
-      const defaultCollapsed = true
-      const current = dayISO in prev ? prev[dayISO] : defaultCollapsed
-      return {
-        ...prev,
-        [dayISO]: !current,
-      }
-    })
-  }, [])
 
   useEffect(() => {
     setFooter(<BraindumpComposer onSubmitEntries={onSubmitEntries} />)
@@ -761,12 +842,11 @@ function BraindumpPage({
 
   return (
     <BraindumpList
-      groups={recentGroups}
-      onUndoDelete={onUndoDelete}
-      onDelete={onDelete}
+      inboxCount={inboxCount}
+      processCount={processCount}
+      todoCount={todoCount}
+      onStartReview={onStartReview}
       endRef={endRef}
-      collapsedDays={collapsedDays}
-      onToggleDay={handleToggleDay}
     />
   )
 }
@@ -972,7 +1052,6 @@ function AppContent() {
         },
       })
       await refreshAll(syncRoomId)
-      setInfo('Sync erfolgreich.')
     } catch {
       setError('Sync now fehlgeschlagen.')
     } finally {
@@ -1300,24 +1379,6 @@ function AppContent() {
     [isNearBottom, refreshAll],
   )
 
-  const handleDelete = useCallback(async (id: string, options?: { confirm?: boolean }) => {
-    const shouldConfirm = options?.confirm ?? true
-    if (shouldConfirm) {
-      const confirmed = window.confirm('Notiz löschen?')
-      if (!confirmed) {
-        return
-      }
-    }
-
-    setError('')
-    try {
-      await deleteNote(id)
-      await refreshAll()
-    } catch {
-      setError('Notiz konnte nicht gelöscht werden.')
-    }
-  }, [refreshAll])
-
   const clearUndoTimeout = () => {
     if (undoTimeoutRef.current !== null) {
       window.clearTimeout(undoTimeoutRef.current)
@@ -1510,14 +1571,6 @@ function AppContent() {
   }
 
   const showUpdateNotice = needRefresh && !dismissedUpdateNotice
-  const braindumpGroups = useMemo(() => {
-    return groupNotesByDay(braindumpNotes, {
-      todayISO,
-      yesterdayISO,
-      daySort: 'asc',
-      noteSort: (a, b) => a.createdAt.localeCompare(b.createdAt),
-    })
-  }, [braindumpNotes, todayISO, yesterdayISO])
   const thinkingGroups = useMemo(() => {
     return groupNotesByDay(processNotes, {
       todayISO,
@@ -1576,14 +1629,6 @@ function AppContent() {
       },
     })
   }, [todoArchivedNotes, todayISO, yesterdayISO])
-
-  const handleUndoDelete = useCallback((id: string) => {
-    void handleDelete(id, { confirm: false })
-  }, [handleDelete])
-
-  const handleDeleteDefault = useCallback((id: string) => {
-    void handleDelete(id)
-  }, [handleDelete])
 
   const handleToggleActionMenu = useCallback((menuId: string) => {
     setOpenActionMenuId((prev) => (prev === menuId ? null : menuId))
@@ -1851,7 +1896,7 @@ function AppContent() {
     nextAutoScrollBehaviorRef.current = 'auto'
     const frame = requestAnimationFrame(() => scrollToBraindumpBottom(behavior))
     return () => cancelAnimationFrame(frame)
-  }, [activeTab, braindumpGroups, scrollToBraindumpBottom])
+  }, [activeTab, braindumpNotes, scrollToBraindumpBottom])
 
   return (
     <AppShell
@@ -2149,11 +2194,10 @@ function AppContent() {
             <div className="tab-content">
           {activeTab === 'BRAINDUMP' ? (
             <BraindumpPage
-              groups={braindumpGroups}
-              todayISO={todayISO}
-              yesterdayISO={yesterdayISO}
-              onUndoDelete={handleUndoDelete}
-              onDelete={handleDeleteDefault}
+              inboxCount={inboxCount}
+              processCount={processCount}
+              todoCount={todoNotes.length}
+              onStartReview={() => setActiveTab('REVIEW')}
               endRef={braindumpEndRef}
               onSubmitEntries={handleBraindumpSubmitEntries}
             />
@@ -2414,8 +2458,10 @@ function AppContent() {
                   type="button"
                   className={todoStarOnly ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
                   onClick={() => setTodoStarOnly((prev) => !prev)}
+                  aria-label={todoStarOnly ? 'Alle To-Dos anzeigen' : 'Nur wichtige To-Dos anzeigen'}
+                  title={todoStarOnly ? 'Alle' : 'Wichtig'}
                 >
-                  {todoStarOnly ? 'Alle' : 'Stern'}
+                  {todoStarOnly ? 'Alle' : '★'}
                 </button>
               </div>
             </div>

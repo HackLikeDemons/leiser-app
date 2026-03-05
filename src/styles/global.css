@@ -466,6 +466,26 @@ button:hover {
   opacity: 0.7;
 }
 
+.capture-dictate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  padding: 0.24rem 0.52rem;
+  white-space: nowrap;
+}
+
+.capture-dictate svg {
+  width: 0.92rem;
+  height: 0.92rem;
+}
+
+.capture-dictate--active {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border-default));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-button));
+  color: color-mix(in srgb, var(--text-primary) 92%, var(--accent));
+}
+
 .capture-meta-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -479,7 +499,7 @@ button:hover {
 .capture-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 0.6rem;
 }
 
@@ -522,6 +542,40 @@ button:hover {
 .error-text {
   margin: 0.7rem 0 0;
   color: var(--warning);
+}
+
+.braindump-hero {
+  margin-top: 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--border-default) 85%, transparent);
+  border-radius: 12px;
+  padding: 0.85rem 0.9rem;
+  background: color-mix(in srgb, var(--surface-card-soft) 82%, transparent);
+}
+
+.braindump-hero h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.braindump-hero p {
+  margin: 0.3rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.braindump-context {
+  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.braindump-context-stats {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-secondary);
 }
 
 .daily-card h2 {
@@ -1201,6 +1255,20 @@ button:focus {
 
   .view-mode-toggle {
     width: 100%;
+  }
+
+  .section-headline--todo {
+    align-items: center;
+  }
+
+  .section-headline--todo > h2 {
+    width: auto;
+  }
+
+  .section-headline--todo .view-mode-toggle {
+    width: auto;
+    margin-left: auto;
+    justify-content: flex-end;
   }
 
   .capture-meta-row {
