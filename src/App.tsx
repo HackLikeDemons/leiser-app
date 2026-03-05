@@ -1294,7 +1294,13 @@ function AppContent() {
       .map(([dayISO, notes]) => ({
       dayISO,
       label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
-      notes,
+      notes: [...notes].sort((a, b) => {
+        const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
+        if (byUpdated !== 0) {
+          return byUpdated
+        }
+        return b.createdAt.localeCompare(a.createdAt)
+      }),
       }))
   }, [processNotes, todayISO, yesterdayISO])
   const archivedThinkingGroups = useMemo(() => {
@@ -1312,7 +1318,13 @@ function AppContent() {
       .map(([dayISO, notes]) => ({
       dayISO,
       label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
-      notes,
+      notes: [...notes].sort((a, b) => {
+        const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
+        if (byUpdated !== 0) {
+          return byUpdated
+        }
+        return b.createdAt.localeCompare(a.createdAt)
+      }),
       }))
   }, [archivedNotes, todayISO, yesterdayISO])
 
@@ -1656,10 +1668,10 @@ function AppContent() {
               type="button"
               className={activeTab === 'THINKING' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('THINKING')}
-              aria-label="Denken"
-              title="Denken"
+              aria-label="Gedanken"
+              title="Gedanken"
             >
-              Denken
+              Gedanken
             </button>
             <button
               type="button"
@@ -2200,7 +2212,7 @@ function AppContent() {
           {activeTab === 'THINKING' ? (
             <>
             <div className="section-headline">
-              <h2>Denken ({processCount})</h2>
+              <h2>Gedanken ({processCount})</h2>
               <button
                 type="button"
                 className="archive-toggle"
@@ -2209,7 +2221,7 @@ function AppContent() {
                 {showArchive ? `Archiv ausblenden (${archiveCount})` : `Archiv anzeigen (${archiveCount})`}
               </button>
             </div>
-            {processCount === 0 ? <p className="empty-text">Keine offenen Gedanken im Denken.</p> : null}
+            {processCount === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
             {thinkingGroups.map((group) => (
               <section key={group.dayISO} className="note-group">
                 <div className="day-divider">{group.label}</div>
