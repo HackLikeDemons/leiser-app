@@ -32,7 +32,6 @@ import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } fro
 
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA'
 const SOFT_CHAR_LIMIT = 200
-const THEME_KEY = 'leiser:theme'
 const REVIEW_LIMIT = 50
 const FRESH_HOURS = 12
 const OVERDUE_DAYS = 3
@@ -47,6 +46,7 @@ const SYNC_KEY_STORAGE_KEY = 'leiser-sync-key'
 const SHOW_DEBUG_INFO_STORAGE_KEY = 'leiser:show-debug-info'
 const RELOAD_AFTER_INACTIVITY_MS = 20 * 60 * 1000
 const FEEDBACK_VISIBILITY_MS = 3000
+const SW_UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
 
 type PairingPayloadV1 = {
   v: 1
@@ -65,11 +65,6 @@ type LastAction = {
 type CaptureFeedback = {
   id: number
   text: string
-}
-type NoteActionItem = {
-  label: string
-  onSelect: () => void
-  destructive?: boolean
 }
 
 type DevSyncInfo = {
@@ -287,11 +282,9 @@ function sortInboxForReview(notes: Note[]) {
 }
 
 const BraindumpList = memo(function BraindumpList({
-  onStartReview,
   captureFeedback,
   onSubmitEntries,
 }: {
-  onStartReview: () => void
   captureFeedback: CaptureFeedback | null
   onSubmitEntries: (entries: string[]) => Promise<void>
 }) {
@@ -299,11 +292,6 @@ const BraindumpList = memo(function BraindumpList({
     <>
       <section className="braindump-hero" aria-label="Braindump Einführung">
         <h2>Lass es raus</h2>
-      </section>
-      <section className="braindump-context" aria-label="Status">
-        <button type="button" className="hero-cta" onClick={onStartReview}>
-          Review starten
-        </button>
       </section>
       {captureFeedback ? (
         <p key={captureFeedback.id} className="braindump-capture-feedback" role="status" aria-live="polite">
@@ -321,85 +309,6 @@ function FlowHero({ title, subtitle }: { title: string; subtitle: string }) {
       <h2>{title}</h2>
       {subtitle ? <p>{subtitle}</p> : null}
     </section>
-  )
-}
-
-function NoteActionsMenu({
-  menuId,
-  isOpen,
-  onToggle,
-  onClose,
-  items,
-}: {
-  menuId: string
-  isOpen: boolean
-  onToggle: (menuId: string) => void
-  onClose: () => void
-  items: NoteActionItem[]
-}) {
-  const menuRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-
-    const onPointerDown = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        onClose()
-      }
-    }
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onClose()
-      }
-    }
-
-    window.addEventListener('mousedown', onPointerDown)
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.removeEventListener('mousedown', onPointerDown)
-      window.removeEventListener('keydown', onKeyDown)
-    }
-  }, [isOpen, onClose])
-
-  return (
-    <div className="note-actions-menu" ref={menuRef}>
-      <button
-        type="button"
-        className="note-actions-trigger review-btn review-btn--icon"
-        aria-label="Aktionen"
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        onClick={() => onToggle(menuId)}
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d="M12 5.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm0 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm0 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"
-            fill="currentColor"
-          />
-        </svg>
-      </button>
-      {isOpen ? (
-        <div className="note-actions-dropdown" role="menu">
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              className={item.destructive ? 'note-actions-item note-actions-item--destructive' : 'note-actions-item'}
-              onClick={() => {
-                item.onSelect()
-                onClose()
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
   )
 }
 
@@ -852,12 +761,10 @@ function BraindumpComposer({
 }
 
 function BraindumpPage({
-  onStartReview,
   captureFeedback,
   endRef,
   onSubmitEntries,
 }: {
-  onStartReview: () => void
   captureFeedback: CaptureFeedback | null
   endRef: RefObject<HTMLDivElement | null>
   onSubmitEntries: (entries: string[]) => Promise<void>
@@ -865,7 +772,6 @@ function BraindumpPage({
   return (
     <>
       <BraindumpList
-        onStartReview={onStartReview}
         captureFeedback={captureFeedback}
         onSubmitEntries={onSubmitEntries}
       />
@@ -879,12 +785,12 @@ function AppContent() {
     needRefresh: [needRefresh],
     offlineReady: [offlineReady],
     updateServiceWorker,
-  } = useRegisterSW()
-  const [activeTab, setActiveTab] = useState<TabKey>('BRAINDUMP')
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const stored = localStorage.getItem(THEME_KEY)
-    return stored === 'light' ? 'light' : 'dark'
+  } = useRegisterSW({
+    onRegisterError(error) {
+      console.error('Service worker registration failed', error)
+    },
   })
+  const [activeTab, setActiveTab] = useState<TabKey>('BRAINDUMP')
   const [braindumpNotes, setBraindumpNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [processNotes, setProcessNotes] = useState<Note[]>([])
@@ -914,7 +820,6 @@ function AppContent() {
   const [pairQrValue, setPairQrValue] = useState<string | null>(null)
   const [showScanner, setShowScanner] = useState(false)
   const [scannerHint, setScannerHint] = useState<string | null>(null)
-  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null)
   const [staleReviewMode, setStaleReviewMode] = useState(false)
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
   const [staleReviewTotal, setStaleReviewTotal] = useState(0)
@@ -940,6 +845,7 @@ function AppContent() {
   const shouldAutoScrollRef = useRef(true)
   const nextAutoScrollBehaviorRef = useRef<ScrollBehavior>('auto')
   const hiddenAtRef = useRef<number | null>(null)
+  const swReloadedRef = useRef(false)
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
   const yesterdayISO = useMemo(() => getYesterdayISO(), [])
@@ -1006,13 +912,65 @@ function AppContent() {
   }, [refreshAll, syncRoomId])
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    localStorage.setItem(THEME_KEY, theme)
-  }, [theme])
-
-  useEffect(() => {
     localStorage.setItem(SHOW_DEBUG_INFO_STORAGE_KEY, showDebugInfo ? '1' : '0')
   }, [showDebugInfo])
+
+  useEffect(() => {
+    if (needRefresh) {
+      setDismissedUpdateNotice(false)
+    }
+  }, [needRefresh])
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) {
+      return
+    }
+
+    let intervalId: number | null = null
+
+    const checkForSwUpdates = async () => {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration()
+        await registration?.update()
+      } catch {
+        // Best effort only.
+      }
+    }
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void checkForSwUpdates()
+      }
+    }
+
+    const handleControllerChange = () => {
+      if (swReloadedRef.current) {
+        return
+      }
+      swReloadedRef.current = true
+      window.location.reload()
+    }
+
+    void checkForSwUpdates()
+    intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void checkForSwUpdates()
+      }
+    }, SW_UPDATE_CHECK_INTERVAL_MS)
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus)
+    window.addEventListener('focus', handleVisibilityOrFocus)
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
+
+    return () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId)
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
+      window.removeEventListener('focus', handleVisibilityOrFocus)
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
+    }
+  }, [])
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -1680,14 +1638,6 @@ function AppContent() {
     })
   }, [todoArchivedNotes, todayISO, yesterdayISO])
 
-  const handleToggleActionMenu = useCallback((menuId: string) => {
-    setOpenActionMenuId((prev) => (prev === menuId ? null : menuId))
-  }, [])
-
-  const closeActionMenu = useCallback(() => {
-    setOpenActionMenuId(null)
-  }, [])
-
   const staleTodos = useMemo(() => {
     const today = new Date()
     return todoNotes
@@ -1921,10 +1871,6 @@ function AppContent() {
   }, [visibleTodoNotes, todayISO, yesterdayISO])
 
   useEffect(() => {
-    setOpenActionMenuId(null)
-  }, [activeTab, scrollToBraindumpBottom])
-
-  useEffect(() => {
     if (activeTab !== 'BRAINDUMP') {
       return
     }
@@ -2025,33 +1971,23 @@ function AppContent() {
           <div className="header-actions">
             {syncStatus === 'offline' ? <span className="sync-pill">Offline</span> : null}
             {syncStatus === 'error' ? <span className="sync-pill sync-pill--error">Sync Fehler</span> : null}
-            <NoteActionsMenu
-              menuId="header-actions"
-              isOpen={openActionMenuId === 'header-actions'}
-              onToggle={handleToggleActionMenu}
-              onClose={closeActionMenu}
-              items={[
-                {
-                  label: theme === 'dark' ? 'Zu hellem Theme wechseln' : 'Zu dunklem Theme wechseln',
-                  onSelect: () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark')),
-                },
-                {
-                  label: 'Backup exportieren',
-                  onSelect: () => void handleExport(),
-                },
-                {
-                  label: 'Backup importieren',
-                  onSelect: () => {
-                    setActiveTab('DATA')
-                    setShowImportPanel(true)
-                  },
-                },
-                {
-                  label: 'Daten öffnen',
-                  onSelect: () => setActiveTab('DATA'),
-                },
-              ]}
-            />
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setActiveTab('DATA')}
+              aria-label="Daten öffnen"
+              title="Daten öffnen"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 5.5h.01M12 12h.01M12 18.5h.01"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
           </div>
         </div>
       }
@@ -2059,138 +1995,163 @@ function AppContent() {
       <section className="app-content">
             {activeTab === 'DATA' ? (
               <section className="data-section" aria-label="Daten">
+                <FlowHero
+                  title="Sichern, verbinden, verwalten"
+                  subtitle="Backups steuern und Geräte sicher koppeln."
+                />
                 <div className="data-panel">
-                  <div className="data-actions">
-                    <button type="button" onClick={() => void handleExport()}>
-                      Backup exportieren
-                    </button>
-                    <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
-                      {showImportPanel ? 'Import schließen' : 'Backup importieren'}
-                    </button>
-                    <button type="button" onClick={() => void handleToggleSyncEnabled()}>
-                      {syncEnabled ? 'Sync deaktivieren' : 'Sync aktivieren'}
-                    </button>
-                    <button type="button" onClick={() => void handleSyncNow()} disabled={!syncEnabled || syncNowBusy}>
-                      {syncNowBusy ? 'Sync läuft…' : 'Sync now (Debug)'}
-                    </button>
-                    <button type="button" onClick={() => setShowDebugInfo((prev) => !prev)}>
-                      {showDebugInfo ? 'Debug-Infos ausblenden' : 'Debug-Infos anzeigen'}
-                    </button>
-                  </div>
-
-                  {showImportPanel ? (
-                    <div className="import-panel">
-                      <input
-                        type="file"
-                        accept="application/json,.json"
-                        onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
-                      />
-                      <label className="import-mode-option">
-                        <input
-                          type="radio"
-                          name="importMode"
-                          checked={importMode === 'MERGE'}
-                          onChange={() => setImportMode('MERGE')}
-                        />
-                        <span>Zusammenführen (empfohlen)</span>
-                      </label>
-                      <label className="import-mode-option">
-                        <input
-                          type="radio"
-                          name="importMode"
-                          checked={importMode === 'REPLACE'}
-                          onChange={() => setImportMode('REPLACE')}
-                        />
-                        <span>Ersetzen (löscht lokale Daten)</span>
-                      </label>
-                      <button type="button" onClick={() => void handleImport()}>
-                        Import starten
-                      </button>
-                    </div>
-                  ) : null}
-
-                  {importReport ? (
-                    <p className="hint">
-                      Importiert: {importReport.imported} · Aktualisiert: {importReport.updated} · Übersprungen:{' '}
-                      {importReport.skipped} · Ungültig: {importReport.invalid}
-                    </p>
-                  ) : null}
-                  {info ? <p className="hint">{info}</p> : null}
-                  {offlineReady ? <p className="hint">Offline bereit.</p> : null}
-                  {showDebugInfo && syncStatus === 'syncing' ? (
-                    <p className="hint">{syncError ?? 'Sync läuft im Hintergrund.'}</p>
-                  ) : null}
-                  {syncStatus === 'offline' ? <p className="hint">Sync pausiert (offline).</p> : null}
-                  {syncStatus === 'error' && syncError ? <p className="error-text">{syncError}</p> : null}
-                  {showDebugInfo ? (
-                    <p className="hint">
-                      Supabase-Konfiguration:{' '}
-                      {supabaseConfigStatus.configured
-                        ? supabaseConfigStatus.source === 'runtime'
-                          ? 'geladen (runtime.json)'
-                          : 'geladen (VITE)'
-                        : 'fehlt'}
-                    </p>
-                  ) : null}
-                  {showDebugInfo ? <p className="hint">Letzter Sync: {toSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p> : null}
-                  {showDebugInfo && syncDiagnostics ? (
-                    <div className="dev-sync-panel">
-                      <p className="hint">
-                        Sync Diagnose ({syncDiagnostics.mode}) · {toSyncTimeLabel(syncDiagnostics.atISO)}
-                      </p>
-                      <p className="hint">
-                        Remote gesehen: {syncDiagnostics.remoteEnvelopesSeen} · angewendet:{' '}
-                        {syncDiagnostics.remoteEnvelopesApplied}
-                      </p>
-                      <p className="hint">
-                        Snapshot: {syncDiagnostics.snapshotApplied} · Changes: {syncDiagnostics.changeApplied} ·
-                        Snapshot-Rescue: {syncDiagnostics.snapshotRescues}
-                      </p>
-                      <p className="hint">
-                        Retry (remote changed): {syncDiagnostics.remoteChangedRetries} · Pending Outbox:{' '}
-                        {syncDiagnostics.pendingOutboxCount}
-                      </p>
-                    </div>
-                  ) : null}
-                  <div className="pairing-panel">
-                    <h3>Geräte koppeln</h3>
-                    <div className="data-actions">
-                      <button type="button" onClick={handleShowPairQr} disabled={!syncPairCode}>
-                        QR-Code anzeigen
-                      </button>
-                      <button type="button" onClick={handleOpenScanner}>
-                        QR scannen
-                      </button>
-                    </div>
-                    <p className="hint">Nur mit Geräten teilen, denen du vertraust.</p>
-                    {scannerHint ? <p className="hint">{scannerHint}</p> : null}
-                    {syncPairCode ? (
-                      <div className="import-panel">
-                        <label className="hint" htmlFor="sync-pair-code">Pair Code (mit Token)</label>
-                        <textarea id="sync-pair-code" readOnly value={syncPairCode} rows={2} />
-                        <button type="button" onClick={() => void handleCopyPairCode()}>
-                          Pair Code kopieren
-                        </button>
-                      </div>
-                    ) : null}
-                    <div className="import-panel">
-                      <label className="hint" htmlFor="sync-pair-import">Pair Code einfügen</label>
-                      <textarea
-                        id="sync-pair-import"
-                        value={syncPairCodeDraft}
-                        onChange={(event) => setSyncPairCodeDraft(event.target.value)}
-                        rows={2}
-                        placeholder='leiser://pair?... oder {"roomId":"...","token":"..."}'
-                      />
+                  <div className="data-layout">
+                    <section className="data-card" aria-label="Backup und Sync">
+                      <h3>Backup und Sync</h3>
                       <div className="data-actions">
-                        <button type="button" onClick={() => void handlePasteFromClipboard()}>
-                          Aus Zwischenablage
+                        <button type="button" onClick={() => void handleExport()}>
+                          Backup exportieren
                         </button>
-                        <button type="button" onClick={() => void handleImportPairCode()} disabled={!syncPairCodeDraft.trim()}>
-                          Pairing importieren
+                        <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
+                          {showImportPanel ? 'Import schließen' : 'Backup importieren'}
+                        </button>
+                        <button type="button" onClick={() => void handleToggleSyncEnabled()}>
+                          {syncEnabled ? 'Sync deaktivieren' : 'Sync aktivieren'}
+                        </button>
+                        <button type="button" onClick={() => setShowDebugInfo((prev) => !prev)}>
+                          {showDebugInfo ? 'Debug-Infos ausblenden' : 'Debug-Infos anzeigen'}
+                        </button>
+                        <button type="button" onClick={() => void handleSyncNow()} disabled={!syncEnabled || syncNowBusy}>
+                          {syncNowBusy ? 'Sync läuft…' : 'Sync now (Debug)'}
                         </button>
                       </div>
-                    </div>
+
+                      {showImportPanel ? (
+                        <div className="import-panel">
+                          <input
+                            type="file"
+                            accept="application/json,.json"
+                            onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                          />
+                          <label className="import-mode-option">
+                            <input
+                              type="radio"
+                              name="importMode"
+                              checked={importMode === 'MERGE'}
+                              onChange={() => setImportMode('MERGE')}
+                            />
+                            <span>Zusammenführen (empfohlen)</span>
+                          </label>
+                          <label className="import-mode-option">
+                            <input
+                              type="radio"
+                              name="importMode"
+                              checked={importMode === 'REPLACE'}
+                              onChange={() => setImportMode('REPLACE')}
+                            />
+                            <span>Ersetzen (löscht lokale Daten)</span>
+                          </label>
+                          <button type="button" onClick={() => void handleImport()}>
+                            Import starten
+                          </button>
+                        </div>
+                      ) : null}
+
+                      <div className="data-status">
+                        {importReport ? (
+                          <p className="hint">
+                            Importiert: {importReport.imported} · Aktualisiert: {importReport.updated} · Übersprungen:{' '}
+                            {importReport.skipped} · Ungültig: {importReport.invalid}
+                          </p>
+                        ) : null}
+                        {info ? <p className="hint">{info}</p> : null}
+                        {offlineReady ? <p className="hint">Offline bereit.</p> : null}
+                        {showDebugInfo && syncStatus === 'syncing' ? (
+                          <p className="hint">{syncError ?? 'Sync läuft im Hintergrund.'}</p>
+                        ) : null}
+                        {syncStatus === 'offline' ? <p className="hint">Sync pausiert (offline).</p> : null}
+                        {syncStatus === 'error' && syncError ? <p className="error-text">{syncError}</p> : null}
+                        {showDebugInfo ? (
+                          <p className="hint">
+                            Supabase-Konfiguration:{' '}
+                            {supabaseConfigStatus.configured
+                              ? supabaseConfigStatus.source === 'runtime'
+                                ? 'geladen (runtime.json)'
+                                : 'geladen (VITE)'
+                              : 'fehlt'}
+                          </p>
+                        ) : null}
+                        {showDebugInfo ? (
+                          <p className="hint">Letzter Sync: {toSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p>
+                        ) : null}
+                      </div>
+
+                      {showDebugInfo && syncDiagnostics ? (
+                        <div className="dev-sync-panel">
+                          <p className="hint">
+                            Sync Diagnose ({syncDiagnostics.mode}) · {toSyncTimeLabel(syncDiagnostics.atISO)}
+                          </p>
+                          <p className="hint">
+                            Remote gesehen: {syncDiagnostics.remoteEnvelopesSeen} · angewendet:{' '}
+                            {syncDiagnostics.remoteEnvelopesApplied}
+                          </p>
+                          <p className="hint">
+                            Snapshot: {syncDiagnostics.snapshotApplied} · Changes: {syncDiagnostics.changeApplied} ·
+                            Snapshot-Rescue: {syncDiagnostics.snapshotRescues}
+                          </p>
+                          <p className="hint">
+                            Retry (remote changed): {syncDiagnostics.remoteChangedRetries} · Pending Outbox:{' '}
+                            {syncDiagnostics.pendingOutboxCount}
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {showDebugInfo && import.meta.env.DEV && devSyncInfo ? (
+                        <div className="dev-sync-panel">
+                          <p className="hint">Device ID: {devSyncInfo.deviceId}</p>
+                          <p className="hint">Room ID: {devSyncInfo.roomId}</p>
+                          <p className="hint">Last Pulled Seq: {devSyncInfo.lastPulledSeq}</p>
+                          <p className="hint">Sync enabled: {String(devSyncInfo.isEnabled)}</p>
+                          <p className="hint">Sync token: {devSyncInfo.syncToken ? 'gesetzt' : 'nicht gesetzt'}</p>
+                        </div>
+                      ) : null}
+                    </section>
+
+                    <section className="data-card pairing-panel" aria-label="Geräte koppeln">
+                      <h3>Geräte koppeln</h3>
+                      <div className="data-actions">
+                        <button type="button" onClick={handleShowPairQr} disabled={!syncPairCode}>
+                          QR-Code anzeigen
+                        </button>
+                        <button type="button" onClick={handleOpenScanner}>
+                          QR scannen
+                        </button>
+                      </div>
+                      <p className="hint">Nur mit Geräten teilen, denen du vertraust.</p>
+                      {scannerHint ? <p className="hint">{scannerHint}</p> : null}
+                      {syncPairCode ? (
+                        <div className="import-panel">
+                          <label className="hint" htmlFor="sync-pair-code">Pair Code (mit Token)</label>
+                          <textarea id="sync-pair-code" readOnly value={syncPairCode} rows={2} />
+                          <button type="button" onClick={() => void handleCopyPairCode()}>
+                            Pair Code kopieren
+                          </button>
+                        </div>
+                      ) : null}
+                      <div className="import-panel">
+                        <label className="hint" htmlFor="sync-pair-import">Pair Code einfügen</label>
+                        <textarea
+                          id="sync-pair-import"
+                          value={syncPairCodeDraft}
+                          onChange={(event) => setSyncPairCodeDraft(event.target.value)}
+                          rows={2}
+                          placeholder='leiser://pair?... oder {"roomId":"...","token":"..."}'
+                        />
+                        <div className="data-actions">
+                          <button type="button" onClick={() => void handlePasteFromClipboard()}>
+                            Aus Zwischenablage
+                          </button>
+                          <button type="button" onClick={() => void handleImportPairCode()} disabled={!syncPairCodeDraft.trim()}>
+                            Pairing importieren
+                          </button>
+                        </div>
+                      </div>
+                    </section>
                   </div>
 
                   {showPairQr ? (
@@ -2230,15 +2191,6 @@ function AppContent() {
                       </div>
                     </div>
                   ) : null}
-                  {showDebugInfo && import.meta.env.DEV && devSyncInfo ? (
-                    <div className="dev-sync-panel">
-                      <p className="hint">Device ID: {devSyncInfo.deviceId}</p>
-                      <p className="hint">Room ID: {devSyncInfo.roomId}</p>
-                      <p className="hint">Last Pulled Seq: {devSyncInfo.lastPulledSeq}</p>
-                      <p className="hint">Sync enabled: {String(devSyncInfo.isEnabled)}</p>
-                      <p className="hint">Sync token: {devSyncInfo.syncToken ? 'gesetzt' : 'nicht gesetzt'}</p>
-                    </div>
-                  ) : null}
                 </div>
               </section>
             ) : null}
@@ -2246,7 +2198,6 @@ function AppContent() {
             <div className="tab-content">
           {activeTab === 'BRAINDUMP' ? (
             <BraindumpPage
-              onStartReview={() => setActiveTab('REVIEW')}
               captureFeedback={braindumpCaptureFeedback}
               endRef={braindumpEndRef}
               onSubmitEntries={handleBraindumpSubmitEntries}
