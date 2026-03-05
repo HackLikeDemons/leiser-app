@@ -138,22 +138,9 @@ h3 {
 .app-header-inner {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    'tabs tabs'
-    'search actions';
+  grid-template-areas: 'tabs actions';
   align-items: center;
   gap: 0.45rem 0.5rem;
-}
-
-.app-header-inner--search {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    'tabs'
-    'search';
-}
-
-.app-header-inner--search .header-actions {
-  display: none;
 }
 
 .app-content {
@@ -240,51 +227,6 @@ h3 {
 .sync-pill--error {
   border-color: color-mix(in srgb, var(--warning) 35%, var(--border-default));
   color: var(--warning);
-}
-
-.header-search {
-  grid-area: search;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex: 1 1 180px;
-  min-width: 0;
-  width: 100%;
-  max-width: none;
-  transition: width 180ms ease;
-}
-
-.header-search:focus-within,
-.header-search--active {
-  width: 100%;
-  max-width: 100%;
-}
-
-.header-search input {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 32px;
-  border: 1px solid var(--border-soft);
-  border-radius: 999px;
-  background: var(--surface-input);
-  color: var(--text-primary);
-  padding: 0 0.62rem;
-  font-family: var(--font-ui);
-  font-size: 0.86rem;
-  font-weight: 500;
-  caret-color: var(--accent);
-}
-
-.header-search-reset {
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border-radius: 999px;
-  display: inline-grid;
-  place-items: center;
-  font-size: 1.05rem;
-  line-height: 1;
 }
 
 .icon-button {
@@ -1199,7 +1141,6 @@ button:focus {
 }
 
 @media (max-width: 640px) {
-  .header-search input,
   input,
   textarea,
   select {
@@ -1318,24 +1259,6 @@ button:focus {
     font-size: 0.95rem;
     font-weight: 520;
     text-align: left;
-  }
-
-  .header-search {
-    order: 0;
-    flex: 0 1 auto;
-    width: 180px;
-    max-width: min(42vw, 360px);
-  }
-
-  .header-search:focus-within,
-  .header-search--active {
-    width: min(42vw, 360px);
-  }
-
-  .header-search input {
-    height: 34px;
-    padding: 0 0.7rem;
-    font-size: 0.9rem;
   }
 
   .header-actions {

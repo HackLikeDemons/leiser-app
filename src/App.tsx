@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, RefObject } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
-import Fuse from 'fuse.js'
 import QRCode from 'qrcode'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import {
@@ -13,12 +12,10 @@ import {
   getSyncDebugInfo,
   getSyncState,
   getSyncPairCode,
-  listDecidedNotesByDay,
   listInboxNotes,
   listAutoArchiveCandidates,
   listNotesByStatus,
   listRecentActiveNotes,
-  listSearchableNotes,
   listTodoNotes,
   setSyncEnabled,
   updateSyncState,
@@ -38,13 +35,11 @@ import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } fro
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA'
 const SOFT_CHAR_LIMIT = 200
 const THEME_KEY = 'leiser:theme'
-const SEARCH_RESULT_LIMIT = 50
 const REVIEW_LIMIT = 50
 const FRESH_HOURS = 12
 const OVERDUE_DAYS = 3
 const AUTOSCROLL_NEAR_BOTTOM_PX = 80
 const BRAINDUMP_FETCH_LIMIT = 300
-const REVIEW_LAYOUT_KEY = 'leiser:review-layout'
 const BRAINDUMP_RECENT_ENTRY_LIMIT = 10
 const AUTO_ARCHIVE_DAYS = 90
 const AUTO_ARCHIVE_BATCH_LIMIT = 100
@@ -62,7 +57,6 @@ type PairingPayloadV1 = {
 }
 
 type ReviewAgeCategory = 'OVERDUE' | 'READY' | 'FRESH'
-type ReviewLayoutPreference = 'AUTO' | 'SINGLE' | 'LIST'
 type LastAction = {
   noteId: string
   prevStatus: NoteStatus
@@ -173,14 +167,6 @@ function daysBetween(dateA: Date, dateB: Date) {
   return Math.floor(diffMs / (1000 * 60 * 60 * 24))
 }
 
-function isUndoAvailable(note: Note) {
-  const createdMs = Date.parse(note.createdAt)
-  if (Number.isNaN(createdMs)) {
-    return false
-  }
-  return Date.now() - createdMs <= 5000
-}
-
 function noteTypeLabel(type: NoteType) {
   if (type === 'TASK') {
     return 'Aufgabe'
@@ -256,26 +242,10 @@ function ExpandableNoteText({ text }: { text: string }) {
   )
 }
 
-function noteStatusLabel(status: NoteStatus) {
-  if (status === 'INBOX') return 'Inbox'
-  if (status === 'TODO') return 'To-Do'
-  if (status === 'PROCESS') return 'Gedanken'
-  if (status === 'ARCHIVE') return 'Archiv'
-  return 'Verworfen'
-}
-
 function todoActionLabel(status: NoteStatus) {
   if (status === 'ARCHIVE') return 'Als erledigt markiert.'
   if (status === 'INBOX') return 'Zurück in Inbox verschoben.'
   return 'To-Do aktualisiert.'
-}
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false
-  }
-  const tag = target.tagName
-  return target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
 }
 
 function getReviewAgeCategory(note: Note): ReviewAgeCategory {
@@ -313,67 +283,6 @@ function sortInboxForReview(notes: Note[]) {
   return [...overdue, ...ready, ...fresh]
 }
 
-const BraindumpNoteRow = memo(function BraindumpNoteRow({
-  note,
-  onUndoDelete,
-  onDelete,
-}: {
-  note: Note
-  onUndoDelete: (id: string) => void
-  onDelete: (id: string) => void
-}) {
-  const label = noteTypeLabel(note.type)
-
-  return (
-    <li className="note-item">
-      <span className="note-content">
-        <ExpandableNoteText text={note.text} />
-        {label ? <span className="note-type-badge">{label}</span> : null}
-      </span>
-      <div className="note-actions">
-        {isUndoAvailable(note) ? (
-          <button
-            type="button"
-            className="note-delete note-delete--icon"
-            onClick={() => onUndoDelete(note.id)}
-            aria-label="Rückgängig"
-            title="Rückgängig"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M9 7 4 12l5 5M5 12h8a5 5 0 1 1 0 10h-2"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className="note-delete note-delete--icon"
-          onClick={() => onDelete(note.id)}
-          aria-label="Notiz löschen"
-          title="Löschen"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M4 7h16M9.5 3h5M8 7v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7M10 11v6M14 11v6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      </div>
-    </li>
-  )
-})
-
 const BraindumpList = memo(function BraindumpList({
   groups,
   onUndoDelete,
@@ -389,67 +298,13 @@ const BraindumpList = memo(function BraindumpList({
   collapsedDays: Record<string, boolean>
   onToggleDay: (dayISO: string) => void
 }) {
-  if (groups.length === 0) {
-    return <p className="empty-text">Noch keine Notizen.</p>
-  }
-
-  const getAgeToneClass = (dayISO: string) => {
-    const groupDate = new Date(`${dayISO}T12:00:00`)
-    if (Number.isNaN(groupDate.getTime())) {
-      return ''
-    }
-    const ageDays = daysBetween(new Date(), groupDate)
-    if (ageDays >= 60) return 'note-group--aged-3'
-    if (ageDays >= 30) return 'note-group--aged-2'
-    if (ageDays >= 14) return 'note-group--aged-1'
-    return ''
-  }
-
+  void groups
+  void onUndoDelete
+  void onDelete
+  void collapsedDays
+  void onToggleDay
   return (
     <>
-      {groups.map((group) => {
-        const isCollapsed = Boolean(collapsedDays[group.dayISO])
-        const ageToneClass = getAgeToneClass(group.dayISO)
-        return (
-          <section key={group.dayISO} className={ageToneClass ? `note-group ${ageToneClass}` : 'note-group'}>
-            <button
-              type="button"
-              className="day-divider day-divider-toggle"
-              onClick={() => onToggleDay(group.dayISO)}
-              aria-expanded={!isCollapsed}
-              aria-controls={`braindump-group-${group.dayISO}`}
-            >
-              <span>{group.label} ({group.notes.length})</span>
-              <svg
-                className={isCollapsed ? 'day-divider-toggle-icon' : 'day-divider-toggle-icon day-divider-toggle-icon--open'}
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  d="m8 10 4 4 4-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-            {!isCollapsed ? (
-              <ul id={`braindump-group-${group.dayISO}`} className="notes-list" aria-label={`${group.label} Notizen`}>
-                {group.notes.map((note) => (
-                  <BraindumpNoteRow
-                    key={note.id}
-                    note={note}
-                    onUndoDelete={onUndoDelete}
-                    onDelete={onDelete}
-                  />
-                ))}
-              </ul>
-            ) : null}
-          </section>
-        )
-      })}
       <div ref={endRef} />
     </>
   )
@@ -930,25 +785,11 @@ function AppContent() {
   const [braindumpNotes, setBraindumpNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [inboxCount, setInboxCount] = useState(0)
-  const [decidedTodayNotes, setDecidedTodayNotes] = useState<Note[]>([])
-  const [reviewIndex, setReviewIndex] = useState(0)
-  const [reviewLayoutPreference, setReviewLayoutPreference] = useState<ReviewLayoutPreference>(() => {
-    const stored = localStorage.getItem(REVIEW_LAYOUT_KEY)
-    if (stored === 'SINGLE' || stored === 'LIST' || stored === 'AUTO') {
-      return stored
-    }
-    return 'AUTO'
-  })
-  const [currentNoteId, setCurrentNoteId] = useState<string | null>(null)
-  const [showDecidedToday, setShowDecidedToday] = useState(false)
   const [processNotes, setProcessNotes] = useState<Note[]>([])
   const [processCount, setProcessCount] = useState(0)
   const [todoNotes, setTodoNotes] = useState<Note[]>([])
   const [todoStarOnly, setTodoStarOnly] = useState(false)
   const [archivedNotes, setArchivedNotes] = useState<Note[]>([])
-  const [searchQuery, setSearchQuery] = useState('')
-  const searchInputRef = useRef<HTMLInputElement | null>(null)
-  const [searchableNotes, setSearchableNotes] = useState<Note[]>([])
   const [showArchive, setShowArchive] = useState(false)
   const [showTodoArchive, setShowTodoArchive] = useState(false)
   const [showImportPanel, setShowImportPanel] = useState(false)
@@ -1011,26 +852,22 @@ function AppContent() {
       }
 
       const activeRoomId = roomIdOverride ?? syncRoomId
-      const [braindump, inbox, inboxTotal, decidedToday, process, processTotal, todo, archived, searchable] = await Promise.all([
+      const [braindump, inbox, inboxTotal, process, processTotal, todo, archived] = await Promise.all([
         listRecentActiveNotes(BRAINDUMP_FETCH_LIMIT),
         listInboxNotes(REVIEW_LIMIT),
         countInboxNotes(),
-        listDecidedNotesByDay(todayISO, 200),
         listNotesByStatus('PROCESS', 200),
         countNotesByStatus('PROCESS'),
         listTodoNotes(200),
         listNotesByStatus('ARCHIVE', 50),
-        listSearchableNotes(),
       ])
       setBraindumpNotes(braindump)
       setInboxNotes(inbox)
       setInboxCount(inboxTotal)
-      setDecidedTodayNotes(decidedToday)
       setProcessNotes(process)
       setProcessCount(processTotal)
       setTodoNotes(todo)
       setArchivedNotes(archived)
-      setSearchableNotes(searchable)
       const syncInfo = await getSyncDebugInfo(activeRoomId)
       setSyncEnabledState(syncInfo.isEnabled)
       setSyncPairCode(await getSyncPairCode(activeRoomId))
@@ -1067,10 +904,6 @@ function AppContent() {
     document.documentElement.dataset.theme = theme
     localStorage.setItem(THEME_KEY, theme)
   }, [theme])
-
-  useEffect(() => {
-    localStorage.setItem(REVIEW_LAYOUT_KEY, reviewLayoutPreference)
-  }, [reviewLayoutPreference])
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -1405,12 +1238,6 @@ function AppContent() {
   }, [handleScanResult, showScanner, stopScanner])
 
   const orderedInbox = useMemo(() => sortInboxForReview(inboxNotes), [inboxNotes])
-  const resolvedReviewLayout = useMemo<'SINGLE' | 'LIST'>(() => {
-    if (reviewLayoutPreference === 'AUTO') {
-      return orderedInbox.length > 3 ? 'LIST' : 'SINGLE'
-    }
-    return reviewLayoutPreference
-  }, [orderedInbox.length, reviewLayoutPreference])
   const reviewListGroups = useMemo(() => {
     const overdue: Note[] = []
     const ready: Note[] = []
@@ -1427,24 +1254,6 @@ function AppContent() {
     ] as const
   }, [orderedInbox])
   const supabaseConfigStatus = useMemo(() => getSupabaseRuntimeConfig(), [])
-  const pinnedReviewIndex = useMemo(() => {
-    if (!currentNoteId) {
-      return -1
-    }
-    return orderedInbox.findIndex((note) => note.id === currentNoteId)
-  }, [currentNoteId, orderedInbox])
-  const effectiveReviewIndex = pinnedReviewIndex >= 0 ? pinnedReviewIndex : reviewIndex
-
-  useEffect(() => {
-    if (orderedInbox.length === 0) {
-      setReviewIndex(0)
-      setCurrentNoteId(null)
-      return
-    }
-    if (reviewIndex >= orderedInbox.length) {
-      setReviewIndex(orderedInbox.length - 1)
-    }
-  }, [orderedInbox, reviewIndex])
 
   const isNearBottom = useCallback(() => {
     const container = mainScrollRef.current
@@ -1599,7 +1408,6 @@ function AppContent() {
     setError('')
     try {
       await updateNoteStatus(lastAction.noteId, lastAction.prevStatus)
-      setCurrentNoteId(lastAction.noteId)
       clearUndoTimeout()
       setLastAction(null)
       await refreshAll()
@@ -1609,14 +1417,6 @@ function AppContent() {
       setUndoBusy(false)
     }
   }
-
-  const handleSkipReview = useCallback(() => {
-    if (orderedInbox.length <= 1) {
-      return
-    }
-    setCurrentNoteId(null)
-    setReviewIndex((effectiveReviewIndex + 1) % orderedInbox.length)
-  }, [effectiveReviewIndex, orderedInbox.length])
 
   const handleExport = async () => {
     setInfo('')
@@ -1709,15 +1509,6 @@ function AppContent() {
     }
   }
 
-  const isSearchMode = searchQuery.trim().length > 0
-  const clearSearchInput = useCallback(() => {
-    setSearchQuery('')
-    requestAnimationFrame(() => {
-      searchInputRef.current?.focus({ preventScroll: true })
-    })
-  }, [])
-  const currentReviewNote = orderedInbox[effectiveReviewIndex] ?? null
-  const currentReviewCategory = currentReviewNote ? getReviewAgeCategory(currentReviewNote) : null
   const showUpdateNotice = needRefresh && !dismissedUpdateNotice
   const braindumpGroups = useMemo(() => {
     return groupNotesByDay(braindumpNotes, {
@@ -2015,23 +1806,6 @@ function AppContent() {
     [refreshAll],
   )
 
-  const searchEngine = useMemo(
-    () =>
-      new Fuse(searchableNotes, {
-        keys: ['text'],
-        threshold: 0.3,
-        ignoreLocation: true,
-      }),
-    [searchableNotes],
-  )
-
-  const searchResults = useMemo(() => {
-    if (!isSearchMode) {
-      return []
-    }
-    return searchEngine.search(searchQuery.trim(), { limit: SEARCH_RESULT_LIMIT })
-  }, [isSearchMode, searchEngine, searchQuery])
-
   const visibleTodoNotes = useMemo(
     () => (todoStarOnly ? todoNotes.filter((note) => note.starred) : todoNotes),
     [todoNotes, todoStarOnly],
@@ -2053,10 +1827,10 @@ function AppContent() {
 
   useEffect(() => {
     setOpenActionMenuId(null)
-  }, [activeTab, isSearchMode, scrollToBraindumpBottom])
+  }, [activeTab, scrollToBraindumpBottom])
 
   useEffect(() => {
-    if (activeTab !== 'BRAINDUMP' || isSearchMode) {
+    if (activeTab !== 'BRAINDUMP') {
       return
     }
     const frame = requestAnimationFrame(() => {
@@ -2064,10 +1838,10 @@ function AppContent() {
       shouldAutoScrollRef.current = true
     })
     return () => cancelAnimationFrame(frame)
-  }, [activeTab, isSearchMode, scrollToBraindumpBottom])
+  }, [activeTab, scrollToBraindumpBottom])
 
   useEffect(() => {
-    if (activeTab !== 'BRAINDUMP' || isSearchMode) {
+    if (activeTab !== 'BRAINDUMP') {
       return
     }
     if (!shouldAutoScrollRef.current) {
@@ -2077,38 +1851,7 @@ function AppContent() {
     nextAutoScrollBehaviorRef.current = 'auto'
     const frame = requestAnimationFrame(() => scrollToBraindumpBottom(behavior))
     return () => cancelAnimationFrame(frame)
-  }, [activeTab, braindumpGroups, isSearchMode, scrollToBraindumpBottom])
-
-  useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (activeTab !== 'REVIEW' || isSearchMode) return
-      if (staleReviewMode) return
-      if (resolvedReviewLayout !== 'SINGLE') return
-      if (isTypingTarget(event.target)) return
-      if (!currentReviewNote && event.key.toLowerCase() !== 'escape') return
-
-      const key = event.key.toLowerCase()
-      if (key === 't' && currentReviewNote) {
-        event.preventDefault()
-        void handleReviewDecision(currentReviewNote.id, 'TODO', { enableUndo: true, sourceNote: currentReviewNote })
-      } else if (key === 'p' && currentReviewNote) {
-        event.preventDefault()
-        void handleReviewDecision(currentReviewNote.id, 'PROCESS', { enableUndo: true, sourceNote: currentReviewNote })
-      } else if (key === 'd' && currentReviewNote) {
-        event.preventDefault()
-        void handleReviewDecision(currentReviewNote.id, 'DISCARD', { enableUndo: true, sourceNote: currentReviewNote })
-      } else if (key === 's' && currentReviewNote) {
-        event.preventDefault()
-        handleSkipReview()
-      } else if (key === 'escape') {
-        event.preventDefault()
-        setShowDecidedToday(false)
-      }
-    }
-
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeTab, currentReviewNote, isSearchMode, staleReviewMode, resolvedReviewLayout, handleSkipReview, handleReviewDecision])
+  }, [activeTab, braindumpGroups, scrollToBraindumpBottom])
 
   return (
     <AppShell
@@ -2139,12 +1882,12 @@ function AppContent() {
       }
       mainRef={mainScrollRef}
       onMainScroll={() => {
-        if (activeTab === 'BRAINDUMP' && !isSearchMode) {
+        if (activeTab === 'BRAINDUMP') {
           shouldAutoScrollRef.current = isNearBottom()
         }
       }}
       header={
-        <div className={isSearchMode ? 'app-content app-header-inner app-header-inner--search' : 'app-content app-header-inner'}>
+        <div className="app-content app-header-inner">
             <div className="mode-tabs" role="tablist" aria-label="Bereiche">
             <button
               type="button"
@@ -2183,22 +1926,6 @@ function AppContent() {
               To-Do
             </button>
             </div>
-
-          <div className={isSearchMode ? 'header-search header-search--active' : 'header-search'}>
-            <input
-              ref={searchInputRef}
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Suche Gedanken..."
-              aria-label="Suche Gedanken"
-            />
-            {isSearchMode ? (
-              <button type="button" className="header-search-reset" onClick={clearSearchInput} aria-label="Suche leeren">
-                ×
-              </button>
-            ) : null}
-          </div>
 
           <div className="header-actions">
             {syncStatus === 'offline' ? <span className="sync-pill">Offline</span> : null}
@@ -2420,28 +2147,6 @@ function AppContent() {
             ) : null}
 
             <div className="tab-content">
-          {isSearchMode ? (
-            <>
-              <h2>Treffer ({searchResults.length})</h2>
-              {searchResults.length === 0 ? <p className="empty-text">Keine passenden Gedanken gefunden.</p> : null}
-              <ul className="notes-list" aria-label="Suchtreffer">
-                {searchResults.map((result) => {
-                  const note = result.item
-                  return (
-                    <li key={note.id} className="note-item note-item--todo">
-                      <span className="note-content">
-                        <ExpandableNoteText text={note.text} />
-                        <span className="status-badge">{noteStatusLabel(note.status)}</span>
-                        <NoteTypeBadge note={note} />
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
-          ) : null}
-          {!isSearchMode ? (
-            <>
           {activeTab === 'BRAINDUMP' ? (
             <BraindumpPage
               groups={braindumpGroups}
@@ -2458,29 +2163,6 @@ function AppContent() {
             <>
               <div className="section-headline">
                 <h2>Review</h2>
-                <div className="view-mode-toggle" role="group" aria-label="Review Ansicht">
-                  <button
-                    type="button"
-                    className={reviewLayoutPreference === 'AUTO' ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
-                    onClick={() => setReviewLayoutPreference('AUTO')}
-                  >
-                    Auto
-                  </button>
-                  <button
-                    type="button"
-                    className={reviewLayoutPreference === 'SINGLE' ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
-                    onClick={() => setReviewLayoutPreference('SINGLE')}
-                  >
-                    Single
-                  </button>
-                  <button
-                    type="button"
-                    className={reviewLayoutPreference === 'LIST' ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
-                    onClick={() => setReviewLayoutPreference('LIST')}
-                  >
-                    Liste
-                  </button>
-                </div>
               </div>
               {!staleReviewMode && staleTodos.length > 0 ? (
                 <section className="stale-review-banner">
@@ -2541,7 +2223,7 @@ function AppContent() {
                     </div>
                   </article>
                 )
-              ) : resolvedReviewLayout === 'LIST' ? (
+              ) : (
                 orderedInbox.length === 0 ? (
                   <p className="empty-text">Keine offenen Gedanken.</p>
                 ) : (
@@ -2643,119 +2325,6 @@ function AppContent() {
                     ) : null}
                   </>
                 )
-              ) : currentReviewNote ? (
-                <article className="review-focus-card" aria-label="Aktueller Gedanke">
-                  <div className="review-focus-head">
-                    {reviewAgeLabel(currentReviewCategory ?? 'READY') ? (
-                      <span className={`age-badge age-badge--${currentReviewCategory?.toLowerCase()}`}>
-                        {reviewAgeLabel(currentReviewCategory ?? 'READY')}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="review-focus-text">
-                    <span className="note-text">{currentReviewNote.text}</span>
-                    <NoteTypeBadge note={currentReviewNote} />
-                  </div>
-                  <div className="review-actions-inline">
-                    <button
-                      type="button"
-                      className="review-btn review-btn--todo"
-                      onClick={() =>
-                        void handleReviewDecision(currentReviewNote.id, 'TODO', {
-                          enableUndo: true,
-                          sourceNote: currentReviewNote,
-                        })
-                      }
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      To-Do
-                    </button>
-                    <button
-                      type="button"
-                      className="review-btn review-btn--process"
-                      onClick={() =>
-                        void handleReviewDecision(currentReviewNote.id, 'PROCESS', {
-                          enableUndo: true,
-                          sourceNote: currentReviewNote,
-                        })
-                      }
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M12 4c-1.8 0-3.3 1-4 2.6a3.6 3.6 0 0 0-2.9 3.5c0 .9.3 1.7.9 2.4-.3.5-.4 1-.4 1.6 0 1.7 1.3 3 3 3h1.2V20h4.6v-2.9H16a3 3 0 0 0 3-3c0-.6-.2-1.1-.4-1.6.5-.7.8-1.5.8-2.4a3.6 3.6 0 0 0-2.9-3.5A4.4 4.4 0 0 0 12 4Z"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                        <path
-                          d="M10.5 8.8c.7.8.7 2 0 2.8m3-2.8c.7.8.7 2 0 2.8"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      Denken
-                    </button>
-                    <button
-                      type="button"
-                      className="review-btn review-btn--discard"
-                      onClick={() =>
-                        void handleReviewDecision(currentReviewNote.id, 'DISCARD', {
-                          enableUndo: true,
-                          sourceNote: currentReviewNote,
-                        })
-                      }
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M6 6l12 12M18 6 6 18"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      Verwerfen
-                    </button>
-                    <button type="button" className="review-btn review-btn--skip" onClick={handleSkipReview}>
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M5 12h12m0 0-4-4m4 4-4 4M19 7v10"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      Überspringen
-                    </button>
-                  </div>
-                  <p className="review-meta">
-                    {reviewAgeLabel(currentReviewCategory ?? 'READY') ? (
-                      <>Kategorie: {reviewAgeLabel(currentReviewCategory ?? 'READY')} · </>
-                    ) : null}
-                    {Math.min(effectiveReviewIndex + 1, orderedInbox.length)} von {inboxCount} offen
-                  </p>
-                  {inboxCount > inboxNotes.length ? (
-                    <p className="hint">Weitere offene Gedanken vorhanden.</p>
-                  ) : null}
-                </article>
-              ) : (
-                <p className="empty-text">Keine offenen Gedanken.</p>
               )}
 
               {lastAction ? (
@@ -2766,35 +2335,6 @@ function AppContent() {
                   </button>
                 </div>
               ) : null}
-
-              <section className="decided-section">
-                <button
-                  type="button"
-                  className="decided-toggle"
-                  onClick={() => setShowDecidedToday((prev) => !prev)}
-                >
-                  Heute entschieden ({decidedTodayNotes.length})
-                </button>
-                {showDecidedToday ? (
-                  <>
-                    {decidedTodayNotes.length === 0 ? (
-                      <p className="empty-text">Heute noch nichts entschieden.</p>
-                    ) : (
-                      <ul className="notes-list" aria-label="Heute entschiedene Gedanken">
-                        {decidedTodayNotes.map((note) => (
-                          <li key={note.id} className="note-item note-item--todo">
-                            <span className="note-content">
-                              <ExpandableNoteText text={note.text} />
-                              <span className="status-badge">{noteStatusLabel(note.status)}</span>
-                              <NoteTypeBadge note={note} />
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                ) : null}
-              </section>
             </>
           ) : null}
 
@@ -2802,13 +2342,6 @@ function AppContent() {
             <>
             <div className="section-headline">
               <h2>Gedanken ({processCount})</h2>
-              <button
-                type="button"
-                className="archive-toggle"
-                onClick={() => setShowArchive((prev) => !prev)}
-              >
-                {showArchive ? `Archiv ausblenden (${thinkingArchiveCount})` : `Archiv anzeigen (${thinkingArchiveCount})`}
-              </button>
             </div>
             {processCount === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
             {thinkingGroups.map((group) => (
@@ -2826,6 +2359,13 @@ function AppContent() {
                 </ul>
               </section>
             ))}
+            <button
+              type="button"
+              className="archive-toggle"
+              onClick={() => setShowArchive((prev) => !prev)}
+            >
+              {showArchive ? `Archiv ausblenden (${thinkingArchiveCount})` : `Archiv anzeigen (${thinkingArchiveCount})`}
+            </button>
             {showArchive ? (
               <>
                 <h3 className="archive-title">Archiv</h3>
@@ -2865,13 +2405,6 @@ function AppContent() {
                 >
                   {todoStarOnly ? 'Alle' : 'Stern'}
                 </button>
-                <button
-                  type="button"
-                  className={showTodoArchive ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
-                  onClick={() => setShowTodoArchive((prev) => !prev)}
-                >
-                  {showTodoArchive ? `Archiv ausblenden (${todoArchiveCount})` : `Archiv anzeigen (${todoArchiveCount})`}
-                </button>
               </div>
             </div>
             {lastTodoAction ? (
@@ -2906,6 +2439,13 @@ function AppContent() {
                 </ul>
               </section>
             ))}
+            <button
+              type="button"
+              className={showTodoArchive ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
+              onClick={() => setShowTodoArchive((prev) => !prev)}
+            >
+              {showTodoArchive ? `Archiv ausblenden (${todoArchiveCount})` : `Archiv anzeigen (${todoArchiveCount})`}
+            </button>
             {showTodoArchive ? (
               <>
                 <h3 className="archive-title">Archiv</h3>
@@ -2935,8 +2475,6 @@ function AppContent() {
 
               {info && activeTab !== 'DATA' ? <p className="hint">{info}</p> : null}
               {error ? <p className="error-text">{error}</p> : null}
-            </>
-          ) : null}
           </div>
         </section>
     </AppShell>
