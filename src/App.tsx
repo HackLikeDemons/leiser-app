@@ -305,7 +305,6 @@ const BraindumpList = memo(function BraindumpList({
     <>
       <section className="braindump-hero" aria-label="Braindump Einführung">
         <h2>Lass es raus.</h2>
-        <p>Roh rein. Sortieren im Review.</p>
       </section>
       <section className="braindump-context" aria-label="Status">
         <p className="braindump-context-stats">Inbox: {inboxCount} · Denken: {processCount} · To-Do: {todoCount}</p>
@@ -327,7 +326,7 @@ function FlowHero({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <section className="braindump-hero flow-hero" aria-label={title}>
       <h2>{title}</h2>
-      <p>{subtitle}</p>
+      {subtitle ? <p>{subtitle}</p> : null}
     </section>
   )
 }
@@ -2274,7 +2273,7 @@ function AppContent() {
             <>
               <FlowHero
                 title="Jetzt sortieren."
-                subtitle="Aus Inbox wird Richtung: Denken, To-Do oder Verwerfen."
+                subtitle="Weiter denken, umsetzen oder verwerfen."
               />
               <div className="section-headline">
                 <h2>Review</h2>
@@ -2340,7 +2339,18 @@ function AppContent() {
                 )
               ) : (
                 orderedInbox.length === 0 ? (
-                  <p className="empty-text">Inbox ist leer.</p>
+                  <section className="review-empty-cta" aria-label="Review leer">
+                    <p className="empty-text">Inbox ist leer.</p>
+                    <p className="hint">Du kannst direkt mit bestehenden Gedanken oder To-Dos weiterarbeiten.</p>
+                    <div className="review-empty-cta-actions">
+                      <button type="button" className="review-btn review-btn--process" onClick={() => setActiveTab('THINKING')}>
+                        Zu Gedanken
+                      </button>
+                      <button type="button" className="review-btn review-btn--todo" onClick={() => setActiveTab('TODO')}>
+                        Zu To-Do
+                      </button>
+                    </div>
+                  </section>
                 ) : (
                   <>
                     <p className="review-intro">
@@ -2450,8 +2460,8 @@ function AppContent() {
           {activeTab === 'THINKING' ? (
             <>
             <FlowHero
-              title="Als Gedanke weiterverarbeiten."
-              subtitle="Hier schärfst du Ideen, bis daraus ein klarer nächster Schritt wird."
+              title="Weiter denken"
+              subtitle=""
             />
             <div className="section-headline">
               <h2>Gedanken ({processCount})</h2>
@@ -2520,10 +2530,6 @@ function AppContent() {
 
           {activeTab === 'TODO' ? (
             <>
-            <FlowHero
-              title="Als To-Do übernehmen."
-              subtitle="Mach es konkret, priorisiere es und bring es ins Archiv."
-            />
             <div className="section-headline section-headline--todo">
               <h2>To-Do ({visibleTodoNotes.length}{todoStarOnly ? ` / ${todoNotes.length}` : ''})</h2>
               <div className="view-mode-toggle">
