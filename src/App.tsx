@@ -250,7 +250,7 @@ function ExpandableNoteText({ text }: { text: string }) {
 function todoActionLabel(status: NoteStatus) {
   if (status === 'ARCHIVE') return 'Als erledigt markiert.'
   if (status === 'INBOX') return 'Zurück in Inbox verschoben.'
-  return 'To-Do aktualisiert.'
+  return 'Handlung aktualisiert.'
 }
 
 function getReviewAgeCategory(note: Note): ReviewAgeCategory {
@@ -309,7 +309,7 @@ const BraindumpList = memo(function BraindumpList({
         <h2>Lass es raus</h2>
       </section>
       <section className="braindump-context" aria-label="Status">
-        <p className="braindump-context-stats">Inbox: {inboxCount} · Denken: {processCount} · To-Do: {todoCount}</p>
+        <p className="braindump-context-stats">Inbox: {inboxCount} · Denken: {processCount} · Handlungen: {todoCount}</p>
         <button type="button" className="review-btn review-btn--todo" onClick={onStartReview}>
           Review starten
         </button>
@@ -527,8 +527,8 @@ function ThinkingNoteRow({
           type="button"
           className="review-btn review-btn--todo review-btn--icon"
           onClick={() => onTodo(note.id)}
-          aria-label="Zu To-Do verschieben"
-          title="Zu To-Do"
+          aria-label="Zu Handlungen verschieben"
+          title="Zu Handlungen"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -623,8 +623,8 @@ function ArchivedTodoNoteRow({
           type="button"
           className="review-btn review-btn--todo review-btn--icon"
           onClick={() => onBackToTodo(note.id)}
-          aria-label="Zurück zu To-Do"
-          title="Zurück zu To-Do"
+          aria-label="Zurück zu Handlungen"
+          title="Zurück zu Handlungen"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -1780,7 +1780,7 @@ function AppContent() {
         setStaleQueueIds((prev) => prev.filter((id) => id !== currentStaleNote.id))
         await refreshAll()
       } catch {
-        setError('Stale-To-Do konnte nicht aktualisiert werden.')
+        setError('Alte Handlung konnte nicht aktualisiert werden.')
       }
     },
     [currentStaleNote, refreshAll],
@@ -1806,7 +1806,7 @@ function AppContent() {
       } catch {
         clearTodoUndoTimeout()
         setLastTodoAction(null)
-        setError('To-Do konnte nicht aktualisiert werden.')
+        setError('Handlung konnte nicht aktualisiert werden.')
       }
     },
     [todoNotes, refreshAll, startTodoUndoWindow],
@@ -1828,12 +1828,12 @@ function AppContent() {
           newStatus: 'ARCHIVE',
           at: Date.now(),
         })
-        setInfo('To-Do ins Archiv verschoben.')
+        setInfo('Handlung ins Archiv verschoben.')
         await refreshAll()
       } catch {
         clearTodoUndoTimeout()
         setLastTodoAction(null)
-        setError('To-Do konnte nicht aktualisiert werden.')
+        setError('Handlung konnte nicht aktualisiert werden.')
       }
     },
     [todoNotes, refreshAll, startTodoUndoWindow],
@@ -1872,7 +1872,7 @@ function AppContent() {
       setLastTodoAction(null)
       await refreshAll()
     } catch {
-      setError('Rückgängig für To-Do fehlgeschlagen.')
+      setError('Rückgängig für Handlung fehlgeschlagen.')
     } finally {
       setTodoUndoBusy(false)
     }
@@ -1925,10 +1925,10 @@ function AppContent() {
       setError('')
       try {
         await deleteNote(id)
-        showTransientInfo('To-Do endgültig gelöscht.')
+        showTransientInfo('Handlung endgültig gelöscht.')
         await refreshAll()
       } catch {
-        setError('To-Do konnte nicht gelöscht werden.')
+        setError('Handlung konnte nicht gelöscht werden.')
       }
     },
     [refreshAll, showTransientInfo],
@@ -2021,37 +2021,37 @@ function AppContent() {
               type="button"
               className={activeTab === 'BRAINDUMP' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('BRAINDUMP')}
-              aria-label="Braindump"
-              title="Braindump"
+              aria-label="Erfassen"
+              title="Erfassen"
             >
-              Braindump
+              Erfassen
             </button>
             <button
               type="button"
               className={activeTab === 'REVIEW' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('REVIEW')}
-              aria-label="Review"
-              title="Review"
+              aria-label="Sortieren"
+              title="Sortieren"
             >
-              Review
+              Sortieren
             </button>
             <button
               type="button"
               className={activeTab === 'THINKING' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('THINKING')}
-              aria-label="Gedanken"
-              title="Gedanken"
+              aria-label="Reflektieren"
+              title="Reflektieren"
             >
-              Gedanken
+              Reflektieren
             </button>
             <button
               type="button"
               className={activeTab === 'TODO' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('TODO')}
-              aria-label="To-Do"
-              title="To-Do"
+              aria-label="Handeln"
+              title="Handeln"
             >
-              To-Do
+              Handeln
             </button>
             </div>
 
@@ -2301,7 +2301,7 @@ function AppContent() {
               </div>
               {!staleReviewMode && staleTodos.length > 0 ? (
                 <section className="stale-review-banner">
-                  <span>Du hast {staleTodos.length} alte To-Dos (&gt;14 Tage). Kurz prüfen?</span>
+                  <span>Du hast {staleTodos.length} alte Handlungen (&gt;14 Tage). Kurz prüfen?</span>
                   <button type="button" className="review-btn review-btn--todo" onClick={startStaleReview}>
                     Prüfen
                   </button>
@@ -2310,7 +2310,7 @@ function AppContent() {
 
               {staleReviewMode ? (
                 currentStaleNote ? (
-                  <article className="review-focus-card" aria-label="Altes To-Do im Fokus">
+                  <article className="review-focus-card" aria-label="Alte Handlung im Fokus">
                     <div className="review-focus-head">
                       <span className="age-badge age-badge--overdue">Alt (&gt;14 Tage)</span>
                     </div>
@@ -2361,14 +2361,14 @@ function AppContent() {
               ) : (
                 orderedInbox.length === 0 ? (
                   <section className="review-empty-cta" aria-label="Review leer">
-                    <p className="empty-text">Inbox ist leer.</p>
-                    <p className="hint">Du kannst direkt mit bestehenden Gedanken oder To-Dos weiterarbeiten.</p>
+                    <p className="empty-text">Deine Inbox ist leer.</p>
+                    <p className="hint">Du kannst direkt mit bestehenden Gedanken oder Handlungen weiterarbeiten.</p>
                     <div className="review-empty-cta-actions">
                       <button type="button" className="review-btn review-btn--process" onClick={() => setActiveTab('THINKING')}>
                         Zu Gedanken
                       </button>
                       <button type="button" className="review-btn review-btn--todo" onClick={() => setActiveTab('TODO')}>
-                        Zu To-Do
+                        Zu Handlungen
                       </button>
                     </div>
                   </section>
@@ -2377,7 +2377,7 @@ function AppContent() {
                     <p className="review-intro">
                       {overdueReviewCount > 0
                         ? `${overdueReviewCount} überfällige Einträge zuerst klären.`
-                        : 'Einträge kurz einsortieren: To-Do, Denken oder Verwerfen.'}
+                        : 'Einträge kurz einsortieren: Handlungen, Denken oder Verwerfen.'}
                     </p>
                     <ul className="notes-list" aria-label="Review Liste">
                       {orderedInbox.map((note) => (
@@ -2398,8 +2398,8 @@ function AppContent() {
                               onClick={() =>
                                 void handleReviewDecision(note.id, 'TODO', { enableUndo: true, sourceNote: note })
                               }
-                              aria-label="Als To-Do markieren"
-                              title="To-Do"
+                              aria-label="Als Handlung markieren"
+                              title="Als Handlung markieren"
                             >
                               <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <path
@@ -2552,13 +2552,13 @@ function AppContent() {
           {activeTab === 'TODO' ? (
             <>
             <div className="section-headline section-headline--todo">
-              <h2>To-Do ({visibleTodoNotes.length}{todoStarOnly ? ` / ${todoNotes.length}` : ''})</h2>
+              <h2>Handlungen ({visibleTodoNotes.length}{todoStarOnly ? ` / ${todoNotes.length}` : ''})</h2>
               <div className="view-mode-toggle">
                 <button
                   type="button"
                   className={todoStarOnly ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
                   onClick={() => setTodoStarOnly((prev) => !prev)}
-                  aria-label={todoStarOnly ? 'Alle To-Dos anzeigen' : 'Nur wichtige To-Dos anzeigen'}
+                  aria-label={todoStarOnly ? 'Alle Handlungen anzeigen' : 'Nur wichtige Handlungen anzeigen'}
                   title={todoStarOnly ? 'Alle' : 'Wichtig'}
                 >
                   {todoStarOnly ? 'Alle' : '★'}
@@ -2577,14 +2577,14 @@ function AppContent() {
                 </button>
               </div>
             ) : null}
-            {todoNotes.length === 0 ? <p className="empty-text">Keine offenen To-Dos.</p> : null}
+            {todoNotes.length === 0 ? <p className="empty-text">Keine offenen Handlungen.</p> : null}
             {todoNotes.length > 0 && visibleTodoNotes.length === 0 ? (
-              <p className="empty-text">Keine To-Dos mit Stern.</p>
+              <p className="empty-text">Keine Handlungen mit Stern.</p>
             ) : null}
             {todoGroups.map((group) => (
               <section key={group.dayISO} className="note-group">
                 <div className="day-divider">{group.label}</div>
-                <ul className="notes-list" aria-label={`To-Do ${group.label}`}>
+                <ul className="notes-list" aria-label={`Handlungen ${group.label}`}>
                   {group.notes.map((note) => (
                     <TodoNoteRow
                       key={note.id}
@@ -2623,7 +2623,7 @@ function AppContent() {
                 {archivedTodoGroups.map((group) => (
                   <section key={group.dayISO} className="note-group">
                     <div className="day-divider">{group.label}</div>
-                    <ul className="notes-list" aria-label={`To-Do Archiv ${group.label}`}>
+                    <ul className="notes-list" aria-label={`Handlungen Archiv ${group.label}`}>
                       {group.notes.map((note) => (
                         <ArchivedTodoNoteRow
                           key={note.id}

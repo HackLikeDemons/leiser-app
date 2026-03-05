@@ -437,7 +437,7 @@ button:hover {
   background: var(--surface-input);
   color: var(--text-primary);
   font: inherit;
-  resize: vertical;
+  resize: none;
   caret-color: var(--accent);
 }
 
