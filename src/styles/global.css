@@ -1219,7 +1219,7 @@ button:focus {
   }
 
   .app-main--with-footer {
-    padding-bottom: calc(var(--footer-height, 118px) + 0.35rem + var(--safe-bottom));
+    padding-bottom: calc(var(--footer-height, 118px) + 0.12rem);
   }
 
   .app-footer {
