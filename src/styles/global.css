@@ -518,10 +518,10 @@ button:hover {
   overflow-wrap: anywhere;
 }
 
-.capture-separator {
-  color: var(--text-muted);
+.capture-hint::before {
+  content: '·';
+  margin: 0 0.34rem 0 0.1rem;
   opacity: 0.7;
-  line-height: 1;
 }
 
 .capture-meta-row {
