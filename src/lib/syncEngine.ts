@@ -27,6 +27,7 @@ type SyncDiagnostics = {
   snapshotApplied: number
   changeApplied: number
   snapshotRescues: number
+  signatureRejected: number
   remoteChangedRetries: number
   pendingOutboxCount: number
 }
@@ -183,6 +184,7 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
         snapshotApplied: 0,
         changeApplied: 0,
         snapshotRescues: 0,
+        signatureRejected: 0,
       }
     }
 
@@ -193,6 +195,7 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
     let snapshotApplied = 0
     let changeApplied = 0
     let snapshotRescues = 0
+    let signatureRejected = 0
 
     for (const rawItem of blob.changes) {
       const item = asSyncEnvelope(rawItem)
@@ -207,9 +210,13 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
       }
 
       if (item.signature) {
-        const signatureValid = await verifyTrustedEnvelope(item)
-        if (!signatureValid) {
-          continue
+        try {
+          const signatureValid = await verifyTrustedEnvelope(item)
+          if (!signatureValid) {
+            signatureRejected += 1
+          }
+        } catch {
+          signatureRejected += 1
         }
       }
 
@@ -251,23 +258,33 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
       await markInboxSeen(seenKeys, 30 * 24 * 60 * 60 * 1000)
     }
 
-    return { applied, seen: seenKeys.length, remoteEnvelopes, remoteSeen, snapshotApplied, changeApplied, snapshotRescues }
+    return {
+      applied,
+      seen: seenKeys.length,
+      remoteEnvelopes,
+      remoteSeen,
+      snapshotApplied,
+      changeApplied,
+      snapshotRescues,
+      signatureRejected,
+    }
   }
 
   const pullOnce = async () => {
     const syncState = await getSyncState(roomId)
     if (!syncState.isEnabled) {
       setStatus('disabled')
-      return {
-        applied: false,
-        seen: 0,
-        remoteEnvelopes: [] as ChangeEnvelope[],
-        remoteSeen: 0,
-        snapshotApplied: 0,
-        changeApplied: 0,
-        snapshotRescues: 0,
+        return {
+          applied: false,
+          seen: 0,
+          remoteEnvelopes: [] as ChangeEnvelope[],
+          remoteSeen: 0,
+          snapshotApplied: 0,
+          changeApplied: 0,
+          snapshotRescues: 0,
+          signatureRejected: 0,
+        }
       }
-    }
     if (!syncState.syncToken) {
       await updateSyncState(roomId, { lastError: 'Sync-Token fehlt. Bitte Sync neu aktivieren.' })
       setStatus('error', 'Sync-Token fehlt. Bitte Sync neu aktivieren.')
@@ -279,6 +296,7 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
         snapshotApplied: 0,
         changeApplied: 0,
         snapshotRescues: 0,
+        signatureRejected: 0,
       }
     }
 
@@ -332,6 +350,7 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
         snapshotApplied: merged.snapshotApplied,
         changeApplied: merged.changeApplied,
         snapshotRescues: merged.snapshotRescues,
+        signatureRejected: merged.signatureRejected,
         remoteChangedRetries: 0,
         pendingOutboxCount: 0,
       })
@@ -434,6 +453,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
     let totalSnapshotApplied = 0
     let totalChangeApplied = 0
     let totalSnapshotRescues = 0
+    let totalSignatureRejected = 0
     let remoteChangedRetries = 0
     let pendingOutboxCount = 0
     let repairedInboxSeenCache = false
@@ -452,6 +472,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
         let snapshotApplied = 0
         let changeApplied = 0
         let snapshotRescues = 0
+        let signatureRejected = 0
 
         for (const rawItem of remoteBlob?.changes ?? []) {
           const item = asSyncEnvelope(rawItem)
@@ -463,8 +484,14 @@ export async function syncNow(options: SyncNowOptions = {}) {
             continue
           }
           if (item.signature) {
-            const signatureValid = await verifyTrustedEnvelope(item)
-            if (!signatureValid) continue
+            try {
+              const signatureValid = await verifyTrustedEnvelope(item)
+              if (!signatureValid) {
+                signatureRejected += 1
+              }
+            } catch {
+              signatureRejected += 1
+            }
           }
 
           let appliedChange = false
@@ -504,7 +531,16 @@ export async function syncNow(options: SyncNowOptions = {}) {
         if (seenKeys.length > 0) {
           await markInboxSeen(seenKeys, 30 * 24 * 60 * 60 * 1000)
         }
-        return { applied, seen: seenKeys.length, remoteEnvelopes, remoteSeen, snapshotApplied, changeApplied, snapshotRescues }
+        return {
+          applied,
+          seen: seenKeys.length,
+          remoteEnvelopes,
+          remoteSeen,
+          snapshotApplied,
+          changeApplied,
+          snapshotRescues,
+          signatureRejected,
+        }
       })()
 
       totalSeen += merged.seen
@@ -513,6 +549,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
       totalSnapshotApplied += merged.snapshotApplied
       totalChangeApplied += merged.changeApplied
       totalSnapshotRescues += merged.snapshotRescues
+      totalSignatureRejected += merged.signatureRejected
 
       const pending = await listPendingOutboxChanges(roomId, 200)
       const localEnvelopes = pending.map((row) => decodeOutboxEnvelope(row.bytes))
@@ -581,6 +618,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
       snapshotApplied: totalSnapshotApplied,
       changeApplied: totalChangeApplied,
       snapshotRescues: totalSnapshotRescues,
+      signatureRejected: totalSignatureRejected,
       remoteChangedRetries,
       pendingOutboxCount,
     })
