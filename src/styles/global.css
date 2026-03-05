@@ -669,22 +669,19 @@ button:hover {
   margin: 0;
 }
 
-.section-headline--todo {
-  justify-content: flex-end;
-  align-items: center;
-}
-
-.section-headline--todo .view-mode-toggle {
-  margin-left: auto;
-  justify-content: flex-end;
-}
-
 .view-mode-toggle {
   display: inline-flex;
   gap: 0.3rem;
   align-items: center;
   flex-wrap: wrap;
   max-width: 100%;
+}
+
+.todo-filter-row {
+  margin-top: 0.35rem;
+  margin-bottom: 0.1rem;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .archive-toggle {
@@ -867,57 +864,6 @@ button:hover {
   gap: 0.24rem;
   align-items: center;
   justify-content: flex-end;
-}
-
-.note-actions-menu {
-  position: relative;
-}
-
-.note-actions-trigger {
-  width: 40px;
-  height: 40px;
-  opacity: 0.7;
-  background: transparent;
-  border-color: color-mix(in srgb, var(--border-default) 88%, transparent);
-}
-
-.note-actions-trigger:hover,
-.note-actions-trigger:focus-visible,
-.note-actions-menu:focus-within .note-actions-trigger {
-  opacity: 1;
-  background: var(--surface-button);
-  border-color: var(--border-default);
-}
-
-.note-actions-dropdown {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  min-width: 150px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  background: var(--surface-card);
-  box-shadow: var(--shadow-soft);
-  padding: 0.22rem;
-  z-index: 40;
-}
-
-.note-actions-item {
-  width: 100%;
-  min-height: 40px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  text-align: left;
-  padding: 0.45rem 0.55rem;
-}
-
-.note-actions-item:hover {
-  background: var(--surface-button);
-}
-
-.note-actions-item--destructive {
-  color: color-mix(in srgb, #cf7480 70%, var(--text-primary));
 }
 
 .note-text {
@@ -1357,20 +1303,6 @@ button:focus {
 
   .view-mode-toggle {
     width: 100%;
-  }
-
-  .section-headline--todo {
-    align-items: center;
-  }
-
-  .section-headline--todo > h2 {
-    width: auto;
-  }
-
-  .section-headline--todo .view-mode-toggle {
-    width: auto;
-    margin-left: auto;
-    justify-content: flex-end;
   }
 
   .capture-meta-row {

@@ -26,7 +26,10 @@ import { buildBackupData, importBackupJson, type ImportMode, type ImportReport }
 import { getLocalDayISO, getYesterdayISO, groupNotesByDay } from './lib/date'
 import type { Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
+import { FlowHero } from './app/FlowHero'
 import { FooterProvider } from './app/FooterContext'
+import { DataScreen } from './app/data/DataScreen'
+import type { DevSyncInfo } from './app/data/SyncPanel'
 import { getSupabaseRuntimeConfig } from './lib/runtimeConfig'
 import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } from './lib/syncEngine'
 
@@ -65,15 +68,6 @@ type LastAction = {
 type CaptureFeedback = {
   id: number
   text: string
-}
-
-type DevSyncInfo = {
-  deviceId: string
-  roomId: string
-  lastPulledSeq: number
-  lastPushedAt: string | null
-  isEnabled: boolean
-  syncToken: string | null
 }
 
 function encodeBase64Url(input: string) {
@@ -302,15 +296,6 @@ const BraindumpList = memo(function BraindumpList({
     </>
   )
 })
-
-function FlowHero({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <section className="braindump-hero flow-hero" aria-label={title}>
-      <h2>{title}</h2>
-      {subtitle ? <p>{subtitle}</p> : null}
-    </section>
-  )
-}
 
 function TodoNoteRow({
   note,
@@ -584,7 +569,7 @@ function BraindumpComposer({
     return 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window
   }, [])
 
-  const submit = async (entries: string[]) => {
+  const submit = useCallback(async (entries: string[]) => {
     const cleaned = entries.map((entry) => entry.trim()).filter((entry) => entry.length > 0)
     if (cleaned.length === 0) {
       return
@@ -602,7 +587,7 @@ function BraindumpComposer({
     if (!(typeof window !== 'undefined' && window.visualViewport)) {
       inputRef.current?.focus({ preventScroll: true })
     }
-  }
+  }, [onSubmitEntries])
 
   const handleTextKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) {
@@ -696,7 +681,7 @@ function BraindumpComposer({
     dictationAutoSubmitOnEndRef.current = true
     recognitionRef.current = recognition
     setIsDictating(true)
-  }, [supportsDictation, text])
+  }, [submit, supportsDictation, text])
 
   useEffect(() => {
     latestTextRef.current = text
@@ -886,7 +871,7 @@ function AppContent() {
     } catch {
       setError('Daten konnten nicht geladen werden.')
     }
-  }, [syncRoomId, todayISO])
+  }, [syncRoomId])
 
   useEffect(() => {
     void refreshAll()
@@ -1115,7 +1100,16 @@ function AppContent() {
 
       try {
         await runSyncNowForRoom(payload.roomId)
-        setInfo('Gerät gekoppelt. Sync erfolgreich.')
+        const message = 'Gerät gekoppelt. Sync erfolgreich.'
+        setInfo(message)
+        if (transientInfoTimeoutRef.current !== null) {
+          window.clearTimeout(transientInfoTimeoutRef.current)
+          transientInfoTimeoutRef.current = null
+        }
+        transientInfoTimeoutRef.current = window.setTimeout(() => {
+          setInfo((current) => (current === message ? '' : current))
+          transientInfoTimeoutRef.current = null
+        }, FEEDBACK_VISIBILITY_MS)
       } catch (error) {
         if (isTokenRejectedError(error)) {
           if (previousStorage.roomId && previousStorage.token) {
@@ -1994,205 +1988,45 @@ function AppContent() {
     >
       <section className="app-content">
             {activeTab === 'DATA' ? (
-              <section className="data-section" aria-label="Daten">
-                <FlowHero
-                  title="Sichern, verbinden, verwalten"
-                  subtitle="Backups steuern und Geräte sicher koppeln."
-                />
-                <div className="data-panel">
-                  <div className="data-layout">
-                    <section className="data-card" aria-label="Backup und Sync">
-                      <h3>Backup und Sync</h3>
-                      <div className="data-actions">
-                        <button type="button" onClick={() => void handleExport()}>
-                          Backup exportieren
-                        </button>
-                        <button type="button" onClick={() => setShowImportPanel((prev) => !prev)}>
-                          {showImportPanel ? 'Import schließen' : 'Backup importieren'}
-                        </button>
-                        <button type="button" onClick={() => void handleToggleSyncEnabled()}>
-                          {syncEnabled ? 'Sync deaktivieren' : 'Sync aktivieren'}
-                        </button>
-                        <button type="button" onClick={() => setShowDebugInfo((prev) => !prev)}>
-                          {showDebugInfo ? 'Debug-Infos ausblenden' : 'Debug-Infos anzeigen'}
-                        </button>
-                        <button type="button" onClick={() => void handleSyncNow()} disabled={!syncEnabled || syncNowBusy}>
-                          {syncNowBusy ? 'Sync läuft…' : 'Sync now (Debug)'}
-                        </button>
-                      </div>
-
-                      {showImportPanel ? (
-                        <div className="import-panel">
-                          <input
-                            type="file"
-                            accept="application/json,.json"
-                            onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
-                          />
-                          <label className="import-mode-option">
-                            <input
-                              type="radio"
-                              name="importMode"
-                              checked={importMode === 'MERGE'}
-                              onChange={() => setImportMode('MERGE')}
-                            />
-                            <span>Zusammenführen (empfohlen)</span>
-                          </label>
-                          <label className="import-mode-option">
-                            <input
-                              type="radio"
-                              name="importMode"
-                              checked={importMode === 'REPLACE'}
-                              onChange={() => setImportMode('REPLACE')}
-                            />
-                            <span>Ersetzen (löscht lokale Daten)</span>
-                          </label>
-                          <button type="button" onClick={() => void handleImport()}>
-                            Import starten
-                          </button>
-                        </div>
-                      ) : null}
-
-                      <div className="data-status">
-                        {importReport ? (
-                          <p className="hint">
-                            Importiert: {importReport.imported} · Aktualisiert: {importReport.updated} · Übersprungen:{' '}
-                            {importReport.skipped} · Ungültig: {importReport.invalid}
-                          </p>
-                        ) : null}
-                        {info ? <p className="hint">{info}</p> : null}
-                        {offlineReady ? <p className="hint">Offline bereit.</p> : null}
-                        {showDebugInfo && syncStatus === 'syncing' ? (
-                          <p className="hint">{syncError ?? 'Sync läuft im Hintergrund.'}</p>
-                        ) : null}
-                        {syncStatus === 'offline' ? <p className="hint">Sync pausiert (offline).</p> : null}
-                        {syncStatus === 'error' && syncError ? <p className="error-text">{syncError}</p> : null}
-                        {showDebugInfo ? (
-                          <p className="hint">
-                            Supabase-Konfiguration:{' '}
-                            {supabaseConfigStatus.configured
-                              ? supabaseConfigStatus.source === 'runtime'
-                                ? 'geladen (runtime.json)'
-                                : 'geladen (VITE)'
-                              : 'fehlt'}
-                          </p>
-                        ) : null}
-                        {showDebugInfo ? (
-                          <p className="hint">Letzter Sync: {toSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p>
-                        ) : null}
-                      </div>
-
-                      {showDebugInfo && syncDiagnostics ? (
-                        <div className="dev-sync-panel">
-                          <p className="hint">
-                            Sync Diagnose ({syncDiagnostics.mode}) · {toSyncTimeLabel(syncDiagnostics.atISO)}
-                          </p>
-                          <p className="hint">
-                            Remote gesehen: {syncDiagnostics.remoteEnvelopesSeen} · angewendet:{' '}
-                            {syncDiagnostics.remoteEnvelopesApplied}
-                          </p>
-                          <p className="hint">
-                            Snapshot: {syncDiagnostics.snapshotApplied} · Changes: {syncDiagnostics.changeApplied} ·
-                            Snapshot-Rescue: {syncDiagnostics.snapshotRescues}
-                          </p>
-                          <p className="hint">
-                            Retry (remote changed): {syncDiagnostics.remoteChangedRetries} · Pending Outbox:{' '}
-                            {syncDiagnostics.pendingOutboxCount}
-                          </p>
-                        </div>
-                      ) : null}
-
-                      {showDebugInfo && import.meta.env.DEV && devSyncInfo ? (
-                        <div className="dev-sync-panel">
-                          <p className="hint">Device ID: {devSyncInfo.deviceId}</p>
-                          <p className="hint">Room ID: {devSyncInfo.roomId}</p>
-                          <p className="hint">Last Pulled Seq: {devSyncInfo.lastPulledSeq}</p>
-                          <p className="hint">Sync enabled: {String(devSyncInfo.isEnabled)}</p>
-                          <p className="hint">Sync token: {devSyncInfo.syncToken ? 'gesetzt' : 'nicht gesetzt'}</p>
-                        </div>
-                      ) : null}
-                    </section>
-
-                    <section className="data-card pairing-panel" aria-label="Geräte koppeln">
-                      <h3>Geräte koppeln</h3>
-                      <div className="data-actions">
-                        <button type="button" onClick={handleShowPairQr} disabled={!syncPairCode}>
-                          QR-Code anzeigen
-                        </button>
-                        <button type="button" onClick={handleOpenScanner}>
-                          QR scannen
-                        </button>
-                      </div>
-                      <p className="hint">Nur mit Geräten teilen, denen du vertraust.</p>
-                      {scannerHint ? <p className="hint">{scannerHint}</p> : null}
-                      {syncPairCode ? (
-                        <div className="import-panel">
-                          <label className="hint" htmlFor="sync-pair-code">Pair Code (mit Token)</label>
-                          <textarea id="sync-pair-code" readOnly value={syncPairCode} rows={2} />
-                          <button type="button" onClick={() => void handleCopyPairCode()}>
-                            Pair Code kopieren
-                          </button>
-                        </div>
-                      ) : null}
-                      <div className="import-panel">
-                        <label className="hint" htmlFor="sync-pair-import">Pair Code einfügen</label>
-                        <textarea
-                          id="sync-pair-import"
-                          value={syncPairCodeDraft}
-                          onChange={(event) => setSyncPairCodeDraft(event.target.value)}
-                          rows={2}
-                          placeholder='leiser://pair?... oder {"roomId":"...","token":"..."}'
-                        />
-                        <div className="data-actions">
-                          <button type="button" onClick={() => void handlePasteFromClipboard()}>
-                            Aus Zwischenablage
-                          </button>
-                          <button type="button" onClick={() => void handleImportPairCode()} disabled={!syncPairCodeDraft.trim()}>
-                            Pairing importieren
-                          </button>
-                        </div>
-                      </div>
-                    </section>
-                  </div>
-
-                  {showPairQr ? (
-                    <div className="pairing-modal-backdrop" role="presentation" onClick={() => setShowPairQr(false)}>
-                      <div
-                        className="pairing-modal"
-                        role="dialog"
-                        aria-modal="true"
-                        aria-label="Pairing QR-Code"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <h3>Pairing QR-Code</h3>
-                        <canvas ref={qrCanvasRef} width={256} height={256} />
-                        <p className="hint">Nur mit Geräten teilen, denen du vertraust.</p>
-                        <button type="button" onClick={() => setShowPairQr(false)}>
-                          Schließen
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {showScanner ? (
-                    <div className="pairing-modal-backdrop" role="presentation" onClick={handleScannerCancel}>
-                      <div
-                        className="pairing-modal pairing-modal--scanner"
-                        role="dialog"
-                        aria-modal="true"
-                        aria-label="QR Scanner"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <h3>QR scannen</h3>
-                        <video ref={scannerVideoRef} className="pairing-scanner-video" muted playsInline />
-                        <p className="hint">Kamera auf den Pairing-QR-Code halten.</p>
-                        <button type="button" onClick={handleScannerCancel}>
-                          Abbrechen
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </section>
+              <DataScreen
+                onExport={() => void handleExport()}
+                showImportPanel={showImportPanel}
+                onToggleImportPanel={() => setShowImportPanel((prev) => !prev)}
+                onImportFileChange={setImportFile}
+                importMode={importMode}
+                onImportModeChange={setImportMode}
+                onImport={() => void handleImport()}
+                onToggleSyncEnabled={() => void handleToggleSyncEnabled()}
+                syncEnabled={syncEnabled}
+                onToggleDebugInfo={() => setShowDebugInfo((prev) => !prev)}
+                showDebugInfo={showDebugInfo}
+                onSyncNow={() => void handleSyncNow()}
+                syncNowBusy={syncNowBusy}
+                importReport={importReport}
+                info={info}
+                offlineReady={offlineReady}
+                syncStatus={syncStatus}
+                syncError={syncError}
+                supabaseConfigStatus={supabaseConfigStatus}
+                devSyncInfo={devSyncInfo}
+                syncDiagnostics={syncDiagnostics}
+                formatSyncTimeLabel={toSyncTimeLabel}
+                syncPairCode={syncPairCode}
+                scannerHint={scannerHint}
+                syncPairCodeDraft={syncPairCodeDraft}
+                onShowPairQr={handleShowPairQr}
+                onOpenScanner={handleOpenScanner}
+                onCopyPairCode={() => void handleCopyPairCode()}
+                onPairCodeDraftChange={setSyncPairCodeDraft}
+                onPasteFromClipboard={() => void handlePasteFromClipboard()}
+                onImportPairCode={() => void handleImportPairCode()}
+                showPairQr={showPairQr}
+                onClosePairQr={() => setShowPairQr(false)}
+                qrCanvasRef={qrCanvasRef}
+                showScanner={showScanner}
+                onCancelScanner={handleScannerCancel}
+                scannerVideoRef={scannerVideoRef}
+              />
             ) : null}
 
             <div className="tab-content">
@@ -2285,11 +2119,9 @@ function AppContent() {
                   </section>
                 ) : (
                   <>
-                    <p className="review-intro">
-                      {overdueReviewCount > 0
-                        ? `${overdueReviewCount} überfällige Einträge zuerst klären.`
-                        : 'Einträge kurz einsortieren: Handlungen, Denken oder Verwerfen.'}
-                    </p>
+                    {overdueReviewCount > 0 ? (
+                      <p className="review-intro">{`${overdueReviewCount} überfällige Einträge zuerst klären.`}</p>
+                    ) : null}
                     <ul className="notes-list" aria-label="Review Liste">
                       {orderedInbox.map((note) => (
                         <li key={note.id} className="note-item note-item--todo">
@@ -2463,18 +2295,24 @@ function AppContent() {
               title="Nächste Schritte"
               subtitle=""
             />
-            <div className="section-headline section-headline--todo">
-              <div className="view-mode-toggle">
-                <button
-                  type="button"
-                  className={todoStarOnly ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
-                  onClick={() => setTodoStarOnly((prev) => !prev)}
-                  aria-label={todoStarOnly ? 'Alle Handlungen anzeigen' : 'Nur wichtige Handlungen anzeigen'}
-                  title={todoStarOnly ? 'Alle' : 'Wichtig'}
-                >
-                  {todoStarOnly ? 'Alle' : '★'}
-                </button>
-              </div>
+            <div className="todo-filter-row">
+              <button
+                type="button"
+                className={todoStarOnly ? 'review-btn review-btn--star review-btn--star-active review-btn--icon' : 'review-btn review-btn--star review-btn--icon'}
+                onClick={() => setTodoStarOnly((prev) => !prev)}
+                aria-label={todoStarOnly ? 'Alle Handlungen anzeigen' : 'Nur wichtige Handlungen anzeigen'}
+                title={todoStarOnly ? 'Filter: Alle Handlungen' : 'Filter: Nur wichtige Handlungen'}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="m12 3.8 2.6 5.2 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z"
+                    fill={todoStarOnly ? 'currentColor' : 'none'}
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
             </div>
             {lastTodoAction ? (
               <div className="undo-snackbar undo-snackbar--subtle" role="status" aria-live="polite">
