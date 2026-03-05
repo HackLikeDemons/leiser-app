@@ -1720,10 +1720,6 @@ function AppContent() {
       searchInputRef.current?.focus({ preventScroll: true })
     })
   }, [])
-  const clearSearch = useCallback(() => {
-    setSearchQuery('')
-    searchInputRef.current?.blur()
-  }, [])
   const currentReviewNote = orderedInbox[effectiveReviewIndex] ?? null
   const currentReviewCategory = currentReviewNote ? getReviewAgeCategory(currentReviewNote) : null
   const showUpdateNotice = needRefresh && !dismissedUpdateNotice
@@ -2182,14 +2178,9 @@ function AppContent() {
               aria-label="Suche Gedanken"
             />
             {isSearchMode ? (
-              <>
-                <button type="button" className="header-search-reset" onClick={clearSearchInput} aria-label="Suche leeren">
-                  ×
-                </button>
-                <button type="button" className="header-search-clear" onClick={clearSearch}>
-                  Zurück
-                </button>
-              </>
+              <button type="button" className="header-search-reset" onClick={clearSearchInput} aria-label="Suche leeren">
+                ×
+              </button>
             ) : null}
           </div>
 
