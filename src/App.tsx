@@ -12,6 +12,7 @@ import {
   getSyncPairCode,
   listDecidedNotesByDay,
   listInboxNotes,
+  listAutoArchiveCandidates,
   listNotesByStatus,
   listRecentActiveNotes,
   listSearchableNotes,
@@ -38,6 +39,10 @@ const OVERDUE_DAYS = 3
 const AUTOSCROLL_NEAR_BOTTOM_PX = 80
 const BRAINDUMP_FETCH_LIMIT = 300
 const REVIEW_LAYOUT_KEY = 'leiser:review-layout'
+const BRAINDUMP_COLLAPSE_THRESHOLD = 40
+const AUTO_ARCHIVE_DAYS = 90
+const AUTO_ARCHIVE_BATCH_LIMIT = 100
+const AUTO_ARCHIVE_LAST_RUN_KEY = 'leiser:auto-archive-last-run-day'
 
 type ReviewAgeCategory = 'OVERDUE' | 'READY' | 'FRESH'
 type ReviewLayoutPreference = 'AUTO' | 'SINGLE' | 'LIST'
@@ -332,33 +337,77 @@ const BraindumpList = memo(function BraindumpList({
   onUndoDelete,
   onDelete,
   endRef,
+  collapsedDays,
+  onToggleDay,
 }: {
   groups: Array<{ dayISO: string; label: string; notes: Note[] }>
   onUndoDelete: (id: string) => void
   onDelete: (id: string) => void
   endRef: RefObject<HTMLDivElement | null>
+  collapsedDays: Record<string, boolean>
+  onToggleDay: (dayISO: string) => void
 }) {
   if (groups.length === 0) {
     return <p className="empty-text">Noch keine Notizen.</p>
   }
 
+  const getAgeToneClass = (dayISO: string) => {
+    const groupDate = new Date(`${dayISO}T12:00:00`)
+    if (Number.isNaN(groupDate.getTime())) {
+      return ''
+    }
+    const ageDays = daysBetween(new Date(), groupDate)
+    if (ageDays >= 60) return 'note-group--aged-3'
+    if (ageDays >= 30) return 'note-group--aged-2'
+    if (ageDays >= 14) return 'note-group--aged-1'
+    return ''
+  }
+
   return (
     <>
-      {groups.map((group) => (
-        <section key={group.dayISO} className="note-group">
-          <div className="day-divider">{group.label}</div>
-          <ul className="notes-list" aria-label={`${group.label} Notizen`}>
-            {group.notes.map((note) => (
-              <BraindumpNoteRow
-                key={note.id}
-                note={note}
-                onUndoDelete={onUndoDelete}
-                onDelete={onDelete}
-              />
-            ))}
-          </ul>
-        </section>
-      ))}
+      {groups.map((group) => {
+        const isCollapsed = Boolean(collapsedDays[group.dayISO])
+        const ageToneClass = getAgeToneClass(group.dayISO)
+        return (
+          <section key={group.dayISO} className={ageToneClass ? `note-group ${ageToneClass}` : 'note-group'}>
+            <button
+              type="button"
+              className="day-divider day-divider-toggle"
+              onClick={() => onToggleDay(group.dayISO)}
+              aria-expanded={!isCollapsed}
+              aria-controls={`braindump-group-${group.dayISO}`}
+            >
+              <span>{group.label} ({group.notes.length})</span>
+              <svg
+                className={isCollapsed ? 'day-divider-toggle-icon' : 'day-divider-toggle-icon day-divider-toggle-icon--open'}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  d="m8 10 4 4 4-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            {!isCollapsed ? (
+              <ul id={`braindump-group-${group.dayISO}`} className="notes-list" aria-label={`${group.label} Notizen`}>
+                {group.notes.map((note) => (
+                  <BraindumpNoteRow
+                    key={note.id}
+                    note={note}
+                    onUndoDelete={onUndoDelete}
+                    onDelete={onDelete}
+                  />
+                ))}
+              </ul>
+            ) : null}
+          </section>
+        )
+      })}
       <div ref={endRef} />
     </>
   )
@@ -754,18 +803,53 @@ function BraindumpComposer({
 
 function BraindumpPage({
   groups,
+  todayISO,
+  yesterdayISO,
   onUndoDelete,
   onDelete,
   endRef,
   onSubmitEntries,
 }: {
   groups: Array<{ dayISO: string; label: string; notes: Note[] }>
+  todayISO: string
+  yesterdayISO: string
   onUndoDelete: (id: string) => void
   onDelete: (id: string) => void
   endRef: RefObject<HTMLDivElement | null>
   onSubmitEntries: (entries: string[]) => Promise<void>
 }) {
   const { setFooter } = useFooter()
+  const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({})
+
+  const totalNotes = useMemo(
+    () => groups.reduce((sum, group) => sum + group.notes.length, 0),
+    [groups],
+  )
+
+  useEffect(() => {
+    setCollapsedDays((prev) => {
+      const next: Record<string, boolean> = {}
+      for (const group of groups) {
+        if (group.dayISO in prev) {
+          next[group.dayISO] = prev[group.dayISO]
+          continue
+        }
+        const shouldCollapseByLogic =
+          totalNotes > BRAINDUMP_COLLAPSE_THRESHOLD &&
+          group.dayISO !== todayISO &&
+          group.dayISO !== yesterdayISO
+        next[group.dayISO] = shouldCollapseByLogic
+      }
+      return next
+    })
+  }, [groups, totalNotes, todayISO, yesterdayISO])
+
+  const handleToggleDay = useCallback((dayISO: string) => {
+    setCollapsedDays((prev) => ({
+      ...prev,
+      [dayISO]: !prev[dayISO],
+    }))
+  }, [])
 
   useEffect(() => {
     setFooter(<BraindumpComposer onSubmitEntries={onSubmitEntries} />)
@@ -778,6 +862,8 @@ function BraindumpPage({
       onUndoDelete={onUndoDelete}
       onDelete={onDelete}
       endRef={endRef}
+      collapsedDays={collapsedDays}
+      onToggleDay={handleToggleDay}
     />
   )
 }
@@ -857,6 +943,18 @@ function AppContent() {
 
   const refreshAll = useCallback(async (roomIdOverride?: string) => {
     try {
+      const autoArchiveRunDay = getLocalDayISO()
+      if (localStorage.getItem(AUTO_ARCHIVE_LAST_RUN_KEY) !== autoArchiveRunDay) {
+        const cutoffDate = new Date()
+        cutoffDate.setDate(cutoffDate.getDate() - AUTO_ARCHIVE_DAYS)
+        const cutoffISO = cutoffDate.toISOString()
+        const autoArchiveCandidates = await listAutoArchiveCandidates(cutoffISO, AUTO_ARCHIVE_BATCH_LIMIT)
+        if (autoArchiveCandidates.length > 0) {
+          await Promise.all(autoArchiveCandidates.map((note) => updateNoteStatus(note.id, 'ARCHIVE')))
+        }
+        localStorage.setItem(AUTO_ARCHIVE_LAST_RUN_KEY, autoArchiveRunDay)
+      }
+
       const activeRoomId = roomIdOverride ?? syncRoomId
       const [braindump, inbox, inboxTotal, decidedToday, process, processTotal, todo, archived, archivedTotal, searchable] = await Promise.all([
         listRecentActiveNotes(BRAINDUMP_FETCH_LIMIT),
@@ -1860,6 +1958,8 @@ function AppContent() {
           {activeTab === 'BRAINDUMP' ? (
             <BraindumpPage
               groups={braindumpGroups}
+              todayISO={todayISO}
+              yesterdayISO={yesterdayISO}
               onUndoDelete={handleUndoDelete}
               onDelete={handleDeleteDefault}
               endRef={braindumpEndRef}

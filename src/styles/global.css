@@ -553,6 +553,36 @@ button:hover {
   margin-top: 0.55rem;
 }
 
+.note-group--aged-1 {
+  opacity: 0.94;
+}
+
+.note-group--aged-2 {
+  opacity: 0.88;
+}
+
+.note-group--aged-3 {
+  opacity: 0.82;
+}
+
+.note-group--aged-1 .day-divider,
+.note-group--aged-2 .day-divider,
+.note-group--aged-3 .day-divider {
+  color: color-mix(in srgb, var(--text-secondary) 84%, transparent);
+}
+
+.note-group--aged-1 .note-item {
+  border-color: color-mix(in srgb, var(--border-default) 82%, transparent);
+}
+
+.note-group--aged-2 .note-item {
+  border-color: color-mix(in srgb, var(--border-default) 72%, transparent);
+}
+
+.note-group--aged-3 .note-item {
+  border-color: color-mix(in srgb, var(--border-default) 60%, transparent);
+}
+
 .day-divider {
   margin-top: 1.1rem;
   margin-bottom: 0.35rem;
@@ -570,6 +600,38 @@ button:hover {
   flex: 1;
   height: 1px;
   background: color-mix(in srgb, var(--border-default) 70%, transparent);
+}
+
+.day-divider-toggle {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text-secondary);
+}
+
+.day-divider-toggle:hover {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.day-divider-toggle span {
+  white-space: nowrap;
+}
+
+.day-divider-toggle-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  opacity: 0.72;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.day-divider-toggle-icon--open {
+  transform: rotate(180deg);
 }
 
 .note-item {
