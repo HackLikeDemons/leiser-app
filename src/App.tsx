@@ -855,15 +855,6 @@ function BraindumpComposer({
     void submit([text])
   }
 
-  const handleComposerFocus = () => {
-    if (typeof window === 'undefined' || !window.visualViewport) {
-      return
-    }
-    requestAnimationFrame(() => {
-      composerRef.current?.scrollIntoView({ block: 'end' })
-    })
-  }
-
   return (
     <div className="app-content">
       <form className="capture-form braindump-composer" onSubmit={handleSubmit} ref={composerRef}>
@@ -875,7 +866,6 @@ function BraindumpComposer({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleTextKeyDown}
-          onFocus={handleComposerFocus}
         />
         <div className="capture-actions">
           <div className="capture-meta-row">
@@ -993,6 +983,7 @@ function AppContent() {
   const [todoStarOnly, setTodoStarOnly] = useState(false)
   const [archivedNotes, setArchivedNotes] = useState<Note[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const [searchableNotes, setSearchableNotes] = useState<Note[]>([])
   const [showArchive, setShowArchive] = useState(false)
   const [showTodoArchive, setShowTodoArchive] = useState(false)
@@ -1723,6 +1714,16 @@ function AppContent() {
   }
 
   const isSearchMode = searchQuery.trim().length > 0
+  const clearSearchInput = useCallback(() => {
+    setSearchQuery('')
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus({ preventScroll: true })
+    })
+  }, [])
+  const clearSearch = useCallback(() => {
+    setSearchQuery('')
+    searchInputRef.current?.blur()
+  }, [])
   const currentReviewNote = orderedInbox[effectiveReviewIndex] ?? null
   const currentReviewCategory = currentReviewNote ? getReviewAgeCategory(currentReviewNote) : null
   const showUpdateNotice = needRefresh && !dismissedUpdateNotice
@@ -2173,12 +2174,23 @@ function AppContent() {
 
           <div className={isSearchMode ? 'header-search header-search--active' : 'header-search'}>
             <input
+              ref={searchInputRef}
               type="search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Suche Gedanken..."
               aria-label="Suche Gedanken"
             />
+            {isSearchMode ? (
+              <>
+                <button type="button" className="header-search-reset" onClick={clearSearchInput} aria-label="Suche leeren">
+                  ×
+                </button>
+                <button type="button" className="header-search-clear" onClick={clearSearch}>
+                  Zurück
+                </button>
+              </>
+            ) : null}
           </div>
 
           <div className="header-actions">

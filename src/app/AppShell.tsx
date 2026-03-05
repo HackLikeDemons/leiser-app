@@ -14,7 +14,7 @@ export function AppShell({ header, children, updateNotice, mainRef, onMainScroll
   const { footer } = useFooter()
   const { viewportHeight, keyboardInset, hasVisualViewport } = useVisualViewport()
   const shellStyle = {
-    '--keyboard-inset': `${keyboardInset}px`,
+    '--keyboard-inset': hasVisualViewport ? '0px' : `${keyboardInset}px`,
     ...(hasVisualViewport && viewportHeight ? { '--vvh': `${viewportHeight}px` } : {}),
   } as CSSProperties
 

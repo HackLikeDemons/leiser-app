@@ -233,6 +233,9 @@ h3 {
 
 .header-search {
   grid-area: search;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   flex: 1 1 180px;
   min-width: 0;
   width: 100%;
@@ -246,7 +249,8 @@ h3 {
 }
 
 .header-search input {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 32px;
   border: 1px solid var(--border-soft);
   border-radius: 999px;
@@ -257,6 +261,25 @@ h3 {
   font-size: 0.86rem;
   font-weight: 500;
   caret-color: var(--accent);
+}
+
+.header-search-clear {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.82rem;
+}
+
+.header-search-reset {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 1.05rem;
+  line-height: 1;
 }
 
 .icon-button {
