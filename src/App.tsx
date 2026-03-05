@@ -323,6 +323,15 @@ const BraindumpList = memo(function BraindumpList({
   )
 })
 
+function FlowHero({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <section className="braindump-hero flow-hero" aria-label={title}>
+      <h2>{title}</h2>
+      <p>{subtitle}</p>
+    </section>
+  )
+}
+
 function NoteActionsMenu({
   menuId,
   isOpen,
@@ -816,9 +825,15 @@ function BraindumpComposer({
           onKeyDown={handleTextKeyDown}
         />
         <div className="capture-actions">
+          <div className="capture-meta-row">
+            <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
+              {text.length} / {SOFT_CHAR_LIMIT}
+            </small>
+            <small className="capture-hint">Enter: speichern</small>
+          </div>
           <button
             type="button"
-            className={isDictating ? 'capture-dictate capture-dictate--active' : 'capture-dictate'}
+            className={isDictating ? 'capture-dictate capture-dictate--active capture-dictate--icon' : 'capture-dictate capture-dictate--icon'}
             onClick={isDictating ? stopDictation : startDictation}
             aria-label={isDictating ? 'Diktieren stoppen' : 'Diktieren starten'}
             title={isDictating ? 'Diktieren stoppen' : 'Diktieren starten'}
@@ -833,14 +848,7 @@ function BraindumpComposer({
                 strokeLinejoin="round"
               />
             </svg>
-            <span>{isDictating ? 'Stop' : 'Diktieren'}</span>
           </button>
-          <div className="capture-meta-row">
-            <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
-              {text.length} / {SOFT_CHAR_LIMIT}
-            </small>
-            <small className="capture-hint">Enter: speichern</small>
-          </div>
         </div>
         {dictationError ? <small className="soft-limit-hint">{dictationError}</small> : null}
         {text.length > SOFT_CHAR_LIMIT ? (
@@ -2264,6 +2272,10 @@ function AppContent() {
 
           {activeTab === 'REVIEW' ? (
             <>
+              <FlowHero
+                title="Jetzt sortieren."
+                subtitle="Aus Inbox wird Richtung: Denken, To-Do oder Verwerfen."
+              />
               <div className="section-headline">
                 <h2>Review</h2>
               </div>
@@ -2437,6 +2449,10 @@ function AppContent() {
 
           {activeTab === 'THINKING' ? (
             <>
+            <FlowHero
+              title="Als Gedanke weiterverarbeiten."
+              subtitle="Hier schärfst du Ideen, bis daraus ein klarer nächster Schritt wird."
+            />
             <div className="section-headline">
               <h2>Gedanken ({processCount})</h2>
             </div>
@@ -2504,6 +2520,10 @@ function AppContent() {
 
           {activeTab === 'TODO' ? (
             <>
+            <FlowHero
+              title="Als To-Do übernehmen."
+              subtitle="Mach es konkret, priorisiere es und bring es ins Archiv."
+            />
             <div className="section-headline section-headline--todo">
               <h2>To-Do ({visibleTodoNotes.length}{todoStarOnly ? ` / ${todoNotes.length}` : ''})</h2>
               <div className="view-mode-toggle">
