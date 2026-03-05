@@ -169,15 +169,20 @@ function shouldRepairFromSnapshot(current: Note | null, snapshot: Note): boolean
     return true
   }
 
+  if ((snapshot.revision ?? 1) > (current.revision ?? 1)) {
+    return true
+  }
+
   if (snapshot.updatedAt > current.updatedAt) {
     return true
   }
 
-  if (current.text.trim().length === 0 && snapshot.text.trim().length > 0) {
-    return true
-  }
-
-  if (current.status !== snapshot.status && snapshot.updatedAt >= current.updatedAt) {
+  if (
+    current.text.trim().length === 0 &&
+    snapshot.text.trim().length > 0 &&
+    (snapshot.revision ?? 1) >= (current.revision ?? 1) &&
+    snapshot.updatedAt >= current.updatedAt
+  ) {
     return true
   }
 
