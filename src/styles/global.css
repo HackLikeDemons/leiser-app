@@ -1199,6 +1199,12 @@ button:focus {
 }
 
 @media (max-width: 640px) {
+  .app-shell {
+    position: fixed;
+    inset: 0;
+    height: auto;
+  }
+
   .header-search input,
   input,
   textarea,
