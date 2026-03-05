@@ -610,6 +610,10 @@ button:hover {
   max-width: 56ch;
 }
 
+.flow-hero {
+  margin-bottom: 0.6rem;
+}
+
 .braindump-context {
   margin-top: 0.75rem;
   display: flex;

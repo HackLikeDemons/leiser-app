@@ -6,6 +6,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import {
   DEFAULT_SYNC_ROOM_ID,
   addNote,
+  clearInboxSeen,
   countNotesByStatus,
   deleteNote,
   getSyncDebugInfo,
@@ -1096,6 +1097,10 @@ function AppContent() {
         lastError: null,
       })
       setSyncEnabledState(true)
+      if (payload.roomId !== previousRoomId) {
+        // Ensure a freshly paired room can fully hydrate existing remote notes.
+        await clearInboxSeen()
+      }
       await refreshAll(payload.roomId)
 
       try {
