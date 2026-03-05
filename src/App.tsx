@@ -290,9 +290,9 @@ function getReviewAgeCategory(note: Note): ReviewAgeCategory {
   return 'READY'
 }
 
-function reviewAgeLabel(category: ReviewAgeCategory) {
+function reviewAgeLabel(category: ReviewAgeCategory): string | null {
   if (category === 'OVERDUE') return 'Überfällig'
-  return 'Bereit'
+  return null
 }
 
 function sortInboxForReview(notes: Note[]) {
@@ -2521,9 +2521,11 @@ function AppContent() {
                               <li key={note.id} className="note-item note-item--todo">
                                 <span className="note-content">
                                   <ExpandableNoteText text={note.text} />
-                                  <span className={`age-badge age-badge--${getReviewAgeCategory(note).toLowerCase()}`}>
-                                    {reviewAgeLabel(getReviewAgeCategory(note))}
-                                  </span>
+                                  {reviewAgeLabel(getReviewAgeCategory(note)) ? (
+                                    <span className={`age-badge age-badge--${getReviewAgeCategory(note).toLowerCase()}`}>
+                                      {reviewAgeLabel(getReviewAgeCategory(note))}
+                                    </span>
+                                  ) : null}
                                   <NoteTypeBadge note={note} />
                                 </span>
                                 <div className="todo-actions">
@@ -2610,9 +2612,11 @@ function AppContent() {
               ) : currentReviewNote ? (
                 <article className="review-focus-card" aria-label="Aktueller Gedanke">
                   <div className="review-focus-head">
-                    <span className={`age-badge age-badge--${currentReviewCategory?.toLowerCase()}`}>
-                      {reviewAgeLabel(currentReviewCategory ?? 'READY')}
-                    </span>
+                    {reviewAgeLabel(currentReviewCategory ?? 'READY') ? (
+                      <span className={`age-badge age-badge--${currentReviewCategory?.toLowerCase()}`}>
+                        {reviewAgeLabel(currentReviewCategory ?? 'READY')}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="review-focus-text">
                     <span className="note-text">{currentReviewNote.text}</span>
@@ -2707,7 +2711,9 @@ function AppContent() {
                     </button>
                   </div>
                   <p className="review-meta">
-                    Kategorie: {reviewAgeLabel(currentReviewCategory ?? 'READY')} ·{' '}
+                    {reviewAgeLabel(currentReviewCategory ?? 'READY') ? (
+                      <>Kategorie: {reviewAgeLabel(currentReviewCategory ?? 'READY')} · </>
+                    ) : null}
                     {Math.min(effectiveReviewIndex + 1, orderedInbox.length)} von {inboxCount} offen
                   </p>
                   {inboxCount > inboxNotes.length ? (
