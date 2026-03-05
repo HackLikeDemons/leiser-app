@@ -52,6 +52,7 @@ const AUTO_ARCHIVE_LAST_RUN_KEY = 'leiser:auto-archive-last-run-day'
 const SYNC_ID_STORAGE_KEY = 'leiser-sync-id'
 const SYNC_TOKEN_STORAGE_KEY = 'leiser-sync-token'
 const SYNC_KEY_STORAGE_KEY = 'leiser-sync-key'
+const RELOAD_AFTER_INACTIVITY_MS = 20 * 60 * 1000
 
 type PairingPayloadV1 = {
   v: 1
@@ -1013,6 +1014,7 @@ function AppContent() {
   const scannerControlsRef = useRef<IScannerControls | null>(null)
   const shouldAutoScrollRef = useRef(true)
   const nextAutoScrollBehaviorRef = useRef<ScrollBehavior>('auto')
+  const hiddenAtRef = useRef<number | null>(null)
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
   const yesterdayISO = useMemo(() => getYesterdayISO(), [])
@@ -1092,6 +1094,38 @@ function AppContent() {
   useEffect(() => {
     localStorage.setItem(REVIEW_LAYOUT_KEY, reviewLayoutPreference)
   }, [reviewLayoutPreference])
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAtRef.current = Date.now()
+        return
+      }
+
+      const hiddenAt = hiddenAtRef.current
+      hiddenAtRef.current = null
+      if (!hiddenAt) {
+        return
+      }
+
+      if (Date.now() - hiddenAt >= RELOAD_AFTER_INACTIVITY_MS) {
+        window.location.reload()
+      }
+    }
+
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        window.location.reload()
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('pageshow', onPageShow)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('pageshow', onPageShow)
+    }
+  }, [])
 
   const handleToggleSyncEnabled = useCallback(async () => {
     setError('')
