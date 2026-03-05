@@ -6,6 +6,7 @@ import {
   countActiveNotesWithEmptyText,
   decodeChangePayload,
   decodeOutboxEnvelope,
+  getNoteById,
   getSyncState,
   hasInboxSeen,
   listPendingOutboxChanges,
@@ -163,6 +164,26 @@ function createEmptyMergeResult(): MergeResult {
   }
 }
 
+function shouldRepairFromSnapshot(current: Note | null, snapshot: Note): boolean {
+  if (!current) {
+    return true
+  }
+
+  if (snapshot.updatedAt > current.updatedAt) {
+    return true
+  }
+
+  if (current.text.trim().length === 0 && snapshot.text.trim().length > 0) {
+    return true
+  }
+
+  if (current.status !== snapshot.status && snapshot.updatedAt >= current.updatedAt) {
+    return true
+  }
+
+  return false
+}
+
 async function mergeRemoteChanges(syncId: string, blob: SyncBlob | null): Promise<MergeResult> {
   if (!blob) {
     return createEmptyMergeResult()
@@ -186,6 +207,16 @@ async function mergeRemoteChanges(syncId: string, blob: SyncBlob | null): Promis
     const dedupeKey = `${syncId}:${item.changeId}`
     if (await hasInboxSeen(dedupeKey)) {
       remoteEnvelopes.push(item)
+      const seenSnapshot = asSnapshotNote(item.snapshot, item.noteId)
+      if (seenSnapshot) {
+        const current = await getNoteById(item.noteId)
+        if (shouldRepairFromSnapshot(current, seenSnapshot)) {
+          await upsertNote(seenSnapshot)
+          snapshotApplied += 1
+          snapshotRescues += 1
+          applied = true
+        }
+      }
       continue
     }
 
