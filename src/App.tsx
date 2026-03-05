@@ -6,7 +6,6 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import {
   DEFAULT_SYNC_ROOM_ID,
   addNote,
-  countInboxNotes,
   countNotesByStatus,
   deleteNote,
   getSyncDebugInfo,
@@ -289,16 +288,10 @@ function sortInboxForReview(notes: Note[]) {
 }
 
 const BraindumpList = memo(function BraindumpList({
-  inboxCount,
-  processCount,
-  todoCount,
   onStartReview,
   captureFeedback,
   onSubmitEntries,
 }: {
-  inboxCount: number
-  processCount: number
-  todoCount: number
   onStartReview: () => void
   captureFeedback: CaptureFeedback | null
   onSubmitEntries: (entries: string[]) => Promise<void>
@@ -309,7 +302,6 @@ const BraindumpList = memo(function BraindumpList({
         <h2>Lass es raus</h2>
       </section>
       <section className="braindump-context" aria-label="Status">
-        <p className="braindump-context-stats">Inbox: {inboxCount} · Denken: {processCount} · Handlungen: {todoCount}</p>
         <button type="button" className="review-btn review-btn--todo" onClick={onStartReview}>
           Review starten
         </button>
@@ -861,17 +853,11 @@ function BraindumpComposer({
 }
 
 function BraindumpPage({
-  inboxCount,
-  processCount,
-  todoCount,
   onStartReview,
   captureFeedback,
   endRef,
   onSubmitEntries,
 }: {
-  inboxCount: number
-  processCount: number
-  todoCount: number
   onStartReview: () => void
   captureFeedback: CaptureFeedback | null
   endRef: RefObject<HTMLDivElement | null>
@@ -880,9 +866,6 @@ function BraindumpPage({
   return (
     <>
       <BraindumpList
-        inboxCount={inboxCount}
-        processCount={processCount}
-        todoCount={todoCount}
         onStartReview={onStartReview}
         captureFeedback={captureFeedback}
         onSubmitEntries={onSubmitEntries}
@@ -905,7 +888,6 @@ function AppContent() {
   })
   const [braindumpNotes, setBraindumpNotes] = useState<Note[]>([])
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
-  const [inboxCount, setInboxCount] = useState(0)
   const [processNotes, setProcessNotes] = useState<Note[]>([])
   const [processCount, setProcessCount] = useState(0)
   const [todoNotes, setTodoNotes] = useState<Note[]>([])
@@ -978,10 +960,9 @@ function AppContent() {
       }
 
       const activeRoomId = roomIdOverride ?? syncRoomId
-      const [braindump, inbox, inboxTotal, process, processTotal, todo, archived] = await Promise.all([
+      const [braindump, inbox, process, processTotal, todo, archived] = await Promise.all([
         listRecentActiveNotes(BRAINDUMP_FETCH_LIMIT),
         listInboxNotes(REVIEW_LIMIT),
-        countInboxNotes(),
         listNotesByStatus('PROCESS', 200),
         countNotesByStatus('PROCESS'),
         listTodoNotes(200),
@@ -989,7 +970,6 @@ function AppContent() {
       ])
       setBraindumpNotes(braindump)
       setInboxNotes(inbox)
-      setInboxCount(inboxTotal)
       setProcessNotes(process)
       setProcessCount(processTotal)
       setTodoNotes(todo)
@@ -2280,9 +2260,6 @@ function AppContent() {
             <div className="tab-content">
           {activeTab === 'BRAINDUMP' ? (
             <BraindumpPage
-              inboxCount={inboxCount}
-              processCount={processCount}
-              todoCount={todoNotes.length}
               onStartReview={() => setActiveTab('REVIEW')}
               captureFeedback={braindumpCaptureFeedback}
               endRef={braindumpEndRef}
@@ -2293,12 +2270,9 @@ function AppContent() {
           {activeTab === 'REVIEW' ? (
             <>
               <FlowHero
-                title="Sortieren"
-                subtitle="Weiter denken, umsetzen oder verwerfen."
+                title="Weiter denken, umsetzen oder verwerfen."
+                subtitle=""
               />
-              <div className="section-headline">
-                <h2>Review</h2>
-              </div>
               {!staleReviewMode && staleTodos.length > 0 ? (
                 <section className="stale-review-banner">
                   <span>Du hast {staleTodos.length} alte Handlungen (&gt;14 Tage). Kurz prüfen?</span>
@@ -2481,12 +2455,9 @@ function AppContent() {
           {activeTab === 'THINKING' ? (
             <>
             <FlowHero
-              title="Weiter denken"
+              title="Gedanken vertiefen"
               subtitle=""
             />
-            <div className="section-headline">
-              <h2>Gedanken ({processCount})</h2>
-            </div>
             {processCount === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
             {thinkingGroups.map((group) => (
               <section key={group.dayISO} className="note-group">
@@ -2551,8 +2522,11 @@ function AppContent() {
 
           {activeTab === 'TODO' ? (
             <>
+            <FlowHero
+              title="Nächste Schritte"
+              subtitle={`${visibleTodoNotes.length}${todoStarOnly ? ` / ${todoNotes.length}` : ''} im Blick behalten.`}
+            />
             <div className="section-headline section-headline--todo">
-              <h2>Handlungen ({visibleTodoNotes.length}{todoStarOnly ? ` / ${todoNotes.length}` : ''})</h2>
               <div className="view-mode-toggle">
                 <button
                   type="button"
