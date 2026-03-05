@@ -32,6 +32,7 @@ import type { Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FooterProvider, useFooter } from './app/FooterContext'
 import { seedOlderThoughtsDemo } from './lib/demoNotes'
+import { getSupabaseRuntimeConfig } from './lib/runtimeConfig'
 import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } from './lib/syncEngine'
 
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA'
@@ -1438,6 +1439,7 @@ function AppContent() {
       { key: 'FRESH', label: 'Frisch', notes: fresh },
     ] as const
   }, [orderedInbox])
+  const supabaseConfigStatus = useMemo(() => getSupabaseRuntimeConfig(), [])
   const pinnedReviewIndex = useMemo(() => {
     if (!currentNoteId) {
       return -1
@@ -2279,6 +2281,14 @@ function AppContent() {
                   ) : null}
                   {syncStatus === 'offline' ? <p className="hint">Sync pausiert (offline).</p> : null}
                   {syncStatus === 'error' && syncError ? <p className="error-text">{syncError}</p> : null}
+                  <p className="hint">
+                    Supabase-Konfiguration:{' '}
+                    {supabaseConfigStatus.configured
+                      ? supabaseConfigStatus.source === 'runtime'
+                        ? 'geladen (runtime.json)'
+                        : 'geladen (VITE)'
+                      : 'fehlt'}
+                  </p>
                   <p className="hint">Letzter Sync: {toSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p>
                   {syncDiagnostics ? (
                     <div className="dev-sync-panel">
