@@ -1010,6 +1010,38 @@ export async function countInboxNotes(): Promise<number> {
   return countNotesByStatus('INBOX')
 }
 
+export async function countActiveNotesWithEmptyText(): Promise<number> {
+  const db = await openDb()
+  return new Promise<number>((resolve, reject) => {
+    let count = 0
+    const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_VIEW_STORE)
+    const request = store.openCursor()
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve(count)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        return
+      }
+      const note = asStoredNote(cursor.value)
+      if (
+        note &&
+        note.deletedAt == null &&
+        note.status !== 'DISCARD' &&
+        note.status !== 'ARCHIVE' &&
+        note.text.trim().length === 0
+      ) {
+        count += 1
+      }
+      cursor.continue()
+    }
+  })
+}
+
 export async function deleteNote(id: string): Promise<void> {
   await applyLocalEdit(id, (doc) => {
     doc.deletedAt = Date.now()

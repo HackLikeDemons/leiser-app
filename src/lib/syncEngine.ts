@@ -3,6 +3,7 @@ import {
   applyRemoteChanges,
   bumpOutboxAttempt,
   clearInboxSeen,
+  countActiveNotesWithEmptyText,
   decodeChangePayload,
   decodeOutboxEnvelope,
   getSyncState,
@@ -152,6 +153,7 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
   let pullRunning = false
   let pullInterval: number | null = null
   let repairedInboxSeenCache = false
+  let repairedBlankNotes = false
 
   const setStatus = (status: SyncUiStatus, error?: string | null) => {
     onStatusChange?.(status, error ?? null)
@@ -311,6 +313,14 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
       repairedInboxSeenCache = true
       merged = await mergeRemoteBlob(roomId, blob)
     }
+    if (!repairedBlankNotes && merged.remoteSeen > 0) {
+      const blankCount = await countActiveNotesWithEmptyText()
+      if (blankCount > 0) {
+        await clearInboxSeen()
+        repairedBlankNotes = true
+        merged = await mergeRemoteBlob(roomId, blob)
+      }
+    }
 
     await updateSyncState(roomId, {
       lastPulledSeq: syncState.lastPulledSeq + merged.seen,
@@ -460,6 +470,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
     let remoteChangedRetries = 0
     let pendingOutboxCount = 0
     let repairedInboxSeenCache = false
+    let repairedBlankNotes = false
 
     while (!synced && attempts <= maxRetries) {
       attempts += 1
@@ -568,6 +579,17 @@ export async function syncNow(options: SyncNowOptions = {}) {
         attempts -= 1
         setStatus('syncing', 'Rekonstruiere Sync-Index…')
         continue
+      }
+
+      if (!repairedBlankNotes && merged.remoteSeen > 0 && pending.length === 0) {
+        const blankCount = await countActiveNotesWithEmptyText()
+        if (blankCount > 0) {
+          await clearInboxSeen()
+          repairedBlankNotes = true
+          attempts -= 1
+          setStatus('syncing', 'Repariere leere Einträge…')
+          continue
+        }
       }
 
       const combined = new Map<string, ChangeEnvelope>()
