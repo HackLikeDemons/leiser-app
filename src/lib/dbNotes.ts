@@ -4,7 +4,7 @@ import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
 import { generateSyncToken } from './syncToken'
 import { signEnvelope } from './syncSigning'
-import type { ChangeEnvelope, Note, NoteStatus, NoteType } from './types'
+import type { ArchiveBucket, ChangeEnvelope, Note, NoteStatus, NoteType } from './types'
 
 const DB_NAME = 'leiser-db'
 const DB_VERSION = 9
@@ -34,6 +34,7 @@ const CHANGE_KIND = 'automerge_changes_v1'
 
 const ALLOWED_NOTE_TYPES: NoteType[] = ['NOTE', 'QUESTION', 'IDEA', 'TASK']
 const ALLOWED_NOTE_STATUSES: NoteStatus[] = ['INBOX', 'TODO', 'PROCESS', 'DISCARD', 'ARCHIVE']
+const ALLOWED_ARCHIVE_BUCKETS: ArchiveBucket[] = ['THINKING', 'TODO']
 
 let dbPromise: Promise<IDBDatabase> | null = null
 let automergeInitPromise: Promise<void> | null = null
@@ -50,6 +51,7 @@ type CrdtNoteDoc = {
   status: NoteStatus
   type: NoteType
   starred: boolean
+  archiveBucket: ArchiveBucket | null
   createdAt: number
   updatedAt: number
   dayISO: string
@@ -99,12 +101,19 @@ function normalizeType(type: unknown): NoteType {
     : 'NOTE'
 }
 
+function normalizeArchiveBucket(bucket: unknown): ArchiveBucket | null {
+  return typeof bucket === 'string' && ALLOWED_ARCHIVE_BUCKETS.includes(bucket as ArchiveBucket)
+    ? (bucket as ArchiveBucket)
+    : null
+}
+
 function noteToCrdtDoc(note: Note): CrdtNoteDoc {
   return {
     text: note.text,
     status: normalizeStatus(note.status),
     type: normalizeType(note.type),
     starred: Boolean(note.starred),
+    archiveBucket: normalizeArchiveBucket(note.archiveBucket),
     createdAt: toEpochMs(note.createdAt),
     updatedAt: toEpochMs(note.updatedAt),
     dayISO: note.dayISO,
@@ -129,6 +138,7 @@ function crdtDocToNote(noteId: string, doc: CrdtNoteDoc): Note {
     status: normalizeStatus(doc.status),
     type: normalizeType(doc.type),
     starred: Boolean(doc.starred),
+    archiveBucket: normalizeArchiveBucket(doc.archiveBucket),
   }
 }
 
@@ -150,6 +160,7 @@ function asStoredNote(value: unknown): Note | null {
     status: normalizeStatus(note.status),
     type: normalizeType(note.type),
     starred: Boolean(note.starred),
+    archiveBucket: normalizeArchiveBucket(note.archiveBucket),
   }
 }
 
@@ -238,6 +249,7 @@ function createEmptyCrdtDoc() {
     status: 'INBOX',
     type: 'NOTE',
     starred: false,
+    archiveBucket: null,
     createdAt: now,
     updatedAt: now,
     dayISO: getLocalDayISO(new Date(now)),
@@ -255,6 +267,7 @@ function buildDocFromPayload(payload: CrdtNoteDoc) {
     draft.status = payload.status
     draft.type = payload.type
     draft.starred = payload.starred
+    draft.archiveBucket = payload.archiveBucket
     draft.createdAt = payload.createdAt
     draft.updatedAt = payload.updatedAt
     draft.dayISO = payload.dayISO
@@ -420,6 +433,7 @@ function materializeFromDoc(noteId: string, doc: Automerge.Doc<CrdtNoteDoc>): No
     status: doc.status,
     type: doc.type,
     starred: doc.starred,
+    archiveBucket: doc.archiveBucket ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     dayISO: doc.dayISO,
@@ -593,6 +607,7 @@ export async function createNote(text: string): Promise<Note> {
     status: parsed.status,
     type: parsed.type,
     starred: false,
+    archiveBucket: null,
   }
 
   const { base, doc } = buildDocFromPayload(noteToCrdtDoc(note))
@@ -1010,12 +1025,22 @@ export async function updateNoteText(id: string, text: string): Promise<void> {
 export async function updateNoteStatus(id: string, status: NoteStatus): Promise<void> {
   await applyLocalEdit(id, (doc) => {
     doc.status = status
+    if (status !== 'ARCHIVE') {
+      doc.archiveBucket = null
+    }
   })
 }
 
 export async function updateNoteStarred(id: string, starred: boolean): Promise<void> {
   await applyLocalEdit(id, (doc) => {
     doc.starred = starred
+  })
+}
+
+export async function updateNoteArchiveBucket(id: string, bucket: ArchiveBucket): Promise<void> {
+  await applyLocalEdit(id, (doc) => {
+    doc.status = 'ARCHIVE'
+    doc.archiveBucket = bucket
   })
 }
 

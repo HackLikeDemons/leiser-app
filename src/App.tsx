@@ -18,6 +18,7 @@ import {
   listSearchableNotes,
   listTodoNotes,
   setSyncEnabled,
+  updateNoteArchiveBucket,
   updateNoteStarred,
   updateNoteStatus,
 } from './lib/dbNotes'
@@ -67,20 +68,6 @@ type DevSyncInfo = {
   syncToken: string | null
 }
 
-function toClockLabel(isoTimestamp: string) {
-  const date = new Date(isoTimestamp)
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  return `${hours}:${minutes}`
-}
-
-function toDayClockLabel(isoTimestamp: string) {
-  const date = new Date(isoTimestamp)
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  return `${day}.${month}. · ${toClockLabel(isoTimestamp)}`
-}
-
 function toSyncTimeLabel(isoTimestamp: string | null) {
   if (!isoTimestamp) {
     return 'noch keiner'
@@ -92,20 +79,6 @@ function toSyncTimeLabel(isoTimestamp: string | null) {
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
   return `${hours}:${minutes}`
-}
-
-function formatNoteTime(note: Note, todayISO: string) {
-  if (note.dayISO === todayISO) {
-    return toClockLabel(note.createdAt)
-  }
-  return toDayClockLabel(note.createdAt)
-}
-
-function formatGroupedNoteTime(note: Note, todayISO: string, yesterdayISO: string) {
-  if (note.dayISO === todayISO || note.dayISO === yesterdayISO) {
-    return toClockLabel(note.createdAt)
-  }
-  return toDayClockLabel(note.createdAt)
 }
 
 function daysBetween(dateA: Date, dateB: Date) {
@@ -215,7 +188,7 @@ function noteStatusLabel(status: NoteStatus) {
 }
 
 function todoActionLabel(status: NoteStatus) {
-  if (status === 'DISCARD') return 'Als erledigt markiert.'
+  if (status === 'ARCHIVE') return 'Als erledigt markiert.'
   if (status === 'INBOX') return 'Zurück in Inbox verschoben.'
   return 'To-Do aktualisiert.'
 }
@@ -283,7 +256,6 @@ const BraindumpNoteRow = memo(function BraindumpNoteRow({
 
   return (
     <li className="note-item">
-      <span className="note-time">{toClockLabel(note.createdAt)}</span>
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
         {label ? <span className="note-type-badge">{label}</span> : null}
@@ -494,22 +466,17 @@ function NoteActionsMenu({
 
 function TodoNoteRow({
   note,
-  todayISO,
-  yesterdayISO,
   onToggleStar,
   onDone,
   onBack,
 }: {
   note: Note
-  todayISO: string
-  yesterdayISO: string
   onToggleStar: (id: string, starred: boolean) => void
   onDone: (id: string) => void
   onBack: (id: string) => void
 }) {
   return (
     <li key={note.id} className="note-item note-item--todo">
-      <span className="note-time">{formatGroupedNoteTime(note, todayISO, yesterdayISO)}</span>
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
         {note.starred ? <span className="status-badge">Wichtig</span> : null}
@@ -587,7 +554,6 @@ function ThinkingNoteRow({
 }) {
   return (
     <li className="note-item note-item--todo">
-      <span className="note-time">{toClockLabel(note.createdAt)}</span>
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
         <NoteTypeBadge note={note} />
@@ -663,7 +629,6 @@ function ArchivedThinkingNoteRow({
 }) {
   return (
     <li className="note-item note-item--todo">
-      <span className="note-time">{toClockLabel(note.createdAt)}</span>
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
         <NoteTypeBadge note={note} />
@@ -682,6 +647,63 @@ function ArchivedThinkingNoteRow({
               fill="none"
               stroke="currentColor"
               strokeWidth="1.9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="review-btn review-btn--discard review-btn--icon"
+          onClick={() => onDiscard(note.id)}
+          aria-label="Verwerfen"
+          title="Verwerfen"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M6 6l12 12M18 6 6 18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+    </li>
+  )
+}
+
+function ArchivedTodoNoteRow({
+  note,
+  onBackToTodo,
+  onDiscard,
+}: {
+  note: Note
+  onBackToTodo: (id: string) => void
+  onDiscard: (id: string) => void
+}) {
+  return (
+    <li className="note-item note-item--todo">
+      <span className="note-content">
+        <ExpandableNoteText text={note.text} />
+        <NoteTypeBadge note={note} />
+      </span>
+      <div className="todo-actions">
+        <button
+          type="button"
+          className="review-btn review-btn--todo review-btn--icon"
+          onClick={() => onBackToTodo(note.id)}
+          aria-label="Zurück zu To-Do"
+          title="Zurück zu To-Do"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -898,10 +920,10 @@ function AppContent() {
   const [todoNotes, setTodoNotes] = useState<Note[]>([])
   const [todoStarOnly, setTodoStarOnly] = useState(false)
   const [archivedNotes, setArchivedNotes] = useState<Note[]>([])
-  const [archiveCount, setArchiveCount] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchableNotes, setSearchableNotes] = useState<Note[]>([])
   const [showArchive, setShowArchive] = useState(false)
+  const [showTodoArchive, setShowTodoArchive] = useState(false)
   const [showImportPanel, setShowImportPanel] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
@@ -956,7 +978,7 @@ function AppContent() {
       }
 
       const activeRoomId = roomIdOverride ?? syncRoomId
-      const [braindump, inbox, inboxTotal, decidedToday, process, processTotal, todo, archived, archivedTotal, searchable] = await Promise.all([
+      const [braindump, inbox, inboxTotal, decidedToday, process, processTotal, todo, archived, searchable] = await Promise.all([
         listRecentActiveNotes(BRAINDUMP_FETCH_LIMIT),
         listInboxNotes(REVIEW_LIMIT),
         countInboxNotes(),
@@ -965,7 +987,6 @@ function AppContent() {
         countNotesByStatus('PROCESS'),
         listTodoNotes(200),
         listNotesByStatus('ARCHIVE', 50),
-        countNotesByStatus('ARCHIVE'),
         listSearchableNotes(),
       ])
       setBraindumpNotes(braindump)
@@ -976,7 +997,6 @@ function AppContent() {
       setProcessCount(processTotal)
       setTodoNotes(todo)
       setArchivedNotes(archived)
-      setArchiveCount(archivedTotal)
       setSearchableNotes(searchable)
       const syncInfo = await getSyncDebugInfo(activeRoomId)
       setSyncEnabledState(syncInfo.isEnabled)
@@ -1401,9 +1421,25 @@ function AppContent() {
       }),
       }))
   }, [processNotes, todayISO, yesterdayISO])
+  const thinkingArchivedNotes = useMemo(
+    () =>
+      archivedNotes.filter(
+        (note) => note.archiveBucket === 'THINKING' || (note.archiveBucket == null && note.type !== 'TASK'),
+      ),
+    [archivedNotes],
+  )
+  const todoArchivedNotes = useMemo(
+    () =>
+      archivedNotes.filter(
+        (note) => note.archiveBucket === 'TODO' || (note.archiveBucket == null && note.type === 'TASK'),
+      ),
+    [archivedNotes],
+  )
+  const thinkingArchiveCount = thinkingArchivedNotes.length
+  const todoArchiveCount = todoArchivedNotes.length
   const archivedThinkingGroups = useMemo(() => {
     const grouped = new Map<string, Note[]>()
-    for (const note of archivedNotes) {
+    for (const note of thinkingArchivedNotes) {
       const dayNotes = grouped.get(note.dayISO)
       if (dayNotes) {
         dayNotes.push(note)
@@ -1424,7 +1460,31 @@ function AppContent() {
         return b.createdAt.localeCompare(a.createdAt)
       }),
       }))
-  }, [archivedNotes, todayISO, yesterdayISO])
+  }, [thinkingArchivedNotes, todayISO, yesterdayISO])
+  const archivedTodoGroups = useMemo(() => {
+    const grouped = new Map<string, Note[]>()
+    for (const note of todoArchivedNotes) {
+      const dayNotes = grouped.get(note.dayISO)
+      if (dayNotes) {
+        dayNotes.push(note)
+      } else {
+        grouped.set(note.dayISO, [note])
+      }
+    }
+    return [...grouped.entries()]
+      .sort(([dayA], [dayB]) => dayB.localeCompare(dayA))
+      .map(([dayISO, notes]) => ({
+      dayISO,
+      label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
+      notes: [...notes].sort((a, b) => {
+        const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
+        if (byUpdated !== 0) {
+          return byUpdated
+        }
+        return b.createdAt.localeCompare(a.createdAt)
+      }),
+      }))
+  }, [todoArchivedNotes, todayISO, yesterdayISO])
 
   const handleUndoDelete = useCallback((id: string) => {
     void handleDelete(id, { confirm: false })
@@ -1492,7 +1552,7 @@ function AppContent() {
       setError('')
       try {
         if (action === 'ARCHIVE') {
-          await updateNoteStatus(currentStaleNote.id, 'ARCHIVE')
+          await updateNoteArchiveBucket(currentStaleNote.id, 'TODO')
         } else if (action === 'PROCESS') {
           await updateNoteStatus(currentStaleNote.id, 'PROCESS')
         } else {
@@ -1534,10 +1594,30 @@ function AppContent() {
   )
 
   const handleTodoDone = useCallback(
-    (id: string) => {
-      void handleTodoStatusChange(id, 'DISCARD')
+    async (id: string) => {
+      const sourceNote = todoNotes.find((note) => note.id === id)
+      if (!sourceNote) {
+        return
+      }
+      setError('')
+      try {
+        await updateNoteArchiveBucket(id, 'TODO')
+        setShowTodoArchive(true)
+        startTodoUndoWindow({
+          noteId: sourceNote.id,
+          prevStatus: sourceNote.status,
+          newStatus: 'ARCHIVE',
+          at: Date.now(),
+        })
+        setInfo('To-Do ins Archiv verschoben.')
+        await refreshAll()
+      } catch {
+        clearTodoUndoTimeout()
+        setLastTodoAction(null)
+        setError('To-Do konnte nicht aktualisiert werden.')
+      }
     },
-    [handleTodoStatusChange],
+    [todoNotes, refreshAll],
   )
 
   const handleTodoBack = useCallback(
@@ -1579,10 +1659,16 @@ function AppContent() {
     }
   }
   const handleThinkingArchive = useCallback(
-    (id: string) => {
-      void handleReviewDecision(id, 'ARCHIVE')
+    async (id: string) => {
+      setError('')
+      try {
+        await updateNoteArchiveBucket(id, 'THINKING')
+        await refreshAll()
+      } catch {
+        setError('Gedanke konnte nicht archiviert werden.')
+      }
     },
-    [handleReviewDecision],
+    [refreshAll],
   )
   const handleThinkingToTodo = useCallback(
     (id: string) => {
@@ -1599,6 +1685,12 @@ function AppContent() {
   const handleArchivedBackToThinking = useCallback(
     (id: string) => {
       void handleReviewDecision(id, 'PROCESS')
+    },
+    [handleReviewDecision],
+  )
+  const handleArchivedBackToTodo = useCallback(
+    (id: string) => {
+      void handleReviewDecision(id, 'TODO')
     },
     [handleReviewDecision],
   )
@@ -1941,7 +2033,6 @@ function AppContent() {
                   const note = result.item
                   return (
                     <li key={note.id} className="note-item note-item--todo">
-                      <span className="note-time">{formatNoteTime(note, todayISO)}</span>
                       <span className="note-content">
                         <ExpandableNoteText text={note.text} />
                         <span className="status-badge">{noteStatusLabel(note.status)}</span>
@@ -2008,7 +2099,6 @@ function AppContent() {
                 currentStaleNote ? (
                   <article className="review-focus-card" aria-label="Altes To-Do im Fokus">
                     <div className="review-focus-head">
-                      <span className="note-time">{toDayClockLabel(currentStaleNote.createdAt)}</span>
                       <span className="age-badge age-badge--overdue">Alt (&gt;14 Tage)</span>
                     </div>
                     <div className="review-focus-text">
@@ -2067,7 +2157,6 @@ function AppContent() {
                           <ul className="notes-list" aria-label={`Review ${group.label}`}>
                             {group.notes.map((note) => (
                               <li key={note.id} className="note-item note-item--todo">
-                                <span className="note-time">{formatNoteTime(note, todayISO)}</span>
                                 <span className="note-content">
                                   <ExpandableNoteText text={note.text} />
                                   <span className={`age-badge age-badge--${getReviewAgeCategory(note).toLowerCase()}`}>
@@ -2159,7 +2248,6 @@ function AppContent() {
               ) : currentReviewNote ? (
                 <article className="review-focus-card" aria-label="Aktueller Gedanke">
                   <div className="review-focus-head">
-                    <span className="note-time">{toClockLabel(currentReviewNote.createdAt)}</span>
                     <span className={`age-badge age-badge--${currentReviewCategory?.toLowerCase()}`}>
                       {reviewAgeLabel(currentReviewCategory ?? 'READY')}
                     </span>
@@ -2293,7 +2381,6 @@ function AppContent() {
                       <ul className="notes-list" aria-label="Heute entschiedene Gedanken">
                         {decidedTodayNotes.map((note) => (
                           <li key={note.id} className="note-item note-item--todo">
-                      <span className="note-time">{formatNoteTime(note, todayISO)}</span>
                             <span className="note-content">
                               <ExpandableNoteText text={note.text} />
                               <span className="status-badge">{noteStatusLabel(note.status)}</span>
@@ -2318,7 +2405,7 @@ function AppContent() {
                 className="archive-toggle"
                 onClick={() => setShowArchive((prev) => !prev)}
               >
-                {showArchive ? `Archiv ausblenden (${archiveCount})` : `Archiv anzeigen (${archiveCount})`}
+                {showArchive ? `Archiv ausblenden (${thinkingArchiveCount})` : `Archiv anzeigen (${thinkingArchiveCount})`}
               </button>
             </div>
             {processCount === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
@@ -2341,7 +2428,7 @@ function AppContent() {
             {showArchive ? (
               <>
                 <h3 className="archive-title">Archiv</h3>
-                {archivedNotes.length === 0 ? <p className="empty-text">Archiv ist leer.</p> : null}
+                {thinkingArchivedNotes.length === 0 ? <p className="empty-text">Archiv ist leer.</p> : null}
                 {archivedThinkingGroups.map((group) => (
                   <section key={group.dayISO} className="note-group">
                     <div className="day-divider">{group.label}</div>
@@ -2357,7 +2444,7 @@ function AppContent() {
                     </ul>
                   </section>
                 ))}
-                {archiveCount > archivedNotes.length ? (
+                {thinkingArchiveCount >= 50 ? (
                   <p className="hint">Nur die letzten 50 angezeigt.</p>
                 ) : null}
               </>
@@ -2369,13 +2456,22 @@ function AppContent() {
             <>
             <div className="section-headline section-headline--todo">
               <h2>To-Do ({visibleTodoNotes.length}{todoStarOnly ? ` / ${todoNotes.length}` : ''})</h2>
-              <button
-                type="button"
-                className={todoStarOnly ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
-                onClick={() => setTodoStarOnly((prev) => !prev)}
-              >
-                {todoStarOnly ? 'Alle' : 'Stern'}
-              </button>
+              <div className="view-mode-toggle">
+                <button
+                  type="button"
+                  className={todoStarOnly ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
+                  onClick={() => setTodoStarOnly((prev) => !prev)}
+                >
+                  {todoStarOnly ? 'Alle' : 'Stern'}
+                </button>
+                <button
+                  type="button"
+                  className={showTodoArchive ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
+                  onClick={() => setShowTodoArchive((prev) => !prev)}
+                >
+                  {showTodoArchive ? `Archiv ausblenden (${todoArchiveCount})` : `Archiv anzeigen (${todoArchiveCount})`}
+                </button>
+              </div>
             </div>
             {lastTodoAction ? (
               <div className="undo-snackbar undo-snackbar--subtle" role="status" aria-live="polite">
@@ -2401,8 +2497,6 @@ function AppContent() {
                     <TodoNoteRow
                       key={note.id}
                       note={note}
-                      todayISO={todayISO}
-                      yesterdayISO={yesterdayISO}
                       onToggleStar={handleTodoToggleStar}
                       onDone={handleTodoDone}
                       onBack={handleTodoBack}
@@ -2411,6 +2505,30 @@ function AppContent() {
                 </ul>
               </section>
             ))}
+            {showTodoArchive ? (
+              <>
+                <h3 className="archive-title">Archiv</h3>
+                {todoArchivedNotes.length === 0 ? <p className="empty-text">Archiv ist leer.</p> : null}
+                {archivedTodoGroups.map((group) => (
+                  <section key={group.dayISO} className="note-group">
+                    <div className="day-divider">{group.label}</div>
+                    <ul className="notes-list" aria-label={`To-Do Archiv ${group.label}`}>
+                      {group.notes.map((note) => (
+                        <ArchivedTodoNoteRow
+                          key={note.id}
+                          note={note}
+                          onBackToTodo={handleArchivedBackToTodo}
+                          onDiscard={handleThinkingDiscard}
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+                {todoArchiveCount >= 50 ? (
+                  <p className="hint">Nur die letzten 50 angezeigt.</p>
+                ) : null}
+              </>
+            ) : null}
             </>
           ) : null}
 

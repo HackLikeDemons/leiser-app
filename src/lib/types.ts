@@ -1,5 +1,6 @@
 export type NoteStatus = 'INBOX' | 'TODO' | 'PROCESS' | 'DISCARD' | 'ARCHIVE'
 export type NoteType = 'NOTE' | 'QUESTION' | 'IDEA' | 'TASK'
+export type ArchiveBucket = 'THINKING' | 'TODO'
 
 export type Note = {
   id: string
@@ -13,6 +14,7 @@ export type Note = {
   status: NoteStatus
   type: NoteType
   starred: boolean
+  archiveBucket?: ArchiveBucket | null
 }
 
 export type NotesView = Note

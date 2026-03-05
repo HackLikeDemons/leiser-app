@@ -107,6 +107,7 @@ function asSnapshotNote(value: unknown, noteId: string): Note | null {
         : 'INBOX',
     type: note.type === 'QUESTION' || note.type === 'IDEA' || note.type === 'TASK' || note.type === 'NOTE' ? note.type : 'NOTE',
     starred: Boolean(note.starred),
+    archiveBucket: note.archiveBucket === 'THINKING' || note.archiveBucket === 'TODO' ? note.archiveBucket : null,
   }
 }
 
