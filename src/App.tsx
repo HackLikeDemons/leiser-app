@@ -726,8 +726,8 @@ function ArchivedThinkingNoteRow({
           type="button"
           className="review-btn review-btn--discard review-btn--icon"
           onClick={() => onDiscard(note.id)}
-          aria-label="Verwerfen"
-          title="Verwerfen"
+          aria-label="Endgültig löschen"
+          title="Endgültig löschen"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -783,8 +783,8 @@ function ArchivedTodoNoteRow({
           type="button"
           className="review-btn review-btn--discard review-btn--icon"
           onClick={() => onDiscard(note.id)}
-          aria-label="Verwerfen"
-          title="Verwerfen"
+          aria-label="Endgültig löschen"
+          title="Endgültig löschen"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -2010,11 +2010,37 @@ function AppContent() {
     },
     [handleReviewDecision],
   )
+  const handleThinkingArchiveDiscard = useCallback(
+    async (id: string) => {
+      setError('')
+      try {
+        await deleteNote(id)
+        setInfo('Gedanke endgültig gelöscht.')
+        await refreshAll()
+      } catch {
+        setError('Gedanke konnte nicht gelöscht werden.')
+      }
+    },
+    [refreshAll],
+  )
   const handleArchivedBackToTodo = useCallback(
     (id: string) => {
       void handleReviewDecision(id, 'TODO')
     },
     [handleReviewDecision],
+  )
+  const handleTodoArchiveDiscard = useCallback(
+    async (id: string) => {
+      setError('')
+      try {
+        await deleteNote(id)
+        setInfo('To-Do endgültig gelöscht.')
+        await refreshAll()
+      } catch {
+        setError('To-Do konnte nicht gelöscht werden.')
+      }
+    },
+    [refreshAll],
   )
 
   const searchEngine = useMemo(
@@ -2842,7 +2868,7 @@ function AppContent() {
                           key={note.id}
                           note={note}
                           onBackToThinking={handleArchivedBackToThinking}
-                          onDiscard={handleThinkingDiscard}
+                          onDiscard={handleThinkingArchiveDiscard}
                         />
                       ))}
                     </ul>
@@ -2922,7 +2948,7 @@ function AppContent() {
                           key={note.id}
                           note={note}
                           onBackToTodo={handleArchivedBackToTodo}
-                          onDiscard={handleThinkingDiscard}
+                          onDiscard={handleTodoArchiveDiscard}
                         />
                       ))}
                     </ul>
