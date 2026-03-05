@@ -1203,11 +1203,11 @@ export async function setSyncEnabled(roomId: string, enabled: boolean): Promise<
     : current.syncToken
   const next = await updateSyncState(roomId, { isEnabled: enabled, lastError: null, syncToken })
   if (typeof window !== 'undefined') {
-    if (enabled && next.syncToken) {
-      localStorage.setItem('leiser-sync-id', roomId)
+    // Keep room/token stable across disable/enable cycles so paired clients stay connected.
+    localStorage.setItem('leiser-sync-id', roomId)
+    if (next.syncToken) {
       localStorage.setItem('leiser-sync-token', next.syncToken)
     } else {
-      localStorage.removeItem('leiser-sync-id')
       localStorage.removeItem('leiser-sync-token')
     }
   }

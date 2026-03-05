@@ -833,6 +833,22 @@ function AppContent() {
   const hiddenAtRef = useRef<number | null>(null)
   const swReloadedRef = useRef(false)
 
+  const clearTransientInfoTimeout = () => {
+    if (transientInfoTimeoutRef.current !== null) {
+      window.clearTimeout(transientInfoTimeoutRef.current)
+      transientInfoTimeoutRef.current = null
+    }
+  }
+
+  const showTransientInfo = useCallback((message: string) => {
+    setInfo(message)
+    clearTransientInfoTimeout()
+    transientInfoTimeoutRef.current = window.setTimeout(() => {
+      setInfo((current) => (current === message ? '' : current))
+      transientInfoTimeoutRef.current = null
+    }, FEEDBACK_VISIBILITY_MS)
+  }, [])
+
   const todayISO = useMemo(() => getLocalDayISO(), [])
   const yesterdayISO = useMemo(() => getYesterdayISO(), [])
 
@@ -1000,12 +1016,12 @@ function AppContent() {
       setSyncRoomId(nextRoomId)
       const next = await setSyncEnabled(nextRoomId, nextEnabled)
       setSyncEnabledState(next.isEnabled)
-      setInfo(next.isEnabled ? 'Sync aktiviert.' : 'Sync deaktiviert.')
+      showTransientInfo(next.isEnabled ? 'Sync aktiviert.' : 'Sync deaktiviert.')
       await refreshAll(nextRoomId)
     } catch {
       setError('Sync-Status konnte nicht geändert werden.')
     }
-  }, [refreshAll, syncEnabled, syncRoomId])
+  }, [refreshAll, showTransientInfo, syncEnabled, syncRoomId])
 
   const handleSyncNow = useCallback(async () => {
     setSyncNowBusy(true)
@@ -1105,16 +1121,7 @@ function AppContent() {
 
       try {
         await runSyncNowForRoom(payload.roomId)
-        const message = 'Gerät gekoppelt. Sync erfolgreich.'
-        setInfo(message)
-        if (transientInfoTimeoutRef.current !== null) {
-          window.clearTimeout(transientInfoTimeoutRef.current)
-          transientInfoTimeoutRef.current = null
-        }
-        transientInfoTimeoutRef.current = window.setTimeout(() => {
-          setInfo((current) => (current === message ? '' : current))
-          transientInfoTimeoutRef.current = null
-        }, FEEDBACK_VISIBILITY_MS)
+        showTransientInfo('Gerät gekoppelt. Sync erfolgreich.')
       } catch (error) {
         if (isTokenRejectedError(error)) {
           if (previousStorage.roomId && previousStorage.token) {
@@ -1146,7 +1153,7 @@ function AppContent() {
         setError('Gerät gekoppelt, aber Sync-Test fehlgeschlagen.')
       }
     },
-    [refreshAll, runSyncNowForRoom, syncRoomId],
+    [refreshAll, runSyncNowForRoom, showTransientInfo, syncRoomId],
   )
 
   const handleShowPairQr = useCallback(() => {
@@ -1201,11 +1208,11 @@ function AppContent() {
     }
     try {
       await navigator.clipboard.writeText(syncPairCode)
-      setInfo('Pair Code kopiert.')
+      showTransientInfo('Pair Code kopiert.')
     } catch {
       setError('Kopieren fehlgeschlagen.')
     }
-  }, [syncPairCode])
+  }, [showTransientInfo, syncPairCode])
 
   const handlePasteFromClipboard = useCallback(async () => {
     setError('')
@@ -1386,22 +1393,6 @@ function AppContent() {
     }
   }
 
-  const clearTransientInfoTimeout = () => {
-    if (transientInfoTimeoutRef.current !== null) {
-      window.clearTimeout(transientInfoTimeoutRef.current)
-      transientInfoTimeoutRef.current = null
-    }
-  }
-
-  const showTransientInfo = useCallback((message: string) => {
-    setInfo(message)
-    clearTransientInfoTimeout()
-    transientInfoTimeoutRef.current = window.setTimeout(() => {
-      setInfo((current) => (current === message ? '' : current))
-      transientInfoTimeoutRef.current = null
-    }, FEEDBACK_VISIBILITY_MS)
-  }, [])
-
   useEffect(
     () => () => {
       clearUndoTimeout()
@@ -1543,7 +1534,7 @@ function AppContent() {
         link.remove()
         window.setTimeout(() => URL.revokeObjectURL(url), 1500)
       }
-      setInfo('Backup erzeugt.')
+      showTransientInfo('Backup erzeugt.')
     } catch (exportError) {
       if (exportError instanceof DOMException && exportError.name === 'AbortError') {
         return
@@ -1565,7 +1556,7 @@ function AppContent() {
       const fileText = await importFile.text()
       const report = await importBackupJson(fileText, importMode)
       setImportReport(report)
-      setInfo('Backup erfolgreich importiert.')
+      showTransientInfo('Backup erfolgreich importiert.')
       setImportFile(null)
       await refreshAll()
     } catch (importError) {
