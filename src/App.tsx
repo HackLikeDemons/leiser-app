@@ -292,8 +292,7 @@ function getReviewAgeCategory(note: Note): ReviewAgeCategory {
 
 function reviewAgeLabel(category: ReviewAgeCategory) {
   if (category === 'OVERDUE') return 'Überfällig'
-  if (category === 'READY') return 'Bereit'
-  return 'Frisch'
+  return 'Bereit'
 }
 
 function sortInboxForReview(notes: Note[]) {
@@ -1410,8 +1409,7 @@ function AppContent() {
     }
     return [
       { key: 'OVERDUE', label: 'Überfällig', notes: overdue },
-      { key: 'READY', label: 'Bereit', notes: ready },
-      { key: 'FRESH', label: 'Frisch', notes: fresh },
+      { key: 'READY', label: 'Bereit', notes: [...ready, ...fresh] },
     ] as const
   }, [orderedInbox])
   const supabaseConfigStatus = useMemo(() => getSupabaseRuntimeConfig(), [])

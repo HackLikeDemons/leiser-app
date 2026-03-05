@@ -1193,6 +1193,18 @@ button:focus {
 }
 
 @media (max-width: 640px) {
+  .app-header {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    z-index: 40;
+  }
+
+  .app-main {
+    padding-top: calc(112px + var(--safe-top));
+  }
+
   .app-main--with-footer {
     padding-bottom: calc(152px + var(--safe-bottom));
   }
