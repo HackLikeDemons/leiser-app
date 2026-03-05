@@ -46,6 +46,7 @@ const AUTO_ARCHIVE_LAST_RUN_KEY = 'leiser:auto-archive-last-run-day'
 const SYNC_ID_STORAGE_KEY = 'leiser-sync-id'
 const SYNC_TOKEN_STORAGE_KEY = 'leiser-sync-token'
 const SYNC_KEY_STORAGE_KEY = 'leiser-sync-key'
+const SHOW_DEBUG_INFO_STORAGE_KEY = 'leiser:show-debug-info'
 const RELOAD_AFTER_INACTIVITY_MS = 20 * 60 * 1000
 const FEEDBACK_VISIBILITY_MS = 3000
 
@@ -305,7 +306,7 @@ const BraindumpList = memo(function BraindumpList({
   return (
     <>
       <section className="braindump-hero" aria-label="Braindump Einführung">
-        <h2>Lass es raus.</h2>
+        <h2>Lass es raus</h2>
       </section>
       <section className="braindump-context" aria-label="Status">
         <p className="braindump-context-stats">Inbox: {inboxCount} · Denken: {processCount} · To-Do: {todoCount}</p>
@@ -916,6 +917,7 @@ function AppContent() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
+  const [showDebugInfo, setShowDebugInfo] = useState(() => localStorage.getItem(SHOW_DEBUG_INFO_STORAGE_KEY) !== '0')
   const [devSyncInfo, setDevSyncInfo] = useState<DevSyncInfo | null>(null)
   const [syncEnabled, setSyncEnabledState] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncUiStatus>('disabled')
@@ -1028,6 +1030,10 @@ function AppContent() {
     document.documentElement.dataset.theme = theme
     localStorage.setItem(THEME_KEY, theme)
   }, [theme])
+
+  useEffect(() => {
+    localStorage.setItem(SHOW_DEBUG_INFO_STORAGE_KEY, showDebugInfo ? '1' : '0')
+  }, [showDebugInfo])
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -2103,6 +2109,9 @@ function AppContent() {
                     <button type="button" onClick={() => void handleSyncNow()} disabled={!syncEnabled || syncNowBusy}>
                       {syncNowBusy ? 'Sync läuft…' : 'Sync now (Debug)'}
                     </button>
+                    <button type="button" onClick={() => setShowDebugInfo((prev) => !prev)}>
+                      {showDebugInfo ? 'Debug-Infos ausblenden' : 'Debug-Infos anzeigen'}
+                    </button>
                   </div>
 
                   {showImportPanel ? (
@@ -2157,8 +2166,8 @@ function AppContent() {
                         : 'geladen (VITE)'
                       : 'fehlt'}
                   </p>
-                  <p className="hint">Letzter Sync: {toSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p>
-                  {syncDiagnostics ? (
+                  {showDebugInfo ? <p className="hint">Letzter Sync: {toSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p> : null}
+                  {showDebugInfo && syncDiagnostics ? (
                     <div className="dev-sync-panel">
                       <p className="hint">
                         Sync Diagnose ({syncDiagnostics.mode}) · {toSyncTimeLabel(syncDiagnostics.atISO)}
@@ -2255,7 +2264,7 @@ function AppContent() {
                       </div>
                     </div>
                   ) : null}
-                  {import.meta.env.DEV && devSyncInfo ? (
+                  {showDebugInfo && import.meta.env.DEV && devSyncInfo ? (
                     <div className="dev-sync-panel">
                       <p className="hint">Device ID: {devSyncInfo.deviceId}</p>
                       <p className="hint">Room ID: {devSyncInfo.roomId}</p>
