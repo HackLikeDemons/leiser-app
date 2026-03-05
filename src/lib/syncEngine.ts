@@ -122,6 +122,20 @@ function asSyncBlob(value: unknown): SyncBlob | null {
   return { version: 1, changes: blob.changes }
 }
 
+function collectChangeIdsFromBlob(blob: SyncBlob | null): Set<string> {
+  const ids = new Set<string>()
+  if (!blob) {
+    return ids
+  }
+  for (const rawItem of blob.changes) {
+    const item = asSyncEnvelope(rawItem)
+    if (item) {
+      ids.add(item.changeId)
+    }
+  }
+  return ids
+}
+
 export function startSyncEngine(options: SyncEngineOptions = {}) {
   const roomId = options.roomId ?? DEFAULT_SYNC_ROOM_ID
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS
@@ -527,7 +541,12 @@ export async function syncNow(options: SyncNowOptions = {}) {
     }
 
     if (pendingForAck.length > 0) {
-      await markOutboxChangesSent(pendingForAck)
+      const remoteAfterPush = await pullSync(roomId, syncState.syncToken)
+      const remoteIds = collectChangeIdsFromBlob(asSyncBlob(remoteAfterPush?.blob ?? null))
+      const ackedIds = pendingForAck.filter((id) => remoteIds.has(id))
+      if (ackedIds.length > 0) {
+        await markOutboxChangesSent(ackedIds)
+      }
     }
 
     await updateSyncState(roomId, {
