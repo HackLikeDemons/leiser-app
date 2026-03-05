@@ -2359,13 +2359,25 @@ function AppContent() {
                 </ul>
               </section>
             ))}
-            <button
-              type="button"
-              className="archive-toggle"
-              onClick={() => setShowArchive((prev) => !prev)}
-            >
-              {showArchive ? `Archiv ausblenden (${thinkingArchiveCount})` : `Archiv anzeigen (${thinkingArchiveCount})`}
-            </button>
+            <div className="archive-toggle-row">
+              <button
+                type="button"
+                className={showArchive ? 'archive-toggle archive-toggle--archive-action archive-toggle--active' : 'archive-toggle archive-toggle--archive-action'}
+                onClick={() => setShowArchive((prev) => !prev)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M3 7h18v4H3V7Zm3 4h12v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8Zm4 3h4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>{showArchive ? `Archiv ausblenden (${thinkingArchiveCount})` : `Archiv anzeigen (${thinkingArchiveCount})`}</span>
+              </button>
+            </div>
             {showArchive ? (
               <>
                 <h3 className="archive-title">Archiv</h3>
@@ -2439,13 +2451,25 @@ function AppContent() {
                 </ul>
               </section>
             ))}
-            <button
-              type="button"
-              className={showTodoArchive ? 'archive-toggle archive-toggle--active' : 'archive-toggle'}
-              onClick={() => setShowTodoArchive((prev) => !prev)}
-            >
-              {showTodoArchive ? `Archiv ausblenden (${todoArchiveCount})` : `Archiv anzeigen (${todoArchiveCount})`}
-            </button>
+            <div className="archive-toggle-row">
+              <button
+                type="button"
+                className={showTodoArchive ? 'archive-toggle archive-toggle--archive-action archive-toggle--active' : 'archive-toggle archive-toggle--archive-action'}
+                onClick={() => setShowTodoArchive((prev) => !prev)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M3 7h18v4H3V7Zm3 4h12v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8Zm4 3h4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>{showTodoArchive ? `Archiv ausblenden (${todoArchiveCount})` : `Archiv anzeigen (${todoArchiveCount})`}</span>
+              </button>
+            </div>
             {showTodoArchive ? (
               <>
                 <h3 className="archive-title">Archiv</h3>

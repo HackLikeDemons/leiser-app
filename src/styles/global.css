@@ -558,6 +558,26 @@ button:hover {
   opacity: 0.9;
 }
 
+.archive-toggle-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.9rem;
+}
+
+.archive-toggle--archive-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.42rem 0.72rem;
+}
+
+.archive-toggle--archive-action svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+}
+
 .archive-toggle--active {
   border-color: color-mix(in srgb, var(--accent) 32%, var(--border-default));
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-button));
