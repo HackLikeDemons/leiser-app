@@ -1199,6 +1199,10 @@ button:focus {
 }
 
 @media (max-width: 640px) {
+  .header-search input {
+    font-size: 16px;
+  }
+
   .app-header {
     position: sticky;
     top: 0;
