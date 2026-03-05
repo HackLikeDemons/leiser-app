@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent, RefObject } from 'react'
+import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import Fuse from 'fuse.js'
+import QRCode from 'qrcode'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import {
   DEFAULT_SYNC_ROOM_ID,
@@ -9,6 +11,7 @@ import {
   countNotesByStatus,
   deleteNote,
   getSyncDebugInfo,
+  getSyncState,
   getSyncPairCode,
   listDecidedNotesByDay,
   listInboxNotes,
@@ -18,12 +21,13 @@ import {
   listSearchableNotes,
   listTodoNotes,
   setSyncEnabled,
+  updateSyncState,
   updateNoteArchiveBucket,
   updateNoteStarred,
   updateNoteStatus,
 } from './lib/dbNotes'
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
-import { getLocalDayISO } from './lib/date'
+import { getLocalDayISO, getYesterdayISO, groupNotesByDay } from './lib/date'
 import type { Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FooterProvider, useFooter } from './app/FooterContext'
@@ -44,6 +48,16 @@ const BRAINDUMP_COLLAPSE_THRESHOLD = 40
 const AUTO_ARCHIVE_DAYS = 90
 const AUTO_ARCHIVE_BATCH_LIMIT = 100
 const AUTO_ARCHIVE_LAST_RUN_KEY = 'leiser:auto-archive-last-run-day'
+const SYNC_ID_STORAGE_KEY = 'leiser-sync-id'
+const SYNC_TOKEN_STORAGE_KEY = 'leiser-sync-token'
+const SYNC_KEY_STORAGE_KEY = 'leiser-sync-key'
+
+type PairingPayloadV1 = {
+  v: 1
+  roomId: string
+  token: string
+  key?: string
+}
 
 type ReviewAgeCategory = 'OVERDUE' | 'READY' | 'FRESH'
 type ReviewLayoutPreference = 'AUTO' | 'SINGLE' | 'LIST'
@@ -66,6 +80,73 @@ type DevSyncInfo = {
   lastPushedAt: string | null
   isEnabled: boolean
   syncToken: string | null
+}
+
+function encodeBase64Url(input: string) {
+  const bytes = new TextEncoder().encode(input)
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+function decodeBase64Url(input: string) {
+  const normalized = input.replace(/-/g, '+').replace(/_/g, '/')
+  const padding = normalized.length % 4
+  const padded = normalized + (padding > 0 ? '='.repeat(4 - padding) : '')
+  const binary = atob(padded)
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function parsePairingPayload(input: string): PairingPayloadV1 {
+  const trimmed = input.trim()
+  let jsonText = trimmed
+
+  if (trimmed.startsWith('leiser://pair?')) {
+    jsonText = decodeBase64Url(trimmed.slice('leiser://pair?'.length))
+  } else if (trimmed.startsWith('LEISERPAIR:')) {
+    jsonText = decodeBase64Url(trimmed.slice('LEISERPAIR:'.length))
+  }
+
+  const parsed = JSON.parse(jsonText) as unknown
+  if (!isObjectRecord(parsed)) {
+    throw new Error('invalid payload')
+  }
+
+  const roomId = typeof parsed.roomId === 'string' ? parsed.roomId.trim() : ''
+  const token = typeof parsed.token === 'string' ? parsed.token.trim() : ''
+  const key = typeof parsed.key === 'string' ? parsed.key.trim() : ''
+  const version = parsed.v
+  const isLegacy = version == null
+  if ((!isLegacy && version !== 1) || roomId.length === 0 || token.length === 0) {
+    throw new Error('invalid payload')
+  }
+
+  return {
+    v: 1,
+    roomId,
+    token,
+    ...(key ? { key } : {}),
+  }
+}
+
+function isTokenRejectedError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+  const message = error.message.toLowerCase()
+  return (
+    message.includes('401') ||
+    message.includes('permission denied') ||
+    message.includes('jwt') ||
+    message.includes('row-level security')
+  )
 }
 
 function toSyncTimeLabel(isoTimestamp: string | null) {
@@ -99,12 +180,6 @@ function isUndoAvailable(note: Note) {
 }
 
 function noteTypeLabel(type: NoteType) {
-  if (type === 'QUESTION') {
-    return 'Frage'
-  }
-  if (type === 'IDEA') {
-    return 'Idee'
-  }
   if (type === 'TASK') {
     return 'Aufgabe'
   }
@@ -182,7 +257,7 @@ function ExpandableNoteText({ text }: { text: string }) {
 function noteStatusLabel(status: NoteStatus) {
   if (status === 'INBOX') return 'Inbox'
   if (status === 'TODO') return 'To-Do'
-  if (status === 'PROCESS') return 'Denken'
+  if (status === 'PROCESS') return 'Gedanken'
   if (status === 'ARCHIVE') return 'Archiv'
   return 'Verworfen'
 }
@@ -235,12 +310,6 @@ function sortInboxForReview(notes: Note[]) {
   ready.sort(byOldest)
   fresh.sort(byOldest)
   return [...overdue, ...ready, ...fresh]
-}
-
-function getDayDividerLabel(dayISO: string, todayISO: string, yesterdayISO: string) {
-  if (dayISO === todayISO) return 'Heute'
-  if (dayISO === yesterdayISO) return 'Gestern'
-  return dayISO
 }
 
 const BraindumpNoteRow = memo(function BraindumpNoteRow({
@@ -841,37 +910,39 @@ function BraindumpPage({
   onSubmitEntries: (entries: string[]) => Promise<void>
 }) {
   const { setFooter } = useFooter()
-  const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({})
+  const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({})
 
   const totalNotes = useMemo(
     () => groups.reduce((sum, group) => sum + group.notes.length, 0),
     [groups],
   )
 
-  useEffect(() => {
-    setCollapsedDays((prev) => {
-      const next: Record<string, boolean> = {}
-      for (const group of groups) {
-        if (group.dayISO in prev) {
-          next[group.dayISO] = prev[group.dayISO]
-          continue
-        }
-        const shouldCollapseByLogic =
-          totalNotes > BRAINDUMP_COLLAPSE_THRESHOLD &&
-          group.dayISO !== todayISO &&
-          group.dayISO !== yesterdayISO
-        next[group.dayISO] = shouldCollapseByLogic
-      }
-      return next
-    })
-  }, [groups, totalNotes, todayISO, yesterdayISO])
+  const collapsedDays = useMemo(() => {
+    const next: Record<string, boolean> = {}
+    for (const group of groups) {
+      const defaultCollapsed =
+        totalNotes > BRAINDUMP_COLLAPSE_THRESHOLD &&
+        group.dayISO !== todayISO &&
+        group.dayISO !== yesterdayISO
+      next[group.dayISO] =
+        group.dayISO in collapsedOverrides ? collapsedOverrides[group.dayISO] : defaultCollapsed
+    }
+    return next
+  }, [collapsedOverrides, groups, totalNotes, todayISO, yesterdayISO])
 
   const handleToggleDay = useCallback((dayISO: string) => {
-    setCollapsedDays((prev) => ({
-      ...prev,
-      [dayISO]: !prev[dayISO],
-    }))
-  }, [])
+    setCollapsedOverrides((prev) => {
+      const defaultCollapsed =
+        totalNotes > BRAINDUMP_COLLAPSE_THRESHOLD &&
+        dayISO !== todayISO &&
+        dayISO !== yesterdayISO
+      const current = dayISO in prev ? prev[dayISO] : defaultCollapsed
+      return {
+        ...prev,
+        [dayISO]: !current,
+      }
+    })
+  }, [totalNotes, todayISO, yesterdayISO])
 
   useEffect(() => {
     setFooter(<BraindumpComposer onSubmitEntries={onSubmitEntries} />)
@@ -934,10 +1005,15 @@ function AppContent() {
   const [syncError, setSyncError] = useState<string | null>(null)
   const [syncDiagnostics, setSyncDiagnostics] = useState<SyncDiagnostics | null>(null)
   const [syncPairCode, setSyncPairCode] = useState<string | null>(null)
+  const [syncPairCodeDraft, setSyncPairCodeDraft] = useState('')
   const [syncRoomId, setSyncRoomId] = useState(
     () => localStorage.getItem('leiser-sync-id') || DEFAULT_SYNC_ROOM_ID,
   )
   const [syncNowBusy, setSyncNowBusy] = useState(false)
+  const [showPairQr, setShowPairQr] = useState(false)
+  const [pairQrValue, setPairQrValue] = useState<string | null>(null)
+  const [showScanner, setShowScanner] = useState(false)
+  const [scannerHint, setScannerHint] = useState<string | null>(null)
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null)
   const [staleReviewMode, setStaleReviewMode] = useState(false)
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
@@ -953,15 +1029,15 @@ function AppContent() {
   const todoUndoTimeoutRef = useRef<number | null>(null)
   const mainScrollRef = useRef<HTMLElement | null>(null)
   const braindumpEndRef = useRef<HTMLDivElement | null>(null)
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const scannerVideoRef = useRef<HTMLVideoElement | null>(null)
+  const scannerReaderRef = useRef<BrowserMultiFormatReader | null>(null)
+  const scannerControlsRef = useRef<IScannerControls | null>(null)
   const shouldAutoScrollRef = useRef(true)
   const nextAutoScrollBehaviorRef = useRef<ScrollBehavior>('auto')
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
-  const yesterdayISO = useMemo(() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 1)
-    return getLocalDayISO(d)
-  }, [])
+  const yesterdayISO = useMemo(() => getYesterdayISO(), [])
 
   const refreshAll = useCallback(async (roomIdOverride?: string) => {
     try {
@@ -1081,6 +1157,263 @@ function AppContent() {
       setSyncNowBusy(false)
     }
   }, [refreshAll, syncRoomId])
+
+  const stopScanner = useCallback(() => {
+    scannerControlsRef.current?.stop()
+    scannerControlsRef.current = null
+    scannerReaderRef.current = null
+    const stream = scannerVideoRef.current?.srcObject
+    if (stream instanceof MediaStream) {
+      stream.getTracks().forEach((track) => track.stop())
+    }
+    if (scannerVideoRef.current) {
+      scannerVideoRef.current.srcObject = null
+    }
+  }, [])
+
+  const runSyncNowForRoom = useCallback(
+    async (roomId: string) => {
+      setSyncNowBusy(true)
+      try {
+        await syncNow({
+          roomId,
+          onStatusChange: (status, message) => {
+            setSyncStatus(status)
+            setSyncError(message ?? null)
+          },
+          onDiagnostics: (diagnostics) => {
+            setSyncDiagnostics(diagnostics)
+          },
+          onDataChanged: () => {
+            void refreshAll(roomId)
+          },
+        })
+        await refreshAll(roomId)
+      } finally {
+        setSyncNowBusy(false)
+      }
+    },
+    [refreshAll],
+  )
+
+  const applyPairingPayload = useCallback(
+    async (payload: PairingPayloadV1) => {
+      const previousRoomId = syncRoomId
+      const previousStorage = {
+        roomId: localStorage.getItem(SYNC_ID_STORAGE_KEY),
+        token: localStorage.getItem(SYNC_TOKEN_STORAGE_KEY),
+        key: localStorage.getItem(SYNC_KEY_STORAGE_KEY),
+      }
+      const previousRoomState = await getSyncState(previousRoomId)
+      const previousTargetState =
+        payload.roomId === previousRoomId ? previousRoomState : await getSyncState(payload.roomId)
+
+      localStorage.setItem(SYNC_ID_STORAGE_KEY, payload.roomId)
+      localStorage.setItem(SYNC_TOKEN_STORAGE_KEY, payload.token)
+      if (payload.key) {
+        localStorage.setItem(SYNC_KEY_STORAGE_KEY, payload.key)
+      } else {
+        localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+      }
+
+      setSyncRoomId(payload.roomId)
+      await updateSyncState(payload.roomId, {
+        isEnabled: true,
+        syncToken: payload.token,
+        lastError: null,
+      })
+      setSyncEnabledState(true)
+      await refreshAll(payload.roomId)
+
+      try {
+        await runSyncNowForRoom(payload.roomId)
+        setInfo('Gerät gekoppelt. Sync erfolgreich.')
+      } catch (error) {
+        if (isTokenRejectedError(error)) {
+          if (previousStorage.roomId && previousStorage.token) {
+            localStorage.setItem(SYNC_ID_STORAGE_KEY, previousStorage.roomId)
+            localStorage.setItem(SYNC_TOKEN_STORAGE_KEY, previousStorage.token)
+          } else {
+            localStorage.removeItem(SYNC_ID_STORAGE_KEY)
+            localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
+          }
+          if (previousStorage.key) {
+            localStorage.setItem(SYNC_KEY_STORAGE_KEY, previousStorage.key)
+          } else {
+            localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+          }
+
+          await updateSyncState(payload.roomId, {
+            isEnabled: previousTargetState.isEnabled,
+            syncToken: previousTargetState.syncToken,
+            lastError: previousTargetState.lastError,
+            lastPulledSeq: previousTargetState.lastPulledSeq,
+            lastPushedAt: previousTargetState.lastPushedAt,
+          })
+          setSyncRoomId(previousRoomId)
+          setSyncEnabledState(previousRoomState.isEnabled)
+          await refreshAll(previousRoomId)
+          setError('Token abgelehnt – Pairing-Code stimmt nicht.')
+          return
+        }
+        setError('Gerät gekoppelt, aber Sync-Test fehlgeschlagen.')
+      }
+    },
+    [refreshAll, runSyncNowForRoom, syncRoomId],
+  )
+
+  const handleShowPairQr = useCallback(() => {
+    setError('')
+    setInfo('')
+    try {
+      if (!syncPairCode) {
+        setError('Kein Pair Code vorhanden. Aktiviere zuerst Sync.')
+        return
+      }
+      const parsed = JSON.parse(syncPairCode) as unknown
+      if (!isObjectRecord(parsed) || typeof parsed.roomId !== 'string' || typeof parsed.token !== 'string') {
+        setError('Pair Code ungültig.')
+        return
+      }
+      const syncKey = localStorage.getItem(SYNC_KEY_STORAGE_KEY)?.trim()
+      const payload: PairingPayloadV1 = {
+        v: 1,
+        roomId: parsed.roomId.trim(),
+        token: parsed.token.trim(),
+        ...(syncKey ? { key: syncKey } : {}),
+      }
+      const encoded = encodeBase64Url(JSON.stringify(payload))
+      setPairQrValue(`leiser://pair?${encoded}`)
+      setShowPairQr(true)
+    } catch {
+      setError('Pair Code ungültig.')
+    }
+  }, [syncPairCode])
+
+  const handleImportPairCode = useCallback(async () => {
+    setError('')
+    setInfo('')
+    let payload: PairingPayloadV1
+    try {
+      payload = parsePairingPayload(syncPairCodeDraft)
+    } catch {
+      setError('QR-Code ungültig.')
+      return
+    }
+    try {
+      await applyPairingPayload(payload)
+      setSyncPairCodeDraft('')
+    } catch {
+      setError('Pairing fehlgeschlagen.')
+    }
+  }, [applyPairingPayload, syncPairCodeDraft])
+
+  const handleCopyPairCode = useCallback(async () => {
+    if (!syncPairCode) {
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(syncPairCode)
+      setInfo('Pair Code kopiert.')
+    } catch {
+      setError('Kopieren fehlgeschlagen.')
+    }
+  }, [syncPairCode])
+
+  const handlePasteFromClipboard = useCallback(async () => {
+    setError('')
+    try {
+      const clipText = await navigator.clipboard.readText()
+      setSyncPairCodeDraft(clipText)
+    } catch {
+      setError('Zwischenablage konnte nicht gelesen werden.')
+    }
+  }, [])
+
+  const handleScannerCancel = useCallback(() => {
+    stopScanner()
+    setShowScanner(false)
+  }, [stopScanner])
+
+  const handleScanResult = useCallback(
+    async (rawText: string) => {
+      stopScanner()
+      setShowScanner(false)
+      let payload: PairingPayloadV1
+      try {
+        payload = parsePairingPayload(rawText)
+      } catch {
+        setError('QR-Code ungültig.')
+        return
+      }
+      try {
+        await applyPairingPayload(payload)
+      } catch {
+        setError('Pairing fehlgeschlagen.')
+      }
+    },
+    [applyPairingPayload, stopScanner],
+  )
+
+  const handleOpenScanner = useCallback(() => {
+    setError('')
+    setScannerHint(null)
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setScannerHint('Kamera nicht verfügbar. Nutze stattdessen „Pair Code einfügen“.')
+      return
+    }
+    setShowScanner(true)
+  }, [])
+
+  useEffect(() => {
+    if (!showPairQr || !pairQrValue || !qrCanvasRef.current) {
+      return
+    }
+    void QRCode.toCanvas(qrCanvasRef.current, pairQrValue, {
+      width: 256,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+    })
+  }, [pairQrValue, showPairQr])
+
+  useEffect(() => {
+    if (!showScanner) {
+      stopScanner()
+      return
+    }
+
+    let active = true
+    const start = async () => {
+      const videoElement = scannerVideoRef.current
+      if (!videoElement) {
+        return
+      }
+      try {
+        const reader = new BrowserMultiFormatReader()
+        scannerReaderRef.current = reader
+        const controls = await reader.decodeFromVideoDevice(undefined, videoElement, (result) => {
+          if (!result || !active) {
+            return
+          }
+          void handleScanResult(result.getText())
+        })
+        if (!active) {
+          controls.stop()
+          return
+        }
+        scannerControlsRef.current = controls
+      } catch {
+        setScannerHint('Kamera blockiert oder nicht verfügbar. Nutze stattdessen „Pair Code einfügen“.')
+        setShowScanner(false)
+      }
+    }
+
+    void start()
+    return () => {
+      active = false
+      stopScanner()
+    }
+  }, [handleScanResult, showScanner, stopScanner])
 
   const orderedInbox = useMemo(() => sortInboxForReview(inboxNotes), [inboxNotes])
   const resolvedReviewLayout = useMemo<'SINGLE' | 'LIST'>(() => {
@@ -1209,7 +1542,7 @@ function AppContent() {
     [],
   )
 
-  const startUndoWindow = (action: LastAction) => {
+  const startUndoWindow = useCallback((action: LastAction) => {
     clearUndoTimeout()
     setLastAction(action)
     undoTimeoutRef.current = window.setTimeout(() => {
@@ -1222,9 +1555,9 @@ function AppContent() {
       })
       undoTimeoutRef.current = null
     }, 8000)
-  }
+  }, [])
 
-  const startTodoUndoWindow = (action: LastAction) => {
+  const startTodoUndoWindow = useCallback((action: LastAction) => {
     clearTodoUndoTimeout()
     setLastTodoAction(action)
     todoUndoTimeoutRef.current = window.setTimeout(() => {
@@ -1237,9 +1570,9 @@ function AppContent() {
       })
       todoUndoTimeoutRef.current = null
     }, 8000)
-  }
+  }, [])
 
-  const handleReviewDecision = async (
+  const handleReviewDecision = useCallback(async (
     id: string,
     status: NoteStatus,
     options?: { enableUndo?: boolean; sourceNote?: Note | null },
@@ -1266,7 +1599,7 @@ function AppContent() {
       }
       setError('Status konnte nicht aktualisiert werden.')
     }
-  }
+  }, [refreshAll, startUndoWindow])
 
   const handleUndoLastReviewAction = async () => {
     if (!lastAction || undoBusy) {
@@ -1288,13 +1621,13 @@ function AppContent() {
     }
   }
 
-  const handleSkipReview = () => {
+  const handleSkipReview = useCallback(() => {
     if (orderedInbox.length <= 1) {
       return
     }
     setCurrentNoteId(null)
     setReviewIndex((effectiveReviewIndex + 1) % orderedInbox.length)
-  }
+  }, [effectiveReviewIndex, orderedInbox.length])
 
   const handleExport = async () => {
     setInfo('')
@@ -1305,21 +1638,41 @@ function AppContent() {
       const filename = `leiser-backup-${day}.json`
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
       const file = new File([blob], filename, { type: 'application/json' })
-      const canShareFiles =
-        typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })
+      let canShareFiles = false
+      if (typeof navigator.canShare === 'function') {
+        try {
+          canShareFiles = navigator.canShare({ files: [file] })
+        } catch {
+          canShareFiles = false
+        }
+      }
 
+      let shared = false
       if (typeof navigator.share === 'function' && canShareFiles) {
-        await navigator.share({
-          files: [file],
-          title: 'Leiser Backup',
-        })
-      } else {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'Leiser Backup',
+          })
+          shared = true
+        } catch (shareError) {
+          if (shareError instanceof DOMException && shareError.name === 'AbortError') {
+            return
+          }
+          shared = false
+        }
+      }
+
+      if (!shared) {
         const url = URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
         link.download = filename
+        link.rel = 'noopener'
+        document.body.appendChild(link)
         link.click()
-        URL.revokeObjectURL(url)
+        link.remove()
+        window.setTimeout(() => URL.revokeObjectURL(url), 1500)
       }
       setInfo('Backup erzeugt.')
     } catch (exportError) {
@@ -1372,54 +1725,26 @@ function AppContent() {
   const currentReviewCategory = currentReviewNote ? getReviewAgeCategory(currentReviewNote) : null
   const showUpdateNotice = needRefresh && !dismissedUpdateNotice
   const braindumpGroups = useMemo(() => {
-    const grouped = new Map<string, Note[]>()
-    for (const note of braindumpNotes) {
-      const dayNotes = grouped.get(note.dayISO)
-      if (dayNotes) {
-        dayNotes.push(note)
-      } else {
-        grouped.set(note.dayISO, [note])
-      }
-    }
-    const byCreatedAsc = (a: Note, b: Note) => a.createdAt.localeCompare(b.createdAt)
-    const days = [...grouped.keys()].sort((a, b) => a.localeCompare(b))
-    return days.map((dayISO) => {
-      const notes = grouped.get(dayISO) ?? []
-      notes.sort(byCreatedAsc)
-      return {
-        dayISO,
-        label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
-        notes,
-      }
+    return groupNotesByDay(braindumpNotes, {
+      todayISO,
+      yesterdayISO,
+      daySort: 'asc',
+      noteSort: (a, b) => a.createdAt.localeCompare(b.createdAt),
     })
-  }, [
-    braindumpNotes,
-    todayISO,
-    yesterdayISO,
-  ])
+  }, [braindumpNotes, todayISO, yesterdayISO])
   const thinkingGroups = useMemo(() => {
-    const grouped = new Map<string, Note[]>()
-    for (const note of processNotes) {
-      const dayNotes = grouped.get(note.dayISO)
-      if (dayNotes) {
-        dayNotes.push(note)
-      } else {
-        grouped.set(note.dayISO, [note])
-      }
-    }
-    return [...grouped.entries()]
-      .sort(([dayA], [dayB]) => dayB.localeCompare(dayA))
-      .map(([dayISO, notes]) => ({
-      dayISO,
-      label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
-      notes: [...notes].sort((a, b) => {
+    return groupNotesByDay(processNotes, {
+      todayISO,
+      yesterdayISO,
+      daySort: 'desc',
+      noteSort: (a, b) => {
         const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
         if (byUpdated !== 0) {
           return byUpdated
         }
         return b.createdAt.localeCompare(a.createdAt)
-      }),
-      }))
+      },
+    })
   }, [processNotes, todayISO, yesterdayISO])
   const thinkingArchivedNotes = useMemo(
     () =>
@@ -1438,52 +1763,32 @@ function AppContent() {
   const thinkingArchiveCount = thinkingArchivedNotes.length
   const todoArchiveCount = todoArchivedNotes.length
   const archivedThinkingGroups = useMemo(() => {
-    const grouped = new Map<string, Note[]>()
-    for (const note of thinkingArchivedNotes) {
-      const dayNotes = grouped.get(note.dayISO)
-      if (dayNotes) {
-        dayNotes.push(note)
-      } else {
-        grouped.set(note.dayISO, [note])
-      }
-    }
-    return [...grouped.entries()]
-      .sort(([dayA], [dayB]) => dayB.localeCompare(dayA))
-      .map(([dayISO, notes]) => ({
-      dayISO,
-      label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
-      notes: [...notes].sort((a, b) => {
+    return groupNotesByDay(thinkingArchivedNotes, {
+      todayISO,
+      yesterdayISO,
+      daySort: 'desc',
+      noteSort: (a, b) => {
         const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
         if (byUpdated !== 0) {
           return byUpdated
         }
         return b.createdAt.localeCompare(a.createdAt)
-      }),
-      }))
+      },
+    })
   }, [thinkingArchivedNotes, todayISO, yesterdayISO])
   const archivedTodoGroups = useMemo(() => {
-    const grouped = new Map<string, Note[]>()
-    for (const note of todoArchivedNotes) {
-      const dayNotes = grouped.get(note.dayISO)
-      if (dayNotes) {
-        dayNotes.push(note)
-      } else {
-        grouped.set(note.dayISO, [note])
-      }
-    }
-    return [...grouped.entries()]
-      .sort(([dayA], [dayB]) => dayB.localeCompare(dayA))
-      .map(([dayISO, notes]) => ({
-      dayISO,
-      label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
-      notes: [...notes].sort((a, b) => {
+    return groupNotesByDay(todoArchivedNotes, {
+      todayISO,
+      yesterdayISO,
+      daySort: 'desc',
+      noteSort: (a, b) => {
         const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
         if (byUpdated !== 0) {
           return byUpdated
         }
         return b.createdAt.localeCompare(a.createdAt)
-      }),
-      }))
+      },
+    })
   }, [todoArchivedNotes, todayISO, yesterdayISO])
 
   const handleUndoDelete = useCallback((id: string) => {
@@ -1507,7 +1812,7 @@ function AppContent() {
     return todoNotes
       .filter((todo) => daysBetween(today, new Date(todo.createdAt)) > 14)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  }, [todoNotes, todayISO])
+  }, [todoNotes])
   const staleTodosById = useMemo(() => {
     const map = new Map<string, Note>()
     for (const note of staleTodos) {
@@ -1590,7 +1895,7 @@ function AppContent() {
         setError('To-Do konnte nicht aktualisiert werden.')
       }
     },
-    [todoNotes, refreshAll],
+    [todoNotes, refreshAll, startTodoUndoWindow],
   )
 
   const handleTodoDone = useCallback(
@@ -1617,7 +1922,7 @@ function AppContent() {
         setError('To-Do konnte nicht aktualisiert werden.')
       }
     },
-    [todoNotes, refreshAll],
+    [todoNotes, refreshAll, startTodoUndoWindow],
   )
 
   const handleTodoBack = useCallback(
@@ -1718,32 +2023,22 @@ function AppContent() {
   )
 
   const todoGroups = useMemo(() => {
-    const grouped = new Map<string, Note[]>()
-    for (const note of visibleTodoNotes) {
-      const dayNotes = grouped.get(note.dayISO)
-      if (dayNotes) {
-        dayNotes.push(note)
-      } else {
-        grouped.set(note.dayISO, [note])
-      }
-    }
-    return [...grouped.entries()]
-      .sort(([dayA], [dayB]) => dayB.localeCompare(dayA))
-      .map(([dayISO, notes]) => ({
-        dayISO,
-        label: getDayDividerLabel(dayISO, todayISO, yesterdayISO),
-        notes: [...notes].sort((a, b) => {
-          if (a.starred !== b.starred) {
-            return a.starred ? -1 : 1
-          }
-          return b.createdAt.localeCompare(a.createdAt)
-        }),
-      }))
+    return groupNotesByDay(visibleTodoNotes, {
+      todayISO,
+      yesterdayISO,
+      daySort: 'desc',
+      noteSort: (a, b) => {
+        if (a.starred !== b.starred) {
+          return a.starred ? -1 : 1
+        }
+        return b.createdAt.localeCompare(a.createdAt)
+      },
+    })
   }, [visibleTodoNotes, todayISO, yesterdayISO])
 
   useEffect(() => {
     setOpenActionMenuId(null)
-  }, [activeTab, isSearchMode])
+  }, [activeTab, isSearchMode, scrollToBraindumpBottom])
 
   useEffect(() => {
     if (activeTab !== 'BRAINDUMP' || isSearchMode) {
@@ -1754,7 +2049,7 @@ function AppContent() {
       shouldAutoScrollRef.current = true
     })
     return () => cancelAnimationFrame(frame)
-  }, [activeTab, isSearchMode])
+  }, [activeTab, isSearchMode, scrollToBraindumpBottom])
 
   useEffect(() => {
     if (activeTab !== 'BRAINDUMP' || isSearchMode) {
@@ -1767,7 +2062,7 @@ function AppContent() {
     nextAutoScrollBehaviorRef.current = 'auto'
     const frame = requestAnimationFrame(() => scrollToBraindumpBottom(behavior))
     return () => cancelAnimationFrame(frame)
-  }, [activeTab, braindumpGroups, isSearchMode])
+  }, [activeTab, braindumpGroups, isSearchMode, scrollToBraindumpBottom])
 
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -2004,10 +2299,82 @@ function AppContent() {
                       </p>
                     </div>
                   ) : null}
-                  {syncPairCode ? (
+                  <div className="pairing-panel">
+                    <h3>Geräte koppeln</h3>
+                    <div className="data-actions">
+                      <button type="button" onClick={handleShowPairQr} disabled={!syncPairCode}>
+                        QR-Code anzeigen
+                      </button>
+                      <button type="button" onClick={handleOpenScanner}>
+                        QR scannen
+                      </button>
+                    </div>
+                    <p className="hint">Nur mit Geräten teilen, denen du vertraust.</p>
+                    {scannerHint ? <p className="hint">{scannerHint}</p> : null}
+                    {syncPairCode ? (
+                      <div className="import-panel">
+                        <label className="hint" htmlFor="sync-pair-code">Pair Code (mit Token)</label>
+                        <textarea id="sync-pair-code" readOnly value={syncPairCode} rows={3} />
+                        <button type="button" onClick={() => void handleCopyPairCode()}>
+                          Pair Code kopieren
+                        </button>
+                      </div>
+                    ) : null}
                     <div className="import-panel">
-                      <label className="hint" htmlFor="sync-pair-code">Pair Code (mit Token)</label>
-                      <textarea id="sync-pair-code" readOnly value={syncPairCode} rows={3} />
+                      <label className="hint" htmlFor="sync-pair-import">Pair Code einfügen</label>
+                      <textarea
+                        id="sync-pair-import"
+                        value={syncPairCodeDraft}
+                        onChange={(event) => setSyncPairCodeDraft(event.target.value)}
+                        rows={3}
+                        placeholder='leiser://pair?... oder {"roomId":"...","token":"..."}'
+                      />
+                      <div className="data-actions">
+                        <button type="button" onClick={() => void handlePasteFromClipboard()}>
+                          Aus Zwischenablage
+                        </button>
+                        <button type="button" onClick={() => void handleImportPairCode()} disabled={!syncPairCodeDraft.trim()}>
+                          Pairing importieren
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {showPairQr ? (
+                    <div className="pairing-modal-backdrop" role="presentation" onClick={() => setShowPairQr(false)}>
+                      <div
+                        className="pairing-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Pairing QR-Code"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <h3>Pairing QR-Code</h3>
+                        <canvas ref={qrCanvasRef} width={256} height={256} />
+                        <p className="hint">Nur mit Geräten teilen, denen du vertraust.</p>
+                        <button type="button" onClick={() => setShowPairQr(false)}>
+                          Schließen
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {showScanner ? (
+                    <div className="pairing-modal-backdrop" role="presentation" onClick={handleScannerCancel}>
+                      <div
+                        className="pairing-modal pairing-modal--scanner"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="QR Scanner"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <h3>QR scannen</h3>
+                        <video ref={scannerVideoRef} className="pairing-scanner-video" muted playsInline />
+                        <p className="hint">Kamera auf den Pairing-QR-Code halten.</p>
+                        <button type="button" onClick={handleScannerCancel}>
+                          Abbrechen
+                        </button>
+                      </div>
                     </div>
                   ) : null}
                   {import.meta.env.DEV && devSyncInfo ? (

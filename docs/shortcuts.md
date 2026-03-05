@@ -10,7 +10,7 @@
 - `Shift+Enter`
   - Fügt Zeilenumbruch ein.
 
-## Review (Single-Card)
+## Review (Shortcut-aktive Ansicht)
 
 Aktiv nur wenn:
 
@@ -18,6 +18,7 @@ Aktiv nur wenn:
 - keine Suche aktiv ist
 - kein Eingabefeld fokussiert ist
 - kein Stale-Review-Modus aktiv ist
+- Review-Ansicht auf `Single` steht (oder `Auto` und dadurch `Single` aktiv ist)
 
 Kürzel:
 

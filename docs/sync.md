@@ -31,8 +31,8 @@ oder zur Laufzeit per `localStorage`.
 
 ## Betriebsverhalten
 
-- Debounced Push nach lokalen Änderungen
-- periodischer Pull
+- Debounced Push nach lokalen Änderungen (aktuell ca. `600ms`)
+- periodischer Pull (aktuell ca. alle `4s`)
 - zusätzlicher Pull bei Fokus/Visibility
 - stiller Status in der UI
 

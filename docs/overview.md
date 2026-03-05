@@ -6,7 +6,7 @@ Leiser ist eine lokale Gedanken-App mit vier Arbeitsbereichen:
 
 - Braindump
 - Review
-- Denken
+- Gedanken
 - To-Do
 
 Die App ist bewusst minimal:
@@ -27,5 +27,5 @@ Die App ist bewusst minimal:
 
 1. Gedanken schnell erfassen (Braindump)
 2. Gedanken entscheiden (Review)
-3. Offene Themen weiterdenken (Denken)
+3. Offene Themen weiterdenken (Gedanken)
 4. Aufgaben abarbeiten (To-Do)

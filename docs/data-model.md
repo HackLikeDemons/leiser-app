@@ -7,6 +7,7 @@
 ```ts
 type NoteStatus = "INBOX" | "TODO" | "PROCESS" | "DISCARD" | "ARCHIVE";
 type NoteType = "NOTE" | "QUESTION" | "IDEA" | "TASK";
+type ArchiveBucket = "THINKING" | "TODO";
 
 type Note = {
   id: string;
@@ -19,6 +20,8 @@ type Note = {
   text: string;
   status: NoteStatus;
   type: NoteType;
+  starred: boolean;
+  archiveBucket?: ArchiveBucket | null;
 };
 ```
 
@@ -44,9 +47,12 @@ Wichtige Indexe (notes/notes_view):
 
 ## Prefix-Shortcuts beim Erfassen
 
-- `? Frage ...` -> `type=QUESTION`, `status=INBOX`
-- `! Idee ...` -> `type=IDEA`, `status=INBOX`
 - `- Aufgabe ...` -> `type=TASK`, `status=TODO`
 - ohne Präfix -> `type=NOTE`, `status=INBOX`
 
 Der Präfix wird nicht im gespeicherten Text abgelegt.
+
+Hinweis zur UI:
+
+- Frage/Idee-Typen werden in der Oberfläche bewusst nicht mehr als Badge hervorgehoben.
+- Der `TASK`-Typ wird intern weiter verwendet (u. a. für den initialen `TODO`-Status).

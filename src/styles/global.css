@@ -325,6 +325,17 @@ h3 {
   gap: 0.45rem;
 }
 
+.pairing-panel {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-default) 72%, transparent);
+}
+
+.pairing-panel h3 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
 .import-panel textarea {
   width: 100%;
   border: 1px solid var(--border-soft);
@@ -335,6 +346,50 @@ h3 {
   font-size: 0.85rem;
   padding: 0.45rem 0.55rem;
   resize: vertical;
+}
+
+.pairing-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, #000000 40%, transparent);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 30;
+}
+
+.pairing-modal {
+  width: min(94vw, 360px);
+  display: grid;
+  gap: 0.7rem;
+  justify-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--surface-card-soft);
+  padding: 1rem;
+}
+
+.pairing-modal h3 {
+  margin: 0;
+}
+
+.pairing-modal canvas {
+  width: min(72vw, 256px);
+  height: min(72vw, 256px);
+  background: #ffffff;
+  border-radius: 8px;
+}
+
+.pairing-modal--scanner {
+  width: min(96vw, 460px);
+}
+
+.pairing-scanner-video {
+  width: 100%;
+  border-radius: 8px;
+  background: #000000;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
 }
 
 .dev-sync-panel {

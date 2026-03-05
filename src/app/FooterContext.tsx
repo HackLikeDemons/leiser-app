@@ -24,6 +24,7 @@ export function FooterProvider({ children }: { children: ReactNode }) {
   return <FooterContext.Provider value={value}>{children}</FooterContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useFooter() {
   return useContext(FooterContext)
 }

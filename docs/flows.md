@@ -14,35 +14,41 @@ Darstellung:
 - Tagesdivider (`Heute`, `Gestern`, Datum)
 - Einträge im Flow (chronologisch)
 - ruhige Listenoptik, Aktionen pro Item
+- sehr alte Einträge werden automatisch in den Archiv-Status verschoben (ohne Löschung)
 
 ## Review
 
-- Single-Card für `INBOX`
+- `INBOX`-Entscheidung mit umschaltbarer Darstellung:
+  - `Auto` (Default)
+  - `Single`
+  - `Liste`
 - Entscheidungen:
   - To-Do (`TODO`)
-  - Denken (`PROCESS`)
+  - Gedanken (`PROCESS`)
   - Verwerfen (`DISCARD`)
   - Überspringen
 - „Heute entschieden“ ist einklappbar
 - Undo für letzte Entscheidung (zeitlich begrenzt)
 
-## Denken
+## Gedanken
 
 - Zeigt `PROCESS`
 - Aktionen pro Note:
   - Archivieren (`ARCHIVE`)
   - Zu To-Do (`TODO`)
   - Verwerfen (`DISCARD`)
-- Archiv kann eingeblendet werden
+- eigenes Gedanken-Archiv kann eingeblendet werden
 
 ## To-Do
 
 - Zeigt `TODO`
 - Tagesweise gruppiert
+- optionaler Stern-Filter
 - Aktionen:
-  - Erledigt (Statuswechsel)
+  - Erledigt (verschiebt ins To-Do-Archiv)
   - Zurück in Inbox
 - mit kurzem Undo-Feedback
+- eigenes To-Do-Archiv kann eingeblendet werden
 
 ## Globales Header-Menü (`...`)
 

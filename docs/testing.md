@@ -5,9 +5,9 @@
 ## Basis-Check
 
 1. Braindump: Eintrag erfassen, Reload -> bleibt erhalten
-2. Review: Entscheidung -> Statuswechsel sichtbar
-3. Denken: Archivieren/Verwerfen/Zu To-Do -> korrekt umgesetzt
-4. To-Do: Tagesgruppierung und Aktionen funktionieren
+2. Review: Entscheidung -> Statuswechsel sichtbar (Auto-/Single-/Listenmodus prüfen)
+3. Gedanken: Archivieren/Verwerfen/Zu To-Do -> korrekt umgesetzt
+4. To-Do: Tagesgruppierung, Stern-Filter, Archiv ein-/ausblenden, Undo nach „Erledigt“ prüfen
 5. Suche: Treffer für Teilbegriffe
 
 ## Backup/Import

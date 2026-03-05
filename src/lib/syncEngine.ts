@@ -176,7 +176,7 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
     let remoteSeen = 0
     let snapshotApplied = 0
     let changeApplied = 0
-    let snapshotRescues = 0
+    const snapshotRescues = 0
 
     for (const rawItem of blob.changes) {
       const item = asSyncEnvelope(rawItem)
@@ -413,7 +413,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
         let remoteSeen = 0
         let snapshotApplied = 0
         let changeApplied = 0
-        let snapshotRescues = 0
+        const snapshotRescues = 0
 
         for (const rawItem of remoteBlob?.changes ?? []) {
           const item = asSyncEnvelope(rawItem)

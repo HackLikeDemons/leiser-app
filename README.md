@@ -36,9 +36,9 @@ npm run dev
 ## Kern-Features (kurz)
 
 - Braindump mit schnellem Capture (`Enter` speichern, `Shift+Enter` Zeile)
-- Review als Single-Card mit Status-Entscheidung
-- Denken (`PROCESS`) inkl. Archiv
-- To-Do (`TODO`) mit Tagesgruppen
+- Review mit Auto-Layout (`Single` bei wenigen, `Liste` bei vielen offenen Einträgen)
+- Gedanken (`PROCESS`) inkl. eigenem Archiv
+- To-Do (`TODO`) mit Tagesgruppen, Stern-Priorisierung und separatem To-Do-Archiv
 - Volltextsuche
 - Backup Export/Import
 - Optionaler Geräte-Sync via Supabase
@@ -46,4 +46,4 @@ npm run dev
 ## Hinweise
 
 - Die aktuelle Basis-Spezifikation der früheren Wochen-/Monatsfunktionen liegt in [SPEC.md](SPEC.md).
-- Die aktive App-Funktionalität ist das Notes-/Workflow-Modell (Braindump, Review, Denken, To-Do).
+- Die aktive App-Funktionalität ist das Notes-/Workflow-Modell (Braindump, Review, Gedanken, To-Do).
