@@ -176,7 +176,7 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
     let remoteSeen = 0
     let snapshotApplied = 0
     let changeApplied = 0
-    const snapshotRescues = 0
+    let snapshotRescues = 0
 
     for (const rawItem of blob.changes) {
       const item = asSyncEnvelope(rawItem)
@@ -197,19 +197,35 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
         }
       }
 
-      const snapshot = asSnapshotNote(item.snapshot, item.noteId)
-      if (snapshot) {
-        await upsertNote(snapshot)
-        snapshotApplied += 1
-        seenKeys.push(dedupeKey)
-        remoteEnvelopes.push(item)
-        applied = true
+      let appliedChange = false
+      try {
+        const bytes = decodeChangePayload(item.payload)
+        if (bytes.length > 0) {
+          await applyRemoteChanges(item.noteId, bytes)
+          changeApplied += 1
+          appliedChange = true
+        }
+      } catch {
+        appliedChange = false
+      }
+
+      if (!appliedChange) {
+        const snapshot = asSnapshotNote(item.snapshot, item.noteId)
+        if (snapshot) {
+          await upsertNote(snapshot)
+          snapshotApplied += 1
+          snapshotRescues += 1
+          seenKeys.push(dedupeKey)
+          remoteEnvelopes.push(item)
+          applied = true
+          continue
+        }
+      }
+
+      if (!appliedChange) {
         continue
       }
 
-      const bytes = decodeChangePayload(item.payload)
-      await applyRemoteChanges(item.noteId, bytes)
-      changeApplied += 1
       seenKeys.push(dedupeKey)
       remoteEnvelopes.push(item)
       applied = true
@@ -413,7 +429,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
         let remoteSeen = 0
         let snapshotApplied = 0
         let changeApplied = 0
-        const snapshotRescues = 0
+        let snapshotRescues = 0
 
         for (const rawItem of remoteBlob?.changes ?? []) {
           const item = asSyncEnvelope(rawItem)
@@ -429,19 +445,35 @@ export async function syncNow(options: SyncNowOptions = {}) {
             if (!signatureValid) continue
           }
 
-          const snapshot = asSnapshotNote(item.snapshot, item.noteId)
-          if (snapshot) {
-            await upsertNote(snapshot)
-            snapshotApplied += 1
-            seenKeys.push(dedupeKey)
-            remoteEnvelopes.push(item)
-            applied = true
+          let appliedChange = false
+          try {
+            const bytes = decodeChangePayload(item.payload)
+            if (bytes.length > 0) {
+              await applyRemoteChanges(item.noteId, bytes)
+              changeApplied += 1
+              appliedChange = true
+            }
+          } catch {
+            appliedChange = false
+          }
+
+          if (!appliedChange) {
+            const snapshot = asSnapshotNote(item.snapshot, item.noteId)
+            if (snapshot) {
+              await upsertNote(snapshot)
+              snapshotApplied += 1
+              snapshotRescues += 1
+              seenKeys.push(dedupeKey)
+              remoteEnvelopes.push(item)
+              applied = true
+              continue
+            }
+          }
+
+          if (!appliedChange) {
             continue
           }
 
-          const bytes = decodeChangePayload(item.payload)
-          await applyRemoteChanges(item.noteId, bytes)
-          changeApplied += 1
           seenKeys.push(dedupeKey)
           remoteEnvelopes.push(item)
           applied = true
