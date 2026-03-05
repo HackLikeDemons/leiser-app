@@ -287,12 +287,14 @@ const BraindumpList = memo(function BraindumpList({
   processCount,
   todoCount,
   onStartReview,
+  captureFeedback,
   endRef,
 }: {
   inboxCount: number
   processCount: number
   todoCount: number
   onStartReview: () => void
+  captureFeedback: string | null
   endRef: RefObject<HTMLDivElement | null>
 }) {
   return (
@@ -307,6 +309,11 @@ const BraindumpList = memo(function BraindumpList({
           Review starten
         </button>
       </section>
+      {captureFeedback ? (
+        <p className="braindump-capture-feedback" role="status" aria-live="polite">
+          {captureFeedback}
+        </p>
+      ) : null}
       <div ref={endRef} />
     </>
   )
@@ -650,6 +657,8 @@ function BraindumpComposer({
   const [dictationError, setDictationError] = useState('')
   const composerRef = useRef<HTMLFormElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const latestTextRef = useRef(text)
+  const dictationAutoSubmitOnEndRef = useRef(false)
   const recognitionRef = useRef<{
     stop: () => void
   } | null>(null)
@@ -667,6 +676,7 @@ function BraindumpComposer({
       return
     }
     if (recognitionRef.current) {
+      dictationAutoSubmitOnEndRef.current = false
       recognitionRef.current.stop()
       recognitionRef.current = null
       setIsDictating(false)
@@ -752,19 +762,31 @@ function BraindumpComposer({
     recognition.onerror = () => {
       setDictationError('Diktieren konnte nicht gestartet werden.')
       setIsDictating(false)
+      dictationAutoSubmitOnEndRef.current = false
       recognitionRef.current = null
     }
     recognition.onend = () => {
       setIsDictating(false)
       recognitionRef.current = null
+      if (!dictationAutoSubmitOnEndRef.current) {
+        return
+      }
+      dictationAutoSubmitOnEndRef.current = false
+      void submit([latestTextRef.current])
     }
     recognition.start()
+    dictationAutoSubmitOnEndRef.current = true
     recognitionRef.current = recognition
     setIsDictating(true)
   }, [supportsDictation, text])
 
   useEffect(() => {
+    latestTextRef.current = text
+  }, [text])
+
+  useEffect(() => {
     return () => {
+      dictationAutoSubmitOnEndRef.current = false
       recognitionRef.current?.stop()
       recognitionRef.current = null
     }
@@ -823,6 +845,7 @@ function BraindumpPage({
   processCount,
   todoCount,
   onStartReview,
+  captureFeedback,
   endRef,
   onSubmitEntries,
 }: {
@@ -830,6 +853,7 @@ function BraindumpPage({
   processCount: number
   todoCount: number
   onStartReview: () => void
+  captureFeedback: string | null
   endRef: RefObject<HTMLDivElement | null>
   onSubmitEntries: (entries: string[]) => Promise<void>
 }) {
@@ -846,6 +870,7 @@ function BraindumpPage({
       processCount={processCount}
       todoCount={todoCount}
       onStartReview={onStartReview}
+      captureFeedback={captureFeedback}
       endRef={endRef}
     />
   )
@@ -900,10 +925,13 @@ function AppContent() {
   const [dismissedUpdateNotice, setDismissedUpdateNotice] = useState(false)
   const [undoBusy, setUndoBusy] = useState(false)
   const [todoUndoBusy, setTodoUndoBusy] = useState(false)
+  const [braindumpCaptureFeedback, setBraindumpCaptureFeedback] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const undoTimeoutRef = useRef<number | null>(null)
   const todoUndoTimeoutRef = useRef<number | null>(null)
+  const braindumpCaptureFeedbackTimeoutRef = useRef<number | null>(null)
+  const transientInfoTimeoutRef = useRef<number | null>(null)
   const mainScrollRef = useRef<HTMLElement | null>(null)
   const braindumpEndRef = useRef<HTMLDivElement | null>(null)
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -1317,21 +1345,10 @@ function AppContent() {
   }, [handleScanResult, showScanner, stopScanner])
 
   const orderedInbox = useMemo(() => sortInboxForReview(inboxNotes), [inboxNotes])
-  const reviewListGroups = useMemo(() => {
-    const overdue: Note[] = []
-    const ready: Note[] = []
-    const fresh: Note[] = []
-    for (const note of orderedInbox) {
-      const category = getReviewAgeCategory(note)
-      if (category === 'OVERDUE') overdue.push(note)
-      else if (category === 'READY') ready.push(note)
-      else fresh.push(note)
-    }
-    return [
-      { key: 'OVERDUE', label: 'Überfällig', notes: overdue },
-      { key: 'READY', label: 'Bereit', notes: [...ready, ...fresh] },
-    ] as const
-  }, [orderedInbox])
+  const overdueReviewCount = useMemo(
+    () => orderedInbox.filter((note) => getReviewAgeCategory(note) === 'OVERDUE').length,
+    [orderedInbox],
+  )
   const supabaseConfigStatus = useMemo(() => getSupabaseRuntimeConfig(), [])
 
   const isNearBottom = useCallback(() => {
@@ -1370,6 +1387,12 @@ function AppContent() {
             }
             return deduped
           })
+          setBraindumpCaptureFeedback('Gedanke gespeichert.')
+          clearBraindumpCaptureFeedbackTimeout()
+          braindumpCaptureFeedbackTimeoutRef.current = window.setTimeout(() => {
+            setBraindumpCaptureFeedback(null)
+            braindumpCaptureFeedbackTimeoutRef.current = null
+          }, 2000)
         }
         void refreshAll()
       } catch {
@@ -1393,10 +1416,26 @@ function AppContent() {
     }
   }
 
+  const clearBraindumpCaptureFeedbackTimeout = () => {
+    if (braindumpCaptureFeedbackTimeoutRef.current !== null) {
+      window.clearTimeout(braindumpCaptureFeedbackTimeoutRef.current)
+      braindumpCaptureFeedbackTimeoutRef.current = null
+    }
+  }
+
+  const clearTransientInfoTimeout = () => {
+    if (transientInfoTimeoutRef.current !== null) {
+      window.clearTimeout(transientInfoTimeoutRef.current)
+      transientInfoTimeoutRef.current = null
+    }
+  }
+
   useEffect(
     () => () => {
       clearUndoTimeout()
       clearTodoUndoTimeout()
+      clearBraindumpCaptureFeedbackTimeout()
+      clearTransientInfoTimeout()
     },
     [],
   )
@@ -1842,7 +1881,13 @@ function AppContent() {
       setError('')
       try {
         await deleteNote(id)
-        setInfo('To-Do endgültig gelöscht.')
+        const message = 'To-Do endgültig gelöscht.'
+        setInfo(message)
+        clearTransientInfoTimeout()
+        transientInfoTimeoutRef.current = window.setTimeout(() => {
+          setInfo((current) => (current === message ? '' : current))
+          transientInfoTimeoutRef.current = null
+        }, 2000)
         await refreshAll()
       } catch {
         setError('To-Do konnte nicht gelöscht werden.')
@@ -2198,6 +2243,7 @@ function AppContent() {
               processCount={processCount}
               todoCount={todoNotes.length}
               onStartReview={() => setActiveTab('REVIEW')}
+              captureFeedback={braindumpCaptureFeedback}
               endRef={braindumpEndRef}
               onSubmitEntries={handleBraindumpSubmitEntries}
             />
@@ -2269,104 +2315,98 @@ function AppContent() {
                 )
               ) : (
                 orderedInbox.length === 0 ? (
-                  <p className="empty-text">Keine offenen Gedanken.</p>
+                  <p className="empty-text">Inbox ist leer.</p>
                 ) : (
                   <>
-                    {reviewListGroups.map((group) =>
-                      group.notes.length > 0 ? (
-                        <section key={group.key} className="note-group">
-                          <div className="day-divider">{group.label} ({group.notes.length})</div>
-                          <ul className="notes-list" aria-label={`Review ${group.label}`}>
-                            {group.notes.map((note) => (
-                              <li key={note.id} className="note-item note-item--todo">
-                                <span className="note-content">
-                                  <ExpandableNoteText text={note.text} />
-                                  {reviewAgeLabel(getReviewAgeCategory(note)) ? (
-                                    <span className={`age-badge age-badge--${getReviewAgeCategory(note).toLowerCase()}`}>
-                                      {reviewAgeLabel(getReviewAgeCategory(note))}
-                                    </span>
-                                  ) : null}
-                                  <NoteTypeBadge note={note} />
-                                </span>
-                                <div className="todo-actions">
-                                  <button
-                                    type="button"
-                                    className="review-btn review-btn--todo review-btn--icon"
-                                    onClick={() =>
-                                      void handleReviewDecision(note.id, 'TODO', { enableUndo: true, sourceNote: note })
-                                    }
-                                    aria-label="Als To-Do markieren"
-                                    title="To-Do"
-                                  >
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                      <path
-                                        d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="1.8"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      />
-                                    </svg>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="review-btn review-btn--process review-btn--icon"
-                                    onClick={() =>
-                                      void handleReviewDecision(note.id, 'PROCESS', { enableUndo: true, sourceNote: note })
-                                    }
-                                    aria-label="In Denken verschieben"
-                                    title="Denken"
-                                  >
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                      <path
-                                        d="M12 4c-1.8 0-3.3 1-4 2.6a3.6 3.6 0 0 0-2.9 3.5c0 .9.3 1.7.9 2.4-.3.5-.4 1-.4 1.6 0 1.7 1.3 3 3 3h1.2V20h4.6v-2.9H16a3 3 0 0 0 3-3c0-.6-.2-1.1-.4-1.6.5-.7.8-1.5.8-2.4a3.6 3.6 0 0 0-2.9-3.5A4.4 4.4 0 0 0 12 4Z"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="1.8"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      />
-                                      <path
-                                        d="M10.5 8.8c.7.8.7 2 0 2.8m3-2.8c.7.8.7 2 0 2.8"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="1.5"
-                                        strokeLinecap="round"
-                                      />
-                                    </svg>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="review-btn review-btn--discard review-btn--icon"
-                                    onClick={() =>
-                                      void handleReviewDecision(note.id, 'DISCARD', { enableUndo: true, sourceNote: note })
-                                    }
-                                    aria-label="Verwerfen"
-                                    title="Verwerfen"
-                                  >
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                      <path
-                                        d="M6 6l12 12M18 6 6 18"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="1.9"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      />
-                                    </svg>
-                                  </button>
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </section>
-                      ) : null,
-                    )}
-                    <p className="review-meta">Offen: {inboxCount}</p>
-                    {inboxCount > inboxNotes.length ? (
-                      <p className="hint">Weitere offene Gedanken vorhanden.</p>
-                    ) : null}
+                    <p className="review-intro">
+                      {overdueReviewCount > 0
+                        ? `${overdueReviewCount} überfällige Einträge zuerst klären.`
+                        : 'Einträge kurz einsortieren: To-Do, Denken oder Verwerfen.'}
+                    </p>
+                    <ul className="notes-list" aria-label="Review Liste">
+                      {orderedInbox.map((note) => (
+                        <li key={note.id} className="note-item note-item--todo">
+                          <span className="note-content">
+                            <ExpandableNoteText text={note.text} />
+                            {reviewAgeLabel(getReviewAgeCategory(note)) ? (
+                              <span className={`age-badge age-badge--${getReviewAgeCategory(note).toLowerCase()}`}>
+                                {reviewAgeLabel(getReviewAgeCategory(note))}
+                              </span>
+                            ) : null}
+                            <NoteTypeBadge note={note} />
+                          </span>
+                          <div className="todo-actions">
+                            <button
+                              type="button"
+                              className="review-btn review-btn--todo review-btn--icon"
+                              onClick={() =>
+                                void handleReviewDecision(note.id, 'TODO', { enableUndo: true, sourceNote: note })
+                              }
+                              aria-label="Als To-Do markieren"
+                              title="To-Do"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                  d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className="review-btn review-btn--process review-btn--icon"
+                              onClick={() =>
+                                void handleReviewDecision(note.id, 'PROCESS', { enableUndo: true, sourceNote: note })
+                              }
+                              aria-label="In Denken verschieben"
+                              title="Denken"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                  d="M12 4c-1.8 0-3.3 1-4 2.6a3.6 3.6 0 0 0-2.9 3.5c0 .9.3 1.7.9 2.4-.3.5-.4 1-.4 1.6 0 1.7 1.3 3 3 3h1.2V20h4.6v-2.9H16a3 3 0 0 0 3-3c0-.6-.2-1.1-.4-1.6.5-.7.8-1.5.8-2.4a3.6 3.6 0 0 0-2.9-3.5A4.4 4.4 0 0 0 12 4Z"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                                <path
+                                  d="M10.5 8.8c.7.8.7 2 0 2.8m3-2.8c.7.8.7 2 0 2.8"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              className="review-btn review-btn--discard review-btn--icon"
+                              onClick={() =>
+                                void handleReviewDecision(note.id, 'DISCARD', { enableUndo: true, sourceNote: note })
+                              }
+                              aria-label="Verwerfen"
+                              title="Verwerfen"
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                  d="M6 6l12 12M18 6 6 18"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.9"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   </>
                 )
               )}

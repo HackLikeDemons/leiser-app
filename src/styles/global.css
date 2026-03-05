@@ -578,6 +578,30 @@ button:hover {
   color: var(--text-secondary);
 }
 
+.braindump-capture-feedback {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  animation: braindump-feedback-fade 2s ease-out forwards;
+}
+
+@keyframes braindump-feedback-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .daily-card h2 {
   margin: 0.8rem 0 0.35rem;
   font-size: 0.98rem;
@@ -1031,6 +1055,12 @@ button:hover {
   margin: 0.62rem 0 0;
   color: var(--text-secondary);
   font-size: 0.84rem;
+}
+
+.review-intro {
+  margin: 0.18rem 0 0.35rem;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
 }
 
 .age-badge {
