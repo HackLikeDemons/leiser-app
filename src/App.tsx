@@ -45,7 +45,7 @@ const OVERDUE_DAYS = 3
 const AUTOSCROLL_NEAR_BOTTOM_PX = 80
 const BRAINDUMP_FETCH_LIMIT = 300
 const REVIEW_LAYOUT_KEY = 'leiser:review-layout'
-const BRAINDUMP_COLLAPSE_THRESHOLD = 40
+const BRAINDUMP_RECENT_ENTRY_LIMIT = 10
 const AUTO_ARCHIVE_DAYS = 90
 const AUTO_ARCHIVE_BATCH_LIMIT = 100
 const AUTO_ARCHIVE_LAST_RUN_KEY = 'leiser:auto-archive-last-run-day'
@@ -868,38 +868,36 @@ function BraindumpPage({
 }) {
   const { setFooter } = useFooter()
   const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({})
-
-  const totalNotes = useMemo(
-    () => groups.reduce((sum, group) => sum + group.notes.length, 0),
-    [groups],
-  )
+  const recentGroups = useMemo(() => {
+    const latestNotes = groups.flatMap((group) => group.notes).slice(-BRAINDUMP_RECENT_ENTRY_LIMIT)
+    return groupNotesByDay(latestNotes, {
+      todayISO,
+      yesterdayISO,
+      daySort: 'asc',
+      noteSort: (a, b) => a.createdAt.localeCompare(b.createdAt),
+    })
+  }, [groups, todayISO, yesterdayISO])
 
   const collapsedDays = useMemo(() => {
     const next: Record<string, boolean> = {}
-    for (const group of groups) {
-      const defaultCollapsed =
-        totalNotes > BRAINDUMP_COLLAPSE_THRESHOLD &&
-        group.dayISO !== todayISO &&
-        group.dayISO !== yesterdayISO
+    for (const group of recentGroups) {
+      const defaultCollapsed = true
       next[group.dayISO] =
         group.dayISO in collapsedOverrides ? collapsedOverrides[group.dayISO] : defaultCollapsed
     }
     return next
-  }, [collapsedOverrides, groups, totalNotes, todayISO, yesterdayISO])
+  }, [collapsedOverrides, recentGroups])
 
   const handleToggleDay = useCallback((dayISO: string) => {
     setCollapsedOverrides((prev) => {
-      const defaultCollapsed =
-        totalNotes > BRAINDUMP_COLLAPSE_THRESHOLD &&
-        dayISO !== todayISO &&
-        dayISO !== yesterdayISO
+      const defaultCollapsed = true
       const current = dayISO in prev ? prev[dayISO] : defaultCollapsed
       return {
         ...prev,
         [dayISO]: !current,
       }
     })
-  }, [totalNotes, todayISO, yesterdayISO])
+  }, [])
 
   useEffect(() => {
     setFooter(<BraindumpComposer onSubmitEntries={onSubmitEntries} />)
@@ -908,7 +906,7 @@ function BraindumpPage({
 
   return (
     <BraindumpList
-      groups={groups}
+      groups={recentGroups}
       onUndoDelete={onUndoDelete}
       onDelete={onDelete}
       endRef={endRef}
