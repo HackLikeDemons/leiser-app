@@ -27,7 +27,7 @@ import { buildBackupData, importBackupJson, type ImportMode, type ImportReport }
 import { getLocalDayISO, getYesterdayISO, groupNotesByDay } from './lib/date'
 import type { Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
-import { FooterProvider, useFooter } from './app/FooterContext'
+import { FooterProvider } from './app/FooterContext'
 import { seedOlderThoughtsDemo } from './lib/demoNotes'
 import { getSupabaseRuntimeConfig } from './lib/runtimeConfig'
 import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } from './lib/syncEngine'
@@ -61,6 +61,10 @@ type LastAction = {
   prevStatus: NoteStatus
   newStatus: NoteStatus
   at: number
+}
+type CaptureFeedback = {
+  id: number
+  text: string
 }
 type NoteActionItem = {
   label: string
@@ -288,14 +292,14 @@ const BraindumpList = memo(function BraindumpList({
   todoCount,
   onStartReview,
   captureFeedback,
-  endRef,
+  onSubmitEntries,
 }: {
   inboxCount: number
   processCount: number
   todoCount: number
   onStartReview: () => void
-  captureFeedback: string | null
-  endRef: RefObject<HTMLDivElement | null>
+  captureFeedback: CaptureFeedback | null
+  onSubmitEntries: (entries: string[]) => Promise<void>
 }) {
   return (
     <>
@@ -310,11 +314,11 @@ const BraindumpList = memo(function BraindumpList({
         </button>
       </section>
       {captureFeedback ? (
-        <p className="braindump-capture-feedback" role="status" aria-live="polite">
-          {captureFeedback}
+        <p key={captureFeedback.id} className="braindump-capture-feedback" role="status" aria-live="polite">
+          {captureFeedback.text}
         </p>
       ) : null}
-      <div ref={endRef} />
+      <BraindumpComposer onSubmitEntries={onSubmitEntries} />
     </>
   )
 })
@@ -757,7 +761,9 @@ function BraindumpComposer({
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         transcript += event.results[index]?.[0]?.transcript ?? ''
       }
-      setText(`${prefix}${transcript}`.trimStart())
+      const nextText = `${prefix}${transcript}`.trimStart()
+      latestTextRef.current = nextText
+      setText(nextText)
     }
     recognition.onerror = () => {
       setDictationError('Diktieren konnte nicht gestartet werden.')
@@ -772,7 +778,9 @@ function BraindumpComposer({
         return
       }
       dictationAutoSubmitOnEndRef.current = false
-      void submit([latestTextRef.current])
+      const latestFromInput = inputRef.current?.value ?? ''
+      const textToSave = latestFromInput.trim().length > 0 ? latestFromInput : latestTextRef.current
+      void submit([textToSave])
     }
     recognition.start()
     dictationAutoSubmitOnEndRef.current = true
@@ -801,7 +809,10 @@ function BraindumpComposer({
           className={flashInput ? 'capture-textarea capture-textarea--flash' : 'capture-textarea'}
           placeholder="Gedanken festhalten..."
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            latestTextRef.current = event.target.value
+            setText(event.target.value)
+          }}
           onKeyDown={handleTextKeyDown}
         />
         <div className="capture-actions">
@@ -853,26 +864,22 @@ function BraindumpPage({
   processCount: number
   todoCount: number
   onStartReview: () => void
-  captureFeedback: string | null
+  captureFeedback: CaptureFeedback | null
   endRef: RefObject<HTMLDivElement | null>
   onSubmitEntries: (entries: string[]) => Promise<void>
 }) {
-  const { setFooter } = useFooter()
-
-  useEffect(() => {
-    setFooter(<BraindumpComposer onSubmitEntries={onSubmitEntries} />)
-    return () => setFooter(null)
-  }, [onSubmitEntries, setFooter])
-
   return (
-    <BraindumpList
-      inboxCount={inboxCount}
-      processCount={processCount}
-      todoCount={todoCount}
-      onStartReview={onStartReview}
-      captureFeedback={captureFeedback}
-      endRef={endRef}
-    />
+    <>
+      <BraindumpList
+        inboxCount={inboxCount}
+        processCount={processCount}
+        todoCount={todoCount}
+        onStartReview={onStartReview}
+        captureFeedback={captureFeedback}
+        onSubmitEntries={onSubmitEntries}
+      />
+      <div ref={endRef} />
+    </>
   )
 }
 
@@ -925,12 +932,13 @@ function AppContent() {
   const [dismissedUpdateNotice, setDismissedUpdateNotice] = useState(false)
   const [undoBusy, setUndoBusy] = useState(false)
   const [todoUndoBusy, setTodoUndoBusy] = useState(false)
-  const [braindumpCaptureFeedback, setBraindumpCaptureFeedback] = useState<string | null>(null)
+  const [braindumpCaptureFeedback, setBraindumpCaptureFeedback] = useState<CaptureFeedback | null>(null)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const undoTimeoutRef = useRef<number | null>(null)
   const todoUndoTimeoutRef = useRef<number | null>(null)
   const braindumpCaptureFeedbackTimeoutRef = useRef<number | null>(null)
+  const braindumpCaptureFeedbackSeqRef = useRef(0)
   const transientInfoTimeoutRef = useRef<number | null>(null)
   const mainScrollRef = useRef<HTMLElement | null>(null)
   const braindumpEndRef = useRef<HTMLDivElement | null>(null)
@@ -1387,10 +1395,15 @@ function AppContent() {
             }
             return deduped
           })
-          setBraindumpCaptureFeedback('Gedanke gespeichert.')
+          const nextFeedback: CaptureFeedback = {
+            id: braindumpCaptureFeedbackSeqRef.current + 1,
+            text: 'Gedanke gespeichert.',
+          }
+          braindumpCaptureFeedbackSeqRef.current = nextFeedback.id
+          setBraindumpCaptureFeedback(nextFeedback)
           clearBraindumpCaptureFeedbackTimeout()
           braindumpCaptureFeedbackTimeoutRef.current = window.setTimeout(() => {
-            setBraindumpCaptureFeedback(null)
+            setBraindumpCaptureFeedback((current) => (current?.id === nextFeedback.id ? null : current))
             braindumpCaptureFeedbackTimeoutRef.current = null
           }, 2000)
         }
