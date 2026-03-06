@@ -1488,6 +1488,43 @@ button:focus {
     right: 0;
     top: 0;
     z-index: 40;
+    padding: calc(0.62rem + var(--safe-top)) 0.5rem 0.5rem;
+  }
+
+  .app-header-inner {
+    gap: 0.6rem;
+  }
+
+  .mode-tabs {
+    justify-content: flex-start;
+    gap: 0.25rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 0.16rem;
+  }
+
+  .mode-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-button {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 0.4rem 0.18rem 0.46rem;
+  }
+
+  .tab-button__inner {
+    gap: 0.4rem;
+  }
+
+  .header-actions {
+    margin-left: 0.15rem;
+  }
+
+  .icon-button {
+    width: 40px;
+    height: 40px;
   }
 
   .app-main {
@@ -1593,7 +1630,7 @@ button:focus {
   }
 
   .tab-button {
-    font-size: 0.8rem;
+    font-size: 0.84rem;
   }
 }
 
