@@ -457,7 +457,7 @@ function ThinkingNoteRow({
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
-              d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
+              d="M9 7h10M9 12h10M9 17h10M4 7l1.2 1.2L7 6M4 12l1.2 1.2L7 11M4 17l1.2 1.2L7 16"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.7"
@@ -553,7 +553,7 @@ function ArchivedTodoNoteRow({
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
-              d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
+              d="M9 7h10M9 12h10M9 17h10M4 7l1.2 1.2L7 6M4 12l1.2 1.2L7 11M4 17l1.2 1.2L7 16"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.7"
@@ -2270,7 +2270,19 @@ function AppContent() {
               aria-label="Erfassen"
               title="Erfassen"
             >
-              Erfassen
+              <span className="tab-button__inner">
+                <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M4 16.5V20h3.5L19 8.5 15.5 5 4 16.5Zm9.8-10.8 3.5 3.5M3.5 11.8H8m8-8v4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Erfassen</span>
+              </span>
             </button>
             <button
               type="button"
@@ -2279,7 +2291,19 @@ function AppContent() {
               aria-label="Sortieren"
               title="Sortieren"
             >
-              Sortieren
+              <span className="tab-button__inner">
+                <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M3 6.5h18v10.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6.5Zm0 7h5.2l1.7 2h4.2l1.7-2H21"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Sortieren</span>
+              </span>
             </button>
             <button
               type="button"
@@ -2288,7 +2312,24 @@ function AppContent() {
               aria-label="Reflektieren"
               title="Reflektieren"
             >
-              Reflektieren
+              <span className="tab-button__inner">
+                <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M12 4a8 8 0 1 0 8 8 8 8 0 0 0-8-8Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  />
+                  <path
+                    d="m14.8 9.2-2 5.6-5.6 2 2-5.6 5.6-2Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Reflektieren</span>
+              </span>
             </button>
             <button
               type="button"
@@ -2297,7 +2338,19 @@ function AppContent() {
               aria-label="Handeln"
               title="Handeln"
             >
-              Handeln
+              <span className="tab-button__inner">
+                <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M9 7h10M9 12h10M9 17h10M4 7l1.2 1.2L7 6M4 12l1.2 1.2L7 11M4 17l1.2 1.2L7 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Handeln</span>
+              </span>
             </button>
             </div>
 
@@ -2490,7 +2543,7 @@ function AppContent() {
                             >
                               <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <path
-                                  d="M9 7h10M9 12h10M9 17h10M4 7h.01M4 12h.01M4 17h.01"
+                                  d="M9 7h10M9 12h10M9 17h10M4 7l1.2 1.2L7 6M4 12l1.2 1.2L7 11M4 17l1.2 1.2L7 16"
                                   fill="none"
                                   stroke="currentColor"
                                   strokeWidth="1.8"
@@ -2510,19 +2563,17 @@ function AppContent() {
                             >
                               <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <path
-                                  d="M12 4c-1.8 0-3.3 1-4 2.6a3.6 3.6 0 0 0-2.9 3.5c0 .9.3 1.7.9 2.4-.3.5-.4 1-.4 1.6 0 1.7 1.3 3 3 3h1.2V20h4.6v-2.9H16a3 3 0 0 0 3-3c0-.6-.2-1.1-.4-1.6.5-.7.8-1.5.8-2.4a3.6 3.6 0 0 0-2.9-3.5A4.4 4.4 0 0 0 12 4Z"
+                                  d="M12 4a8 8 0 1 0 8 8 8 8 0 0 0-8-8Z"
                                   fill="none"
                                   stroke="currentColor"
                                   strokeWidth="1.8"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
                                 />
                                 <path
-                                  d="M10.5 8.8c.7.8.7 2 0 2.8m3-2.8c.7.8.7 2 0 2.8"
+                                  d="m14.8 9.2-2 5.6-5.6 2 2-5.6 5.6-2Z"
                                   fill="none"
                                   stroke="currentColor"
-                                  strokeWidth="1.5"
-                                  strokeLinecap="round"
+                                  strokeWidth="1.8"
+                                  strokeLinejoin="round"
                                 />
                               </svg>
                             </button>

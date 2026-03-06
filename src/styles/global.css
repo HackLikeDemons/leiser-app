@@ -277,6 +277,19 @@ h3 {
   text-align: center;
 }
 
+.tab-button__inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.34rem;
+}
+
+.tab-button__icon {
+  width: 0.92rem;
+  height: 0.92rem;
+  flex: 0 0 auto;
+}
+
 .tab-button--active {
   background: transparent;
   border-bottom-color: var(--accent);
