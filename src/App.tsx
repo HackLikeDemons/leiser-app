@@ -652,6 +652,21 @@ function BraindumpComposer({
     setIsDictating(false)
   }, [])
 
+  const probeMicrophoneAccess = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return true
+    }
+    let stream: MediaStream | null = null
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      return true
+    } catch {
+      return false
+    } finally {
+      stream?.getTracks().forEach((track) => track.stop())
+    }
+  }, [])
+
   const startDictation = useCallback(() => {
     if (!supportsDictation || typeof window === 'undefined') {
       setDictationError('Diktieren wird auf diesem Gerät nicht unterstützt.')
@@ -702,15 +717,27 @@ function BraindumpComposer({
     }
     recognition.onerror = (event?: { error?: string }) => {
       const errorCode = event?.error ?? ''
-      const message =
-        errorCode === 'not-allowed' || errorCode === 'service-not-allowed'
-          ? 'Mikrofonzugriff blockiert. Bitte in Edge erlauben und erneut versuchen.'
-          : errorCode === 'network'
-            ? 'Spracherkennung derzeit nicht erreichbar. Bitte erneut versuchen.'
-            : errorCode === 'no-speech'
-              ? 'Keine Sprache erkannt. Bitte erneut versuchen.'
-              : 'Diktieren konnte nicht gestartet werden.'
-      setDictationError(message)
+      if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
+        if (!window.isSecureContext) {
+          setDictationError('Spracherkennung braucht eine sichere Verbindung (HTTPS oder localhost).')
+        } else {
+          // Probe actual mic permission only after recognition error, to keep start()
+          // inside the direct user gesture path (important for Chromium/Edge).
+          void probeMicrophoneAccess().then((hasMicAccess) => {
+            setDictationError(
+              hasMicAccess
+                ? 'Edge-Spracherkennung wurde blockiert. Bitte Seite neu laden und erneut klicken.'
+                : 'Mikrofonzugriff blockiert. Bitte in Edge für diese Seite erlauben.',
+            )
+          })
+        }
+      } else if (errorCode === 'network') {
+        setDictationError('Spracherkennung derzeit nicht erreichbar. Bitte erneut versuchen.')
+      } else if (errorCode === 'no-speech') {
+        setDictationError('Keine Sprache erkannt. Bitte erneut versuchen.')
+      } else {
+        setDictationError('Diktieren konnte nicht gestartet werden.')
+      }
       setIsDictating(false)
       dictationAutoSubmitOnEndRef.current = false
       recognitionRef.current = null
@@ -737,7 +764,7 @@ function BraindumpComposer({
       setIsDictating(false)
       setDictationError('Diktieren konnte nicht gestartet werden. Bitte Edge-Mikrofonrechte prüfen.')
     }
-  }, [submit, supportsDictation, text])
+  }, [probeMicrophoneAccess, submit, supportsDictation, text])
 
   useEffect(() => {
     latestTextRef.current = text
