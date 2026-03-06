@@ -127,6 +127,20 @@ export async function buildBackupData(): Promise<BackupFileV1> {
   }
 }
 
+export async function buildActiveBackupData(): Promise<BackupFileV1> {
+  const notes = await listAllNotes()
+  const activeNotes = notes.filter(
+    (note) => note.deletedAt == null && note.status !== 'ARCHIVE' && note.status !== 'DISCARD',
+  )
+  return {
+    app: 'Leiser',
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    deviceId: getOrCreateDeviceId(),
+    notes: activeNotes,
+  }
+}
+
 export async function importBackupJson(jsonText: string, mode: ImportMode): Promise<ImportReport> {
   const parsed = JSON.parse(jsonText) as Partial<BackupFileV1>
 

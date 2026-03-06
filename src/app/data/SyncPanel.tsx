@@ -19,6 +19,7 @@ type SupabaseConfigStatus = {
 
 type SyncPanelProps = {
   onExport: () => void
+  onExportActive: () => void
   onToggleImportPanel: () => void
   showImportPanel: boolean
   onImportFileChange: (file: File | null) => void
@@ -50,6 +51,7 @@ type SyncPanelProps = {
 
 export function SyncPanel({
   onExport,
+  onExportActive,
   onToggleImportPanel,
   showImportPanel,
   onImportFileChange,
@@ -90,6 +92,9 @@ export function SyncPanel({
         <div className="data-actions">
           <button type="button" onClick={onExport}>
             Backup exportieren
+          </button>
+          <button type="button" onClick={onExportActive}>
+            Aktive Einträge exportieren
           </button>
           <button type="button" onClick={onToggleImportPanel}>
             {showImportPanel ? 'Import schließen' : 'Backup importieren'}

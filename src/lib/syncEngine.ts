@@ -2,16 +2,11 @@ import {
   DEFAULT_SYNC_ROOM_ID,
   applyRemoteChanges,
   bumpOutboxAttempt,
-  clearInboxSeen,
-  countActiveNotesWithEmptyText,
   decodeChangePayload,
   decodeOutboxEnvelope,
   getNoteById,
   getSyncState,
-  hasInboxSeen,
-  enqueueMissingRoomSnapshots,
   listPendingOutboxChanges,
-  markInboxSeen,
   markOutboxChangesSent,
   upsertNote,
   updateSyncState,
@@ -54,12 +49,10 @@ type SyncNowOptions = {
 
 type MergeResult = {
   applied: boolean
-  seen: number
   remoteEnvelopes: ChangeEnvelope[]
   remoteSeen: number
-  snapshotApplied: number
-  changeApplied: number
-  snapshotRescues: number
+  snapshotsApplied: number
+  changesApplied: number
   signatureRejected: number
 }
 
@@ -83,6 +76,14 @@ function errorMessage(error: unknown, fallback: string) {
     return (error as { message: string }).message
   }
   return fallback
+}
+
+function toEpochMs(value: string | null | undefined): number {
+  if (!value) {
+    return 0
+  }
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function asSyncEnvelope(value: unknown): ChangeEnvelope | null {
@@ -141,183 +142,245 @@ function asSyncBlob(value: unknown): SyncBlob | null {
   return { version: 1, changes: blob.changes }
 }
 
-function collectChangeIdsFromBlob(blob: SyncBlob | null): Set<string> {
-  const ids = new Set<string>()
-  if (!blob) {
-    return ids
-  }
-  for (const rawItem of blob.changes) {
-    const item = asSyncEnvelope(rawItem)
-    if (item) {
-      ids.add(item.changeId)
-    }
-  }
-  return ids
-}
-
-function collectNoteIdsFromBlob(blob: SyncBlob | null): Set<string> {
-  const ids = new Set<string>()
-  if (!blob) {
-    return ids
-  }
-  for (const rawItem of blob.changes) {
-    const item = asSyncEnvelope(rawItem)
-    if (item) {
-      ids.add(item.noteId)
-    }
-  }
-  return ids
-}
-
 function createEmptyMergeResult(): MergeResult {
   return {
     applied: false,
-    seen: 0,
     remoteEnvelopes: [],
     remoteSeen: 0,
-    snapshotApplied: 0,
-    changeApplied: 0,
-    snapshotRescues: 0,
+    snapshotsApplied: 0,
+    changesApplied: 0,
     signatureRejected: 0,
   }
 }
 
-function shouldRepairFromSnapshot(current: Note | null, snapshot: Note): boolean {
-  if (!current) {
-    return true
+function compareSnapshots(a: Note | null, b: Note | null): number {
+  if (a && !b) return 1
+  if (!a && b) return -1
+  if (!a || !b) return 0
+
+  const revisionDiff = (a.revision ?? 1) - (b.revision ?? 1)
+  if (revisionDiff !== 0) {
+    return revisionDiff
   }
 
-  if ((snapshot.revision ?? 1) > (current.revision ?? 1)) {
-    return true
+  const updatedDiff = toEpochMs(a.updatedAt) - toEpochMs(b.updatedAt)
+  if (updatedDiff !== 0) {
+    return updatedDiff
   }
 
-  if (snapshot.updatedAt > current.updatedAt) {
-    return true
+  const createdDiff = toEpochMs(a.createdAt) - toEpochMs(b.createdAt)
+  if (createdDiff !== 0) {
+    return createdDiff
   }
 
-  if (
-    current.text.trim().length === 0 &&
-    snapshot.text.trim().length > 0 &&
-    (snapshot.revision ?? 1) >= (current.revision ?? 1) &&
-    snapshot.updatedAt >= current.updatedAt
-  ) {
-    return true
+  const deletedDiff = toEpochMs(a.deletedAt ?? null) - toEpochMs(b.deletedAt ?? null)
+  if (deletedDiff !== 0) {
+    return deletedDiff
   }
 
-  return false
+  return 0
 }
 
-async function mergeRemoteChanges(syncId: string, blob: SyncBlob | null): Promise<MergeResult> {
-  if (!blob) {
-    return createEmptyMergeResult()
+function compareEnvelopes(a: ChangeEnvelope, b: ChangeEnvelope): number {
+  const aSnapshot = asSnapshotNote(a.snapshot, a.noteId)
+  const bSnapshot = asSnapshotNote(b.snapshot, b.noteId)
+
+  const snapshotDiff = compareSnapshots(aSnapshot, bSnapshot)
+  if (snapshotDiff !== 0) {
+    return snapshotDiff
   }
 
-  const seenKeys: string[] = []
-  const remoteEnvelopes: ChangeEnvelope[] = []
-  let applied = false
-  let remoteSeen = 0
-  let snapshotApplied = 0
-  let changeApplied = 0
-  let snapshotRescues = 0
+  const tsDiff = (a.ts ?? 0) - (b.ts ?? 0)
+  if (tsDiff !== 0) {
+    return tsDiff
+  }
+
+  return a.changeId.localeCompare(b.changeId)
+}
+
+function selectLatestEnvelopePerNote(envelopes: ChangeEnvelope[]): Map<string, ChangeEnvelope> {
+  const latestByNoteId = new Map<string, ChangeEnvelope>()
+  for (const envelope of envelopes) {
+    const existing = latestByNoteId.get(envelope.noteId)
+    if (!existing || compareEnvelopes(envelope, existing) > 0) {
+      latestByNoteId.set(envelope.noteId, envelope)
+    }
+  }
+  return latestByNoteId
+}
+
+function shouldApplySnapshot(current: Note | null, incoming: Note): boolean {
+  return compareSnapshots(incoming, current) > 0
+}
+
+async function normalizeRemoteEnvelopes(blob: SyncBlob | null): Promise<{ envelopes: ChangeEnvelope[]; seen: number; signatureRejected: number }> {
+  if (!blob) {
+    return { envelopes: [], seen: 0, signatureRejected: 0 }
+  }
+
+  const valid: ChangeEnvelope[] = []
+  let seen = 0
   let signatureRejected = 0
 
   for (const rawItem of blob.changes) {
-    const item = asSyncEnvelope(rawItem)
-    if (!item) {
-      continue
-    }
-    remoteSeen += 1
-    const dedupeKey = `${syncId}:${item.changeId}`
-    if (await hasInboxSeen(dedupeKey)) {
-      remoteEnvelopes.push(item)
-      // Recovery path: if seen-cache is stale on this client, replay the change payload.
-      try {
-        const bytes = decodeChangePayload(item.payload)
-        if (bytes.length > 0) {
-          const currentBeforeReplay = await getNoteById(item.noteId)
-          const replayed = await applyRemoteChanges(item.noteId, bytes)
-          if (!currentBeforeReplay || ((currentBeforeReplay.text ?? '').trim().length === 0 && (replayed?.text ?? '').trim().length > 0)) {
-            changeApplied += 1
-            applied = true
-          }
-        }
-      } catch {
-        // ignore replay errors; snapshot fallback below may still recover
-      }
-      const seenSnapshot = asSnapshotNote(item.snapshot, item.noteId)
-      if (seenSnapshot) {
-        const current = await getNoteById(item.noteId)
-        if (shouldRepairFromSnapshot(current, seenSnapshot)) {
-          await upsertNote(seenSnapshot)
-          snapshotApplied += 1
-          snapshotRescues += 1
-          applied = true
-        }
-      }
+    const envelope = asSyncEnvelope(rawItem)
+    if (!envelope) {
       continue
     }
 
-    if (item.signature) {
+    seen += 1
+    if (envelope.signature) {
       try {
-        const signatureValid = await verifyTrustedEnvelope(item)
-        if (!signatureValid) {
+        const ok = await verifyTrustedEnvelope(envelope)
+        if (!ok) {
           signatureRejected += 1
+          continue
         }
       } catch {
         signatureRejected += 1
+        continue
       }
     }
 
-    let appliedChange = false
-    let changedNote: Note | null = null
-    try {
-      const bytes = decodeChangePayload(item.payload)
-      if (bytes.length > 0) {
-        changedNote = await applyRemoteChanges(item.noteId, bytes)
-        changeApplied += 1
-        appliedChange = true
-      }
-    } catch {
-      appliedChange = false
-    }
-
-    const snapshot = asSnapshotNote(item.snapshot, item.noteId)
-    const shouldRescueFromSnapshot =
-      Boolean(snapshot) &&
-      (!appliedChange || ((changedNote?.text ?? '').trim().length === 0 && (snapshot?.text ?? '').trim().length > 0))
-
-    if (shouldRescueFromSnapshot && snapshot) {
-      await upsertNote(snapshot)
-      snapshotApplied += 1
-      snapshotRescues += 1
-      seenKeys.push(dedupeKey)
-      remoteEnvelopes.push(item)
-      applied = true
-      continue
-    }
-
-    if (!appliedChange) {
-      continue
-    }
-
-    seenKeys.push(dedupeKey)
-    remoteEnvelopes.push(item)
-    applied = true
-  }
-
-  if (seenKeys.length > 0) {
-    await markInboxSeen(seenKeys, 30 * 24 * 60 * 60 * 1000)
+    valid.push(envelope)
   }
 
   return {
-    applied,
-    seen: seenKeys.length,
-    remoteEnvelopes,
-    remoteSeen,
-    snapshotApplied,
-    changeApplied,
-    snapshotRescues,
+    envelopes: [...selectLatestEnvelopePerNote(valid).values()],
+    seen,
     signatureRejected,
+  }
+}
+
+async function mergeRemoteSnapshots(blob: SyncBlob | null): Promise<MergeResult> {
+  const normalized = await normalizeRemoteEnvelopes(blob)
+  if (normalized.envelopes.length === 0) {
+    return {
+      ...createEmptyMergeResult(),
+      remoteSeen: normalized.seen,
+      signatureRejected: normalized.signatureRejected,
+    }
+  }
+
+  let snapshotsApplied = 0
+  let changesApplied = 0
+  for (const envelope of normalized.envelopes) {
+    const snapshot = asSnapshotNote(envelope.snapshot, envelope.noteId)
+    if (snapshot) {
+      const current = await getNoteById(envelope.noteId)
+      if (!shouldApplySnapshot(current, snapshot)) {
+        continue
+      }
+
+      await upsertNote(snapshot)
+      snapshotsApplied += 1
+      continue
+    }
+
+    const payload = decodeChangePayload(envelope.payload)
+    if (payload.length > 0) {
+      await applyRemoteChanges(envelope.noteId, payload)
+      changesApplied += 1
+    }
+  }
+
+  return {
+    applied: snapshotsApplied > 0 || changesApplied > 0,
+    remoteEnvelopes: normalized.envelopes,
+    remoteSeen: normalized.seen,
+    snapshotsApplied,
+    changesApplied,
+    signatureRejected: normalized.signatureRejected,
+  }
+}
+
+function mergeEnvelopeSets(remoteEnvelopes: ChangeEnvelope[], localEnvelopes: ChangeEnvelope[]): ChangeEnvelope[] {
+  const merged = new Map<string, ChangeEnvelope>()
+
+  for (const envelope of remoteEnvelopes) {
+    merged.set(envelope.noteId, envelope)
+  }
+
+  for (const envelope of localEnvelopes) {
+    const current = merged.get(envelope.noteId)
+    if (!current || compareEnvelopes(envelope, current) > 0) {
+      merged.set(envelope.noteId, envelope)
+    }
+  }
+
+  return [...merged.values()].sort((a, b) => {
+    const tsDiff = (a.ts ?? 0) - (b.ts ?? 0)
+    if (tsDiff !== 0) {
+      return tsDiff
+    }
+    return a.noteId.localeCompare(b.noteId)
+  })
+}
+
+async function getPendingEnvelopes(roomId: string, limit: number): Promise<{ rows: Awaited<ReturnType<typeof listPendingOutboxChanges>>; envelopes: ChangeEnvelope[] }> {
+  const rows = await listPendingOutboxChanges(roomId, limit)
+  const envelopes: ChangeEnvelope[] = []
+
+  for (const row of rows) {
+    try {
+      const envelope = decodeOutboxEnvelope(row.bytes)
+      const parsed = asSyncEnvelope(envelope)
+      if (parsed) {
+        envelopes.push(parsed)
+      }
+    } catch {
+      // Ignore malformed local entries; keeping sync resilient is more important than hard-failing here.
+    }
+  }
+
+  return { rows, envelopes: [...selectLatestEnvelopePerNote(envelopes).values()] }
+}
+
+async function markPendingAsSentWhenCovered(
+  pendingRows: Awaited<ReturnType<typeof listPendingOutboxChanges>>,
+  roomId: string,
+  syncToken: string,
+): Promise<void> {
+  if (pendingRows.length === 0) {
+    return
+  }
+
+  const pendingByChangeId = new Map<string, ChangeEnvelope>()
+  for (const row of pendingRows) {
+    try {
+      const envelope = decodeOutboxEnvelope(row.bytes)
+      const parsed = asSyncEnvelope(envelope)
+      if (parsed) {
+        pendingByChangeId.set(row.changeId, parsed)
+      }
+    } catch {
+      // ignore malformed pending entries
+    }
+  }
+
+  const remoteAfterPush = await pullSync(roomId, syncToken)
+  const normalizedRemote = await normalizeRemoteEnvelopes(asSyncBlob(remoteAfterPush?.blob ?? null))
+  const remoteByNoteId = selectLatestEnvelopePerNote(normalizedRemote.envelopes)
+
+  const acked: string[] = []
+  for (const row of pendingRows) {
+    const pending = pendingByChangeId.get(row.changeId)
+    if (!pending) {
+      continue
+    }
+
+    const remote = remoteByNoteId.get(pending.noteId)
+    if (!remote) {
+      continue
+    }
+
+    if (compareEnvelopes(remote, pending) >= 0) {
+      acked.push(row.changeId)
+    }
+  }
+
+  if (acked.length > 0) {
+    await markOutboxChangesSent(acked)
   }
 }
 
@@ -334,8 +397,6 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
   let pushRunning = false
   let pullRunning = false
   let pullInterval: number | null = null
-  let repairedInboxSeenCache = false
-  let repairedBlankNotes = false
 
   const setStatus = (status: SyncUiStatus, error?: string | null) => {
     onStatusChange?.(status, error ?? null)
@@ -371,24 +432,10 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
     }
 
     const remoteState = await pullSync(roomId, syncState.syncToken)
-    const blob = asSyncBlob(remoteState?.blob ?? null)
-    let merged = await mergeRemoteChanges(roomId, blob)
-    if (!repairedInboxSeenCache && merged.remoteSeen > 0 && merged.seen === 0) {
-      await clearInboxSeen()
-      repairedInboxSeenCache = true
-      merged = await mergeRemoteChanges(roomId, blob)
-    }
-    if (!repairedBlankNotes && merged.remoteSeen > 0) {
-      const blankCount = await countActiveNotesWithEmptyText()
-      if (blankCount > 0) {
-        await clearInboxSeen()
-        repairedBlankNotes = true
-        merged = await mergeRemoteChanges(roomId, blob)
-      }
-    }
+    const merged = await mergeRemoteSnapshots(asSyncBlob(remoteState?.blob ?? null))
 
     await updateSyncState(roomId, {
-      lastPulledSeq: syncState.lastPulledSeq + merged.seen,
+      lastPulledSeq: syncState.lastPulledSeq + merged.snapshotsApplied,
       lastError: null,
     })
     if (merged.applied) {
@@ -424,10 +471,10 @@ export function startSyncEngine(options: SyncEngineOptions = {}) {
         atISO: new Date().toISOString(),
         mode: 'pull',
         remoteEnvelopesSeen: merged.remoteSeen,
-        remoteEnvelopesApplied: merged.seen,
-        snapshotApplied: merged.snapshotApplied,
-        changeApplied: merged.changeApplied,
-        snapshotRescues: merged.snapshotRescues,
+        remoteEnvelopesApplied: merged.remoteEnvelopes.length,
+        snapshotApplied: merged.snapshotsApplied,
+        changeApplied: merged.changesApplied,
+        snapshotRescues: 0,
         signatureRejected: merged.signatureRejected,
         remoteChangedRetries: 0,
         pendingOutboxCount: 0,
@@ -522,20 +569,17 @@ export async function syncNow(options: SyncNowOptions = {}) {
     }
 
     const maxRetries = 2
-    const outboxBatchLimit = 200
-    const maxOutboxDrainRounds = 25
-    let totalSeen = 0
-    let appliedAny = false
+    const outboxBatchLimit = 300
+    const maxOutboxDrainRounds = 10
+
     let totalRemoteSeen = 0
-    let totalSnapshotApplied = 0
-    let totalChangeApplied = 0
-    let totalSnapshotRescues = 0
+    let totalRemoteApplied = 0
+    let totalSnapshotsApplied = 0
+    let totalChangesApplied = 0
     let totalSignatureRejected = 0
     let remoteChangedRetries = 0
     let pendingOutboxCount = 0
-    let repairedInboxSeenCache = false
-    let repairedBlankNotes = false
-    let bootstrappedSnapshots = false
+    let appliedAny = false
 
     let hasMorePending = true
     let drainRounds = 0
@@ -543,85 +587,41 @@ export async function syncNow(options: SyncNowOptions = {}) {
     while (hasMorePending && drainRounds < maxOutboxDrainRounds) {
       drainRounds += 1
       let attempts = 0
-      let pendingForAck: string[] = []
       let synced = false
+      let lastPendingRows: Awaited<ReturnType<typeof listPendingOutboxChanges>> = []
 
       while (!synced && attempts <= maxRetries) {
         attempts += 1
 
         const remoteState = await pullSync(roomId, syncState.syncToken)
         const remoteVersion = remoteState?.version ?? 0
-        const remoteBlob = asSyncBlob(remoteState?.blob ?? null)
-        const merged = await mergeRemoteChanges(roomId, remoteBlob)
+        const merged = await mergeRemoteSnapshots(asSyncBlob(remoteState?.blob ?? null))
 
-        totalSeen += merged.seen
-        appliedAny = appliedAny || merged.applied
         totalRemoteSeen += merged.remoteSeen
-        totalSnapshotApplied += merged.snapshotApplied
-        totalChangeApplied += merged.changeApplied
-        totalSnapshotRescues += merged.snapshotRescues
+        totalRemoteApplied += merged.remoteEnvelopes.length
+        totalSnapshotsApplied += merged.snapshotsApplied
+        totalChangesApplied += merged.changesApplied
         totalSignatureRejected += merged.signatureRejected
+        appliedAny = appliedAny || merged.applied
 
-        const pending = await listPendingOutboxChanges(roomId, outboxBatchLimit)
-        let localEnvelopes = pending.map((row) => decodeOutboxEnvelope(row.bytes))
-        pendingForAck = pending.map((row) => row.changeId)
-        pendingOutboxCount = pending.length
+        const pending = await getPendingEnvelopes(roomId, outboxBatchLimit)
+        lastPendingRows = pending.rows
+        pendingOutboxCount = pending.rows.length
 
-        if (!bootstrappedSnapshots) {
-          const remoteNoteIds = collectNoteIdsFromBlob(remoteBlob)
-          for (const env of localEnvelopes) {
-            remoteNoteIds.add(env.noteId)
-          }
-          const seeded = await enqueueMissingRoomSnapshots(roomId, remoteNoteIds)
-          if (seeded > 0) {
-            bootstrappedSnapshots = true
-            const refreshedPending = await listPendingOutboxChanges(roomId, outboxBatchLimit)
-            localEnvelopes = refreshedPending.map((row) => decodeOutboxEnvelope(row.bytes))
-            pendingForAck = refreshedPending.map((row) => row.changeId)
-            pendingOutboxCount = refreshedPending.length
-            setStatus('syncing', `${seeded} Bestandsdaten werden synchronisiert…`)
-          } else {
-            bootstrappedSnapshots = true
-          }
-        }
-
-        if (!repairedInboxSeenCache && merged.remoteSeen > 0 && merged.seen === 0 && pending.length === 0) {
-          await clearInboxSeen()
-          repairedInboxSeenCache = true
-          attempts -= 1
-          setStatus('syncing', 'Rekonstruiere Sync-Index…')
-          continue
-        }
-
-        if (!repairedBlankNotes && merged.remoteSeen > 0 && pending.length === 0) {
-          const blankCount = await countActiveNotesWithEmptyText()
-          if (blankCount > 0) {
-            await clearInboxSeen()
-            repairedBlankNotes = true
-            attempts -= 1
-            setStatus('syncing', 'Repariere leere Einträge…')
-            continue
-          }
-        }
-
-        const combined = new Map<string, ChangeEnvelope>()
-        for (const env of merged.remoteEnvelopes) combined.set(env.changeId, env)
-        for (const env of localEnvelopes) combined.set(env.changeId, env)
-
-        if (combined.size === 0) {
+        const combined = mergeEnvelopeSets(merged.remoteEnvelopes, pending.envelopes)
+        if (combined.length === 0) {
           synced = true
           break
         }
 
         const blob: SyncBlob = {
           version: 1,
-          // Keep insertion order (remote order + local outbox order). Re-sorting by ts can
-          // break causal order when device clocks drift and lead to partial/empty materialization.
-          changes: [...combined.values()],
+          changes: combined,
         }
 
         try {
           await pushSync(roomId, syncState.syncToken, blob, remoteVersion)
+          await markPendingAsSentWhenCovered(lastPendingRows, roomId, syncState.syncToken)
           synced = true
         } catch (error) {
           if (error instanceof Error && error.message === REMOTE_CHANGED_ERROR && attempts <= maxRetries) {
@@ -633,15 +633,6 @@ export async function syncNow(options: SyncNowOptions = {}) {
         }
       }
 
-      if (pendingForAck.length > 0) {
-        const remoteAfterPush = await pullSync(roomId, syncState.syncToken)
-        const remoteIds = collectChangeIdsFromBlob(asSyncBlob(remoteAfterPush?.blob ?? null))
-        const ackedIds = pendingForAck.filter((id) => remoteIds.has(id))
-        if (ackedIds.length > 0) {
-          await markOutboxChangesSent(ackedIds)
-        }
-      }
-
       const remainingPending = await listPendingOutboxChanges(roomId, 1)
       hasMorePending = remainingPending.length > 0
       if (hasMorePending) {
@@ -650,7 +641,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
     }
 
     await updateSyncState(roomId, {
-      lastPulledSeq: syncState.lastPulledSeq + totalSeen,
+      lastPulledSeq: syncState.lastPulledSeq + totalSnapshotsApplied,
       lastPushedAt: new Date().toISOString(),
       lastError: null,
     })
@@ -661,10 +652,10 @@ export async function syncNow(options: SyncNowOptions = {}) {
       atISO: new Date().toISOString(),
       mode: 'push',
       remoteEnvelopesSeen: totalRemoteSeen,
-      remoteEnvelopesApplied: totalSeen,
-      snapshotApplied: totalSnapshotApplied,
-      changeApplied: totalChangeApplied,
-      snapshotRescues: totalSnapshotRescues,
+      remoteEnvelopesApplied: totalRemoteApplied,
+      snapshotApplied: totalSnapshotsApplied,
+      changeApplied: totalChangesApplied,
+      snapshotRescues: 0,
       signatureRejected: totalSignatureRejected,
       remoteChangedRetries,
       pendingOutboxCount,

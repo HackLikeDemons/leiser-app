@@ -26,7 +26,7 @@ import {
   updateNoteStarred,
   updateNoteStatus,
 } from './lib/dbNotes'
-import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
+import { buildActiveBackupData, buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO } from './lib/date'
 import type { ContextTag, Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
@@ -2056,6 +2056,63 @@ function AppContent() {
     }
   }
 
+  const handleExportActive = async () => {
+    setInfo('')
+    setError('')
+    try {
+      const backup = await buildActiveBackupData()
+      const day = getLocalDayISO()
+      const filename = `leiser-active-backup-${day}.json`
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+      const file = new File([blob], filename, { type: 'application/json' })
+      let canShareFiles = false
+      if (typeof navigator.canShare === 'function') {
+        try {
+          canShareFiles = navigator.canShare({ files: [file] })
+        } catch {
+          canShareFiles = false
+        }
+      }
+
+      let shared = false
+      if (typeof navigator.share === 'function' && canShareFiles) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'Leiser Aktive Eintraege Backup',
+          })
+          shared = true
+        } catch (shareError) {
+          if (shareError instanceof DOMException && shareError.name === 'AbortError') {
+            return
+          }
+          shared = false
+        }
+      }
+
+      if (!shared) {
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        link.rel = 'noopener'
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.setTimeout(() => URL.revokeObjectURL(url), 1500)
+      }
+      const exportedAt = new Date().toISOString()
+      setLastBackupAt(exportedAt)
+      localStorage.setItem(LAST_BACKUP_AT_STORAGE_KEY, exportedAt)
+      showTransientInfo('Aktive Eintraege exportiert.')
+    } catch (exportError) {
+      if (exportError instanceof DOMException && exportError.name === 'AbortError') {
+        return
+      }
+      setError('Aktive Eintraege konnten nicht exportiert werden.')
+    }
+  }
+
   const handleImport = async () => {
     if (!importFile) {
       setError('Bitte zuerst eine Backup-Datei auswählen.')
@@ -2612,6 +2669,7 @@ function AppContent() {
             {activeTab === 'DATA' ? (
               <DataScreen
                 onExport={() => void handleExport()}
+                onExportActive={() => void handleExportActive()}
                 showImportPanel={showImportPanel}
                 onToggleImportPanel={() => setShowImportPanel((prev) => !prev)}
                 onImportFileChange={setImportFile}

@@ -347,13 +347,14 @@ h3 {
 
 .sync-primary-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.7rem;
 }
 
 .sync-primary-actions > button {
   width: 100%;
   min-height: 46px;
+  min-width: 0;
 }
 
 .sync-secondary-actions {
@@ -524,6 +525,14 @@ h3 {
   .data-layout {
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
     align-items: start;
+  }
+
+  .data-layout > .data-card:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .sync-primary-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

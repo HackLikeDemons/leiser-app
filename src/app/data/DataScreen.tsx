@@ -12,6 +12,7 @@ type SupabaseConfigStatus = {
 
 type DataScreenProps = {
   onExport: () => void
+  onExportActive: () => void
   showImportPanel: boolean
   onToggleImportPanel: () => void
   onImportFileChange: (file: File | null) => void
@@ -58,6 +59,7 @@ type DataScreenProps = {
 
 export function DataScreen({
   onExport,
+  onExportActive,
   showImportPanel,
   onToggleImportPanel,
   onImportFileChange,
@@ -111,6 +113,7 @@ export function DataScreen({
         <div className="data-layout">
           <SyncPanel
             onExport={onExport}
+            onExportActive={onExportActive}
             onToggleImportPanel={onToggleImportPanel}
             showImportPanel={showImportPanel}
             onImportFileChange={onImportFileChange}
