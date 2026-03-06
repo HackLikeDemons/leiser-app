@@ -29,3 +29,15 @@ Für PWA-Funktionen auf iPhone ist HTTPS nötig:
 2. In Netlify: New site from Git
 3. Build/Publish setzen
 4. Deploy starten
+
+## Troubleshooting Build
+
+- Prüfe bei TypeScript-Fehlern Eventtypen in `src/App.tsx`:
+  - globale Listener mit DOM-Eventtypen
+  - React-Eventtypen nur in JSX-Handlern
+- lokal gegenprüfen:
+
+```bash
+npm run lint
+npm run build
+```

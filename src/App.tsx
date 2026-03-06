@@ -1087,8 +1087,11 @@ function AppContent() {
     setError('')
     try {
       const nextEnabled = !syncEnabled
+      const storedRoomId = localStorage.getItem(SYNC_ID_STORAGE_KEY)?.trim() ?? ''
       const nextRoomId = nextEnabled
-        ? localStorage.getItem('leiser-sync-id') || crypto.randomUUID()
+        ? storedRoomId && storedRoomId !== DEFAULT_SYNC_ROOM_ID
+          ? storedRoomId
+          : crypto.randomUUID()
         : syncRoomId
       setSyncRoomId(nextRoomId)
       const next = await setSyncEnabled(nextRoomId, nextEnabled)

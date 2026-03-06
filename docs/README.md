@@ -13,3 +13,7 @@
 - [Entwicklung](development.md)
 - [Deploy auf Netlify](deploy-netlify.md)
 - [Test-Checklisten](testing.md)
+
+## Änderungshinweis
+
+Diese Dokumentation beschreibt den aktuellen Stand der Notes-App mit den Tabs `Erfassen`, `Sortieren`, `Reflektieren`, `Handeln` sowie dem Datenbereich über das Header-Menü.

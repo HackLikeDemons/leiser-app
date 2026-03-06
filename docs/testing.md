@@ -4,23 +4,33 @@
 
 ## Basis-Check
 
-1. Braindump: Eintrag erfassen, Reload -> bleibt erhalten
-2. Review: Entscheidung -> Statuswechsel sichtbar (Auto-/Single-/Listenmodus prüfen)
-3. Gedanken: Archivieren/Verwerfen/Zu To-Do -> korrekt umgesetzt
-4. To-Do: Tagesgruppierung, Stern-Filter, Archiv ein-/ausblenden, Undo nach „Erledigt“ prüfen
-5. Suche: Treffer für Teilbegriffe
+1. `Erfassen`: Eintrag speichern, Reload -> bleibt erhalten
+2. `Sortieren`: Entscheidungen nach `Handeln`, `Reflektieren`, `Verwerfen` funktionieren
+3. `Reflektieren`: Archivieren/Löschen/Zu Handeln -> korrekt umgesetzt
+4. `Handeln`: Tagesgruppierung, Stern-Filter, Zurück in Inbox, Erledigt -> korrekt umgesetzt
+5. Archiv-Autoclose: letzten Archiv-Eintrag löschen -> Archiv klappt automatisch zu
+6. Globale Shortcuts: `1/2/3/4` wechseln Tabs; in Eingabefeldern inaktiv
 
 ## Backup/Import
 
 1. Export erzeugen
-2. Import `MERGE` testen
-3. Import `REPLACE` testen
+2. `Letztes Backup`-Zeitpunkt aktualisiert sich
+3. `Backup überfällig` erscheint nach >7 Tagen ohne Export
+4. Import `MERGE` testen
+5. Import `REPLACE` testen
 
 ## Offline
 
 1. App laden
 2. Netzwerk trennen
 3. weiter nutzen
+
+## Sync/Pairing
+
+1. Pair-Code ist nicht sichtbar, aber `Pair Code kopieren` funktioniert
+2. QR-Flow funktioniert (anzeigen/scannen)
+3. `Sync now (Debug)` auf zwei Geräten: neue und historische Einträge erscheinen auf beiden Seiten
+4. `Sync-Protokoll kopieren` liefert JSON mit Diagnosefeldern
 
 ## iPhone PWA Check
 

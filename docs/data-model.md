@@ -36,6 +36,27 @@ type Note = {
   - `outbox`
   - `inbox_seen`
 
+## Sync-relevante State-Infos
+
+`sync_state` enthält pro Raum u. a.:
+
+- `roomId`
+- `isEnabled`
+- `syncToken`
+- `lastPulledSeq`
+- `lastPushedAt`
+- `lastError`
+
+`outbox` enthält unsent/sent Changes:
+
+- `changeId`
+- `roomId`
+- `noteId`
+- `bytes`
+- `createdAt`
+- `sentAt`
+- `attemptCount`
+
 Wichtige Indexe (notes/notes_view):
 
 - `dayISO`

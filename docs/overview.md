@@ -4,10 +4,10 @@
 
 Leiser ist eine lokale Gedanken-App mit vier Arbeitsbereichen:
 
-- Braindump
-- Review
-- Gedanken
-- To-Do
+- Erfassen
+- Sortieren
+- Reflektieren
+- Handeln
 
 Die App ist bewusst minimal:
 
@@ -15,17 +15,19 @@ Die App ist bewusst minimal:
 - lokale Speicherung in IndexedDB
 - keine Telemetrie
 - optionaler Sync über Supabase (ohne klassisches Login)
+- Datenbereich für Backup/Sync/Pairing über `...` im Header
 
 ## Navigationspunkte
 
 - [Flows und Tabs](flows.md)
 - [Tastenkürzel](shortcuts.md)
 - [Datenmodell](data-model.md)
+- [Backup/Import](backup-import.md)
 - [Sync](sync.md)
 
 ## Prinzip
 
-1. Gedanken schnell erfassen (Braindump)
-2. Gedanken entscheiden (Review)
-3. Offene Themen weiterdenken (Gedanken)
-4. Aufgaben abarbeiten (To-Do)
+1. Gedanken schnell erfassen (`Erfassen`)
+2. Inbox entscheiden (`Sortieren`)
+3. Themen vertiefen (`Reflektieren`)
+4. Nächste Schritte umsetzen (`Handeln`)

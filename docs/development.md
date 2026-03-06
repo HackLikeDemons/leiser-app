@@ -19,6 +19,12 @@ npm install
 npm run dev
 ```
 
+## Lint
+
+```bash
+npm run lint
+```
+
 ## Build
 
 ```bash
@@ -30,3 +36,7 @@ npm run build
 ```bash
 npm run preview
 ```
+
+## Hinweis zu TypeScript-Events
+
+Bei globalen Browser-Listenern (`window.addEventListener`) DOM-Eventtypen verwenden. React-Eventtypen (`React.KeyboardEvent`) nur in React-Handlern einsetzen.

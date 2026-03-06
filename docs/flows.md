@@ -2,12 +2,13 @@
 
 [Zurück zur README](../README.md) · [Produktüberblick](overview.md)
 
-## Braindump
+## Erfassen
 
 - Eingabe im Composer (unten)
 - `Enter` speichert
 - `Shift+Enter` fügt Zeilenumbruch ein
 - Fokus bleibt im Feld
+- Mikrofon-Button für Diktat ist verfügbar
 
 Darstellung:
 
@@ -16,43 +17,48 @@ Darstellung:
 - ruhige Listenoptik, Aktionen pro Item
 - sehr alte Einträge werden automatisch in den Archiv-Status verschoben (ohne Löschung)
 
-## Review
+## Sortieren
 
-- `INBOX`-Entscheidung mit umschaltbarer Darstellung:
-  - `Auto` (Default)
-  - `Single`
-  - `Liste`
+- `INBOX`-Entscheidung als Liste mit Priorisierung nach Alter
 - Entscheidungen:
-  - To-Do (`TODO`)
-  - Gedanken (`PROCESS`)
+  - Handeln (`TODO`)
+  - Reflektieren (`PROCESS`)
   - Verwerfen (`DISCARD`)
-  - Überspringen
-- „Heute entschieden“ ist einklappbar
-- Undo für letzte Entscheidung (zeitlich begrenzt)
+- Leere Inbox zeigt direkte Weiterleitungen zu `Reflektieren` und `Handeln`
+- zusätzlicher Stale-Review-Bereich für alte Handlungen (>14 Tage)
 
-## Gedanken
+## Reflektieren
 
 - Zeigt `PROCESS`
 - Aktionen pro Note:
-  - Archivieren (`ARCHIVE`)
-  - Zu To-Do (`TODO`)
-  - Verwerfen (`DISCARD`)
-- eigenes Gedanken-Archiv kann eingeblendet werden
+  - Archivieren (`ARCHIVE` mit Bucket `THINKING`)
+  - Zu Handeln (`TODO`)
+  - endgültig löschen
+- eigenes Archiv kann eingeblendet werden
+- wenn der letzte Archiv-Eintrag gelöscht wird, klappt das Archiv automatisch zu
 
-## To-Do
+## Handeln
 
 - Zeigt `TODO`
 - Tagesweise gruppiert
 - optionaler Stern-Filter
 - Aktionen:
-  - Erledigt (verschiebt ins To-Do-Archiv)
+  - Erledigt (verschiebt ins Handeln-Archiv)
   - Zurück in Inbox
-- mit kurzem Undo-Feedback
-- eigenes To-Do-Archiv kann eingeblendet werden
+- eigenes Archiv kann eingeblendet werden
+- wenn der letzte Archiv-Eintrag gelöscht wird, klappt das Archiv automatisch zu
 
-## Globales Header-Menü (`...`)
+## Datenbereich (`...` im Header)
 
-- Theme wechseln
-- Backup exportieren
-- Backup importieren
-- Datenbereich öffnen
+- Hero: `Sichern, verbinden, verwalten`
+- Karte `Backup und Sync`:
+  - Backup exportieren/importieren
+  - Sync aktivieren/deaktivieren
+  - `Sync now (Debug)`
+  - Debug-Infos ein-/ausblenden (standardmäßig aus)
+  - `Sync-Protokoll kopieren`
+  - `Letztes Backup` + `Backup überfällig` Hinweis + `Jetzt sichern`
+- Karte `Geräte koppeln`:
+  - QR-Code anzeigen / QR scannen
+  - Pair-Code ist in der UI aus Sicherheitsgründen ausgeblendet
+  - Pair-Code kann kopiert und auf anderem Gerät importiert werden

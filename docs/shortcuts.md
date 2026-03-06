@@ -2,7 +2,16 @@
 
 [Zurück zur README](../README.md) · [Flows](flows.md)
 
-## Braindump (Textarea)
+## Global (keine Eingabe fokussiert)
+
+- `1` -> `Erfassen`
+- `2` -> `Sortieren`
+- `3` -> `Reflektieren`
+- `4` -> `Handeln`
+
+Hinweis: Diese Shortcuts sind deaktiviert, sobald ein `input`, `textarea`, `select` oder `contenteditable` fokussiert ist.
+
+## Erfassen (Textarea)
 
 - `Enter`
   - Speichert den aktuellen Gedanken.
@@ -10,24 +19,6 @@
 - `Shift+Enter`
   - Fügt Zeilenumbruch ein.
 
-## Review (Shortcut-aktive Ansicht)
+## Weitere Bereiche
 
-Aktiv nur wenn:
-
-- Review-Tab offen ist
-- keine Suche aktiv ist
-- kein Eingabefeld fokussiert ist
-- kein Stale-Review-Modus aktiv ist
-- Review-Ansicht auf `Single` steht (oder `Auto` und dadurch `Single` aktiv ist)
-
-Kürzel:
-
-- `t` -> `TODO`
-- `p` -> `PROCESS`
-- `d` -> `DISCARD`
-- `s` -> Skip
-- `Esc` -> Bereich „Heute entschieden“ einklappen
-
-## Hinweis
-
-Wenn du gerade in einem Input tippst (z. B. Suche), sind Review-Shortcuts bewusst deaktiviert.
+Aktuell gibt es keine zusätzlichen buchstabenbasierten Bereichs-Shortcuts.
