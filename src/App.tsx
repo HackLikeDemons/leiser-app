@@ -288,12 +288,25 @@ function NoteTypeBadge({ note }: { note: Note }) {
 }
 
 function ExpandableNoteText({ text }: { text: string }) {
+  const MOBILE_TEXT_LIMIT = 300
   const [expanded, setExpanded] = useState(false)
   const [canExpand, setCanExpand] = useState(false)
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
   const textRef = useRef<HTMLSpanElement | null>(null)
 
   useEffect(() => {
-    if (expanded) {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return
+    }
+    const mediaQuery = window.matchMedia('(max-width: 640px)')
+    const update = () => setIsMobileViewport(mediaQuery.matches)
+    update()
+    mediaQuery.addEventListener('change', update)
+    return () => mediaQuery.removeEventListener('change', update)
+  }, [])
+
+  useEffect(() => {
+    if (expanded || isMobileViewport) {
       return
     }
     const frameId = requestAnimationFrame(() => {
@@ -304,7 +317,16 @@ function ExpandableNoteText({ text }: { text: string }) {
       setCanExpand(element.scrollHeight - element.clientHeight > 2)
     })
     return () => cancelAnimationFrame(frameId)
-  }, [expanded, text])
+  }, [expanded, isMobileViewport, text])
+
+  if (isMobileViewport) {
+    const compactText = text.length > MOBILE_TEXT_LIMIT ? `${text.slice(0, MOBILE_TEXT_LIMIT).trimEnd()}…` : text
+    return (
+      <span className="note-text-wrap">
+        <span className="note-text">{compactText}</span>
+      </span>
+    )
+  }
 
   return (
     <span className={canExpand && !expanded ? 'note-text-wrap note-text-wrap--collapsed' : 'note-text-wrap'}>
@@ -2712,71 +2734,73 @@ function AppContent() {
                                 ))}
                               </select>
                             </label>
-                            <button
-                              type="button"
-                              className="review-btn review-btn--todo review-btn--icon"
-                              onClick={() =>
-                                void handleReviewDecision(note.id, 'TODO', { enableUndo: true, sourceNote: note })
-                              }
-                              aria-label="Als Handlung markieren"
-                              title="Als Handlung markieren"
-                            >
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path
-                                  d="M9 7h10M9 12h10M9 17h10M4 7l1.2 1.2L7 6M4 12l1.2 1.2L7 11M4 17l1.2 1.2L7 16"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.8"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              className="review-btn review-btn--process review-btn--icon"
-                              onClick={() =>
-                                void handleReviewDecision(note.id, 'PROCESS', { enableUndo: true, sourceNote: note })
-                              }
-                              aria-label="In Denken verschieben"
-                              title="Denken"
-                            >
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path
-                                  d="M12 4a8 8 0 1 0 8 8 8 8 0 0 0-8-8Z"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.8"
-                                />
-                                <path
-                                  d="m14.8 9.2-2 5.6-5.6 2 2-5.6 5.6-2Z"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.8"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              className="review-btn review-btn--discard review-btn--icon"
-                              onClick={() =>
-                                void handleReviewDecision(note.id, 'DISCARD', { enableUndo: true, sourceNote: note })
-                              }
-                              aria-label="Verwerfen"
-                              title="Verwerfen"
-                            >
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path
-                                  d="M6 6l12 12M18 6 6 18"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.9"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </button>
+                            <div className="review-action-row" role="group" aria-label="Aktionen">
+                              <button
+                                type="button"
+                                className="review-btn review-btn--todo review-btn--icon"
+                                onClick={() =>
+                                  void handleReviewDecision(note.id, 'TODO', { enableUndo: true, sourceNote: note })
+                                }
+                                aria-label="Als Handlung markieren"
+                                title="Als Handlung markieren"
+                              >
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <path
+                                    d="M9 7h10M9 12h10M9 17h10M4 7l1.2 1.2L7 6M4 12l1.2 1.2L7 11M4 17l1.2 1.2L7 16"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                className="review-btn review-btn--process review-btn--icon"
+                                onClick={() =>
+                                  void handleReviewDecision(note.id, 'PROCESS', { enableUndo: true, sourceNote: note })
+                                }
+                                aria-label="In Denken verschieben"
+                                title="Denken"
+                              >
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <path
+                                    d="M12 4a8 8 0 1 0 8 8 8 8 0 0 0-8-8Z"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                  />
+                                  <path
+                                    d="m14.8 9.2-2 5.6-5.6 2 2-5.6 5.6-2Z"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                className="review-btn review-btn--discard review-btn--icon"
+                                onClick={() =>
+                                  void handleReviewDecision(note.id, 'DISCARD', { enableUndo: true, sourceNote: note })
+                                }
+                                aria-label="Verwerfen"
+                                title="Verwerfen"
+                              >
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <path
+                                    d="M6 6l12 12M18 6 6 18"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.9"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
                           </div>
                         </li>
                       ))}
