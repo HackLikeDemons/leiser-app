@@ -519,9 +519,8 @@ export async function syncNow(options: SyncNowOptions = {}) {
     }
 
     const maxRetries = 2
-    let attempts = 0
-    let pendingForAck: string[] = []
-    let synced = false
+    const outboxBatchLimit = 200
+    const maxOutboxDrainRounds = 25
     let totalSeen = 0
     let appliedAny = false
     let totalRemoteSeen = 0
@@ -535,99 +534,115 @@ export async function syncNow(options: SyncNowOptions = {}) {
     let repairedBlankNotes = false
     let bootstrappedSnapshots = false
 
-    while (!synced && attempts <= maxRetries) {
-      attempts += 1
+    let hasMorePending = true
+    let drainRounds = 0
 
-      const remoteState = await pullSync(roomId, syncState.syncToken)
-      const remoteVersion = remoteState?.version ?? 0
-      const remoteBlob = asSyncBlob(remoteState?.blob ?? null)
-      const merged = await mergeRemoteChanges(roomId, remoteBlob)
+    while (hasMorePending && drainRounds < maxOutboxDrainRounds) {
+      drainRounds += 1
+      let attempts = 0
+      let pendingForAck: string[] = []
+      let synced = false
 
-      totalSeen += merged.seen
-      appliedAny = appliedAny || merged.applied
-      totalRemoteSeen += merged.remoteSeen
-      totalSnapshotApplied += merged.snapshotApplied
-      totalChangeApplied += merged.changeApplied
-      totalSnapshotRescues += merged.snapshotRescues
-      totalSignatureRejected += merged.signatureRejected
+      while (!synced && attempts <= maxRetries) {
+        attempts += 1
 
-      const pending = await listPendingOutboxChanges(roomId, 200)
-      let localEnvelopes = pending.map((row) => decodeOutboxEnvelope(row.bytes))
-      pendingForAck = pending.map((row) => row.changeId)
-      pendingOutboxCount = pending.length
+        const remoteState = await pullSync(roomId, syncState.syncToken)
+        const remoteVersion = remoteState?.version ?? 0
+        const remoteBlob = asSyncBlob(remoteState?.blob ?? null)
+        const merged = await mergeRemoteChanges(roomId, remoteBlob)
 
-      if (!bootstrappedSnapshots) {
-        const remoteNoteIds = collectNoteIdsFromBlob(remoteBlob)
-        for (const env of localEnvelopes) {
-          remoteNoteIds.add(env.noteId)
+        totalSeen += merged.seen
+        appliedAny = appliedAny || merged.applied
+        totalRemoteSeen += merged.remoteSeen
+        totalSnapshotApplied += merged.snapshotApplied
+        totalChangeApplied += merged.changeApplied
+        totalSnapshotRescues += merged.snapshotRescues
+        totalSignatureRejected += merged.signatureRejected
+
+        const pending = await listPendingOutboxChanges(roomId, outboxBatchLimit)
+        let localEnvelopes = pending.map((row) => decodeOutboxEnvelope(row.bytes))
+        pendingForAck = pending.map((row) => row.changeId)
+        pendingOutboxCount = pending.length
+
+        if (!bootstrappedSnapshots) {
+          const remoteNoteIds = collectNoteIdsFromBlob(remoteBlob)
+          for (const env of localEnvelopes) {
+            remoteNoteIds.add(env.noteId)
+          }
+          const seeded = await enqueueMissingRoomSnapshots(roomId, remoteNoteIds)
+          if (seeded > 0) {
+            bootstrappedSnapshots = true
+            const refreshedPending = await listPendingOutboxChanges(roomId, outboxBatchLimit)
+            localEnvelopes = refreshedPending.map((row) => decodeOutboxEnvelope(row.bytes))
+            pendingForAck = refreshedPending.map((row) => row.changeId)
+            pendingOutboxCount = refreshedPending.length
+            setStatus('syncing', `${seeded} Bestandsdaten werden synchronisiert…`)
+          } else {
+            bootstrappedSnapshots = true
+          }
         }
-        const seeded = await enqueueMissingRoomSnapshots(roomId, remoteNoteIds)
-        if (seeded > 0) {
-          bootstrappedSnapshots = true
-          const refreshedPending = await listPendingOutboxChanges(roomId, 200)
-          localEnvelopes = refreshedPending.map((row) => decodeOutboxEnvelope(row.bytes))
-          pendingForAck = refreshedPending.map((row) => row.changeId)
-          pendingOutboxCount = refreshedPending.length
-          setStatus('syncing', `${seeded} Bestandsdaten werden synchronisiert…`)
-        } else {
-          bootstrappedSnapshots = true
-        }
-      }
 
-      if (!repairedInboxSeenCache && merged.remoteSeen > 0 && merged.seen === 0 && pending.length === 0) {
-        await clearInboxSeen()
-        repairedInboxSeenCache = true
-        attempts -= 1
-        setStatus('syncing', 'Rekonstruiere Sync-Index…')
-        continue
-      }
-
-      if (!repairedBlankNotes && merged.remoteSeen > 0 && pending.length === 0) {
-        const blankCount = await countActiveNotesWithEmptyText()
-        if (blankCount > 0) {
+        if (!repairedInboxSeenCache && merged.remoteSeen > 0 && merged.seen === 0 && pending.length === 0) {
           await clearInboxSeen()
-          repairedBlankNotes = true
+          repairedInboxSeenCache = true
           attempts -= 1
-          setStatus('syncing', 'Repariere leere Einträge…')
+          setStatus('syncing', 'Rekonstruiere Sync-Index…')
           continue
+        }
+
+        if (!repairedBlankNotes && merged.remoteSeen > 0 && pending.length === 0) {
+          const blankCount = await countActiveNotesWithEmptyText()
+          if (blankCount > 0) {
+            await clearInboxSeen()
+            repairedBlankNotes = true
+            attempts -= 1
+            setStatus('syncing', 'Repariere leere Einträge…')
+            continue
+          }
+        }
+
+        const combined = new Map<string, ChangeEnvelope>()
+        for (const env of merged.remoteEnvelopes) combined.set(env.changeId, env)
+        for (const env of localEnvelopes) combined.set(env.changeId, env)
+
+        if (combined.size === 0) {
+          synced = true
+          break
+        }
+
+        const blob: SyncBlob = {
+          version: 1,
+          // Keep insertion order (remote order + local outbox order). Re-sorting by ts can
+          // break causal order when device clocks drift and lead to partial/empty materialization.
+          changes: [...combined.values()],
+        }
+
+        try {
+          await pushSync(roomId, syncState.syncToken, blob, remoteVersion)
+          synced = true
+        } catch (error) {
+          if (error instanceof Error && error.message === REMOTE_CHANGED_ERROR && attempts <= maxRetries) {
+            remoteChangedRetries += 1
+            setStatus('syncing', 'Remote geändert, synchronisiere erneut…')
+            continue
+          }
+          throw error
         }
       }
 
-      const combined = new Map<string, ChangeEnvelope>()
-      for (const env of merged.remoteEnvelopes) combined.set(env.changeId, env)
-      for (const env of localEnvelopes) combined.set(env.changeId, env)
-
-      if (combined.size === 0) {
-        synced = true
-        break
-      }
-
-      const blob: SyncBlob = {
-        version: 1,
-        // Keep insertion order (remote order + local outbox order). Re-sorting by ts can
-        // break causal order when device clocks drift and lead to partial/empty materialization.
-        changes: [...combined.values()],
-      }
-
-      try {
-        await pushSync(roomId, syncState.syncToken, blob, remoteVersion)
-        synced = true
-      } catch (error) {
-        if (error instanceof Error && error.message === REMOTE_CHANGED_ERROR && attempts <= maxRetries) {
-          remoteChangedRetries += 1
-          setStatus('syncing', 'Remote geändert, synchronisiere erneut…')
-          continue
+      if (pendingForAck.length > 0) {
+        const remoteAfterPush = await pullSync(roomId, syncState.syncToken)
+        const remoteIds = collectChangeIdsFromBlob(asSyncBlob(remoteAfterPush?.blob ?? null))
+        const ackedIds = pendingForAck.filter((id) => remoteIds.has(id))
+        if (ackedIds.length > 0) {
+          await markOutboxChangesSent(ackedIds)
         }
-        throw error
       }
-    }
 
-    if (pendingForAck.length > 0) {
-      const remoteAfterPush = await pullSync(roomId, syncState.syncToken)
-      const remoteIds = collectChangeIdsFromBlob(asSyncBlob(remoteAfterPush?.blob ?? null))
-      const ackedIds = pendingForAck.filter((id) => remoteIds.has(id))
-      if (ackedIds.length > 0) {
-        await markOutboxChangesSent(ackedIds)
+      const remainingPending = await listPendingOutboxChanges(roomId, 1)
+      hasMorePending = remainingPending.length > 0
+      if (hasMorePending) {
+        setStatus('syncing', 'Sende weitere lokale Änderungen…')
       }
     }
 

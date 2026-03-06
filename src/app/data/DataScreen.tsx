@@ -19,6 +19,7 @@ type DataScreenProps = {
   onImportModeChange: (mode: ImportMode) => void
   onImport: () => void
   onToggleSyncEnabled: () => void
+  onCreateSyncRoom: () => void
   syncEnabled: boolean
   onToggleDebugInfo: () => void
   showDebugInfo: boolean
@@ -62,6 +63,7 @@ export function DataScreen({
   onImportModeChange,
   onImport,
   onToggleSyncEnabled,
+  onCreateSyncRoom,
   syncEnabled,
   onToggleDebugInfo,
   showDebugInfo,
@@ -112,6 +114,7 @@ export function DataScreen({
             onImportModeChange={onImportModeChange}
             onImport={onImport}
             onToggleSyncEnabled={onToggleSyncEnabled}
+            onCreateSyncRoom={onCreateSyncRoom}
             syncEnabled={syncEnabled}
             onToggleDebugInfo={onToggleDebugInfo}
             showDebugInfo={showDebugInfo}

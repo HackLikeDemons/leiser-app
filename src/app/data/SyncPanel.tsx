@@ -25,6 +25,7 @@ type SyncPanelProps = {
   onImportModeChange: (mode: ImportMode) => void
   onImport: () => void
   onToggleSyncEnabled: () => void
+  onCreateSyncRoom: () => void
   syncEnabled: boolean
   onToggleDebugInfo: () => void
   showDebugInfo: boolean
@@ -53,6 +54,7 @@ export function SyncPanel({
   onImportModeChange,
   onImport,
   onToggleSyncEnabled,
+  onCreateSyncRoom,
   syncEnabled,
   onToggleDebugInfo,
   showDebugInfo,
@@ -88,6 +90,11 @@ export function SyncPanel({
         <button type="button" onClick={onToggleSyncEnabled}>
           {syncEnabled ? 'Sync deaktivieren' : 'Sync aktivieren'}
         </button>
+        {!syncEnabled ? (
+          <button type="button" onClick={onCreateSyncRoom}>
+            Neuen Sync-Raum erstellen
+          </button>
+        ) : null}
         <button type="button" onClick={onToggleDebugInfo}>
           {showDebugInfo ? 'Debug-Infos ausblenden' : 'Debug-Infos anzeigen'}
         </button>

@@ -680,6 +680,7 @@ function BraindumpComposer({
       setDictationError('Diktieren wird auf diesem Gerät nicht unterstützt.')
       return
     }
+    const prefix = text.trim().length > 0 ? `${text.trim()} ` : ''
     const RecognitionCtor = (window as Window & {
       webkitSpeechRecognition?: new () => {
         lang: string
@@ -721,7 +722,6 @@ function BraindumpComposer({
     }
 
     const recognition = new RecognitionCtor()
-    const prefix = text.trim().length > 0 ? `${text.trim()} ` : ''
     setDictationError('')
     const preferredLang = navigator.language?.trim() || 'de-DE'
     recognition.lang = preferredLang.includes('-') ? preferredLang : `${preferredLang}-${preferredLang.toUpperCase()}`
@@ -1161,11 +1161,18 @@ function AppContent() {
     try {
       const nextEnabled = !syncEnabled
       const storedRoomId = localStorage.getItem(SYNC_ID_STORAGE_KEY)?.trim() ?? ''
+      const currentRoomId = syncRoomId.trim()
       const nextRoomId = nextEnabled
         ? storedRoomId && storedRoomId !== DEFAULT_SYNC_ROOM_ID
           ? storedRoomId
-          : crypto.randomUUID()
+          : currentRoomId && currentRoomId !== DEFAULT_SYNC_ROOM_ID
+            ? currentRoomId
+            : ''
         : syncRoomId
+      if (nextEnabled && !nextRoomId) {
+        setError('Kein Sync-Raum hinterlegt. Erstelle einen neuen Sync-Raum oder importiere einen Pairing-Code.')
+        return
+      }
       setSyncRoomId(nextRoomId)
       const next = await setSyncEnabled(nextRoomId, nextEnabled)
       setSyncEnabledState(next.isEnabled)
@@ -1175,6 +1182,38 @@ function AppContent() {
       setError('Sync-Status konnte nicht geändert werden.')
     }
   }, [refreshAll, showTransientInfo, syncEnabled, syncRoomId])
+
+  const handleCreateSyncRoom = useCallback(async () => {
+    setError('')
+    if (syncEnabled) {
+      setError('Sync zuerst deaktivieren, bevor ein neuer Sync-Raum erstellt wird.')
+      return
+    }
+    const storedRoomId = localStorage.getItem(SYNC_ID_STORAGE_KEY)?.trim() ?? ''
+    const currentRoomId = syncRoomId.trim()
+    const existingRoomId =
+      storedRoomId && storedRoomId !== DEFAULT_SYNC_ROOM_ID
+        ? storedRoomId
+        : currentRoomId && currentRoomId !== DEFAULT_SYNC_ROOM_ID
+          ? currentRoomId
+          : ''
+    const warningMessage = existingRoomId
+      ? 'Achtung: Du bist bereits mit einem Sync-Raum verbunden. Wenn du jetzt eine neue Sync-ID erstellst, wird ein neuer leerer Raum verwendet und dieses Gerät fällt aus dem bisherigen Sync-Verbund. Zugriff auf die bisherigen Daten bekommst du nur mit dem alten Pairing-Code oder einem Backup. Wirklich neuen Sync-Raum erstellen?'
+      : 'Achtung: Du erstellst eine neue Sync-ID. Teile danach den neuen Pairing-Code mit deinen Geräten, sonst synchronisieren sie nicht. Wirklich fortfahren?'
+    if (!window.confirm(warningMessage)) {
+      return
+    }
+    try {
+      const roomId = crypto.randomUUID()
+      localStorage.setItem(SYNC_ID_STORAGE_KEY, roomId)
+      setSyncRoomId(roomId)
+      await updateSyncState(roomId, { isEnabled: false, lastError: null })
+      await refreshAll(roomId)
+      showTransientInfo('Neuer Sync-Raum erstellt. Du kannst jetzt Sync aktivieren oder den Pairing-Code teilen.')
+    } catch {
+      setError('Neuer Sync-Raum konnte nicht erstellt werden.')
+    }
+  }, [refreshAll, showTransientInfo, syncEnabled])
 
   const handleSyncNow = useCallback(async () => {
     setSyncNowBusy(true)
@@ -2246,6 +2285,7 @@ function AppContent() {
                 onImportModeChange={setImportMode}
                 onImport={() => void handleImport()}
                 onToggleSyncEnabled={() => void handleToggleSyncEnabled()}
+                onCreateSyncRoom={() => void handleCreateSyncRoom()}
                 syncEnabled={syncEnabled}
                 onToggleDebugInfo={() => setShowDebugInfo((prev) => !prev)}
                 showDebugInfo={showDebugInfo}
