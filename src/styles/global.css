@@ -998,6 +998,46 @@ button:hover {
   padding: var(--card-padding-y) var(--card-padding-x);
 }
 
+.note-item--todo-stale {
+  position: relative;
+  border-color: color-mix(in srgb, var(--border-default) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-card-soft) 94%, var(--surface-card));
+  filter: saturate(0.82);
+}
+
+.note-item--todo-stale::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--surface-card-soft) 0%, transparent),
+    color-mix(in srgb, var(--surface-card) 16%, transparent) 70%,
+    color-mix(in srgb, var(--surface-card) 24%, transparent)
+  );
+}
+
+.note-item--todo-stale .note-text,
+.note-item--todo-stale .todo-actions {
+  opacity: 0.74;
+}
+
+.note-item--todo-stale .note-text {
+  color: color-mix(in srgb, var(--text-primary) 76%, var(--text-secondary));
+}
+
+.note-item--todo-stale .note-type-badge {
+  opacity: 0.46;
+}
+
+.note-item--todo-stale .review-btn--icon,
+.note-item--todo-stale .note-delete--icon {
+  opacity: 0.52;
+  border-color: color-mix(in srgb, var(--border-default) 72%, transparent);
+}
+
 .todo-actions {
   display: inline-flex;
   gap: 0.24rem;

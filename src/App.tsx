@@ -42,6 +42,7 @@ type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA'
 const SOFT_CHAR_LIMIT = 200
 const REVIEW_LIMIT = 50
 const FRESH_HOURS = 12
+const TODO_STALE_HOURS = 1
 const OVERDUE_DAYS = 3
 const AUTOSCROLL_NEAR_BOTTOM_PX = 80
 const BRAINDUMP_FETCH_LIMIT = 300
@@ -394,6 +395,20 @@ function reviewAgeLabel(category: ReviewAgeCategory): string | null {
   return null
 }
 
+function getTodoStaleInfo(note: Note): { isStale: boolean; ageHours: number } {
+  const basisISO = note.updatedAt || note.createdAt
+  const basisMs = Date.parse(basisISO)
+  if (!Number.isFinite(basisMs)) {
+    return { isStale: false, ageHours: 0 }
+  }
+  const ageMs = Date.now() - basisMs
+  const ageHours = Math.floor(ageMs / (60 * 60 * 1000))
+  return {
+    isStale: ageMs >= TODO_STALE_HOURS * 60 * 60 * 1000,
+    ageHours: Math.max(0, ageHours),
+  }
+}
+
 function sortInboxForReview(notes: Note[]) {
   const overdue: Note[] = []
   const ready: Note[] = []
@@ -444,8 +459,9 @@ function TodoNoteRow({
   onDone: (id: string) => void
   onBack: (id: string) => void
 }) {
+  const staleInfo = getTodoStaleInfo(note)
   return (
-    <li key={note.id} className="note-item note-item--todo">
+    <li key={note.id} className={staleInfo.isStale ? 'note-item note-item--todo note-item--todo-stale' : 'note-item note-item--todo'}>
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
         <NoteTypeBadge note={note} />
