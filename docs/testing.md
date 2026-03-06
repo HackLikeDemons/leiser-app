@@ -41,6 +41,16 @@
 3. `Sync now (Debug)` auf zwei Geräten: neue und historische Einträge erscheinen auf beiden Seiten
 4. `Sync-Protokoll kopieren` liefert JSON mit Diagnosefeldern
 
+## Automatisierte Sync-E2E (Playwright)
+
+- Voraussetzungen:
+  - erreichbarer Sync-Backend-Endpunkt (wie in `public/config/runtime.json` / Runtime-Konfiguration genutzt)
+  - `E2E_RUN_SYNC=1` gesetzt
+- Ausführen:
+  - `E2E_RUN_SYNC=1 npm run test:e2e`
+  - optional sichtbar: `E2E_RUN_SYNC=1 npm run test:e2e:headed`
+- Die ersten Multi-Client-Szenarien liegen in `tests/e2e/sync-multi-client.spec.ts`.
+
 ## iPhone PWA Check
 
 - Install ok: `offen`
