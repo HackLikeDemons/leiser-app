@@ -26,6 +26,7 @@ type SyncPanelProps = {
   onImport: () => void
   onToggleSyncEnabled: () => void
   onCreateSyncRoom: () => void
+  onWipeClient: () => void
   syncEnabled: boolean
   onToggleDebugInfo: () => void
   showDebugInfo: boolean
@@ -55,6 +56,7 @@ export function SyncPanel({
   onImport,
   onToggleSyncEnabled,
   onCreateSyncRoom,
+  onWipeClient,
   syncEnabled,
   onToggleDebugInfo,
   showDebugInfo,
@@ -90,11 +92,6 @@ export function SyncPanel({
         <button type="button" onClick={onToggleSyncEnabled}>
           {syncEnabled ? 'Sync deaktivieren' : 'Sync aktivieren'}
         </button>
-        {!syncEnabled ? (
-          <button type="button" onClick={onCreateSyncRoom}>
-            Neuen Sync-Raum erstellen
-          </button>
-        ) : null}
         <button type="button" onClick={onToggleDebugInfo}>
           {showDebugInfo ? 'Debug-Infos ausblenden' : 'Debug-Infos anzeigen'}
         </button>
@@ -106,6 +103,22 @@ export function SyncPanel({
             Sync-Protokoll kopieren
           </button>
         ) : null}
+      </div>
+
+      <div className="danger-zone" role="group" aria-label="Gefährliche Aktionen">
+        <p className="danger-zone__warning">
+          Vorsicht: Diese Aktionen können den Zugriff auf bestehende Sync-Daten auf diesem Gerät unterbrechen oder löschen.
+        </p>
+        <div className="danger-zone__actions">
+          {!syncEnabled ? (
+            <button type="button" className="danger-btn" onClick={onCreateSyncRoom}>
+              Neuen Sync-Raum erstellen
+            </button>
+          ) : null}
+          <button type="button" className="danger-btn danger-btn--critical" onClick={onWipeClient}>
+            Client bereinigen
+          </button>
+        </div>
       </div>
 
       {showImportPanel ? (

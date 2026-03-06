@@ -750,6 +750,30 @@ export async function clearNotesStore(): Promise<void> {
   })
 }
 
+export async function clearClientLocalData(): Promise<void> {
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(
+      [NOTES_STORE, NOTES_VIEW_STORE, CRDT_DOCS_STORE, OUTBOX_STORE, INBOX_SEEN_STORE],
+      'readwrite',
+    )
+    const r1 = transaction.objectStore(NOTES_STORE).clear()
+    const r2 = transaction.objectStore(NOTES_VIEW_STORE).clear()
+    const r3 = transaction.objectStore(CRDT_DOCS_STORE).clear()
+    const r4 = transaction.objectStore(OUTBOX_STORE).clear()
+    const r5 = transaction.objectStore(INBOX_SEEN_STORE).clear()
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve()
+    r1.onerror = () => reject(r1.error)
+    r2.onerror = () => reject(r2.error)
+    r3.onerror = () => reject(r3.error)
+    r4.onerror = () => reject(r4.error)
+    r5.onerror = () => reject(r5.error)
+  })
+}
+
 export async function listAllNotes(): Promise<Note[]> {
   const db = await openDb()
 

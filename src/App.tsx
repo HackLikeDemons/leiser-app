@@ -6,6 +6,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import {
   DEFAULT_SYNC_ROOM_ID,
   addNote,
+  clearClientLocalData,
   clearInboxSeen,
   countNotesByStatus,
   deleteNote,
@@ -1215,6 +1216,41 @@ function AppContent() {
     }
   }, [refreshAll, showTransientInfo, syncEnabled, syncRoomId])
 
+  const handleWipeClient = useCallback(async () => {
+    setError('')
+    const confirmed = window.confirm(
+      'Achtung: Damit werden alle lokalen Einträge auf diesem Gerät gelöscht und Sync wird getrennt. Daten im Sync-Server und auf anderen Geräten bleiben erhalten. Fortfahren?',
+    )
+    if (!confirmed) {
+      return
+    }
+    try {
+      await clearClientLocalData()
+      await updateSyncState(syncRoomId, {
+        isEnabled: false,
+        syncToken: null,
+        lastError: null,
+        lastPulledSeq: 0,
+        lastPushedAt: null,
+      })
+      localStorage.removeItem(SYNC_ID_STORAGE_KEY)
+      localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
+      localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+      setShowPairQr(false)
+      setShowScanner(false)
+      setSyncRoomId(DEFAULT_SYNC_ROOM_ID)
+      setSyncEnabledState(false)
+      setSyncPairCode(null)
+      setSyncDiagnostics(null)
+      setSyncError(null)
+      setInfo('')
+      await refreshAll(DEFAULT_SYNC_ROOM_ID)
+      showTransientInfo('Client bereinigt. Dieses Gerät ist jetzt lokal leer und nicht mehr gekoppelt.')
+    } catch {
+      setError('Client konnte nicht bereinigt werden.')
+    }
+  }, [refreshAll, showTransientInfo, syncRoomId])
+
   const handleSyncNow = useCallback(async () => {
     setSyncNowBusy(true)
     setError('')
@@ -2301,6 +2337,7 @@ function AppContent() {
                 onImport={() => void handleImport()}
                 onToggleSyncEnabled={() => void handleToggleSyncEnabled()}
                 onCreateSyncRoom={() => void handleCreateSyncRoom()}
+                onWipeClient={() => void handleWipeClient()}
                 syncEnabled={syncEnabled}
                 onToggleDebugInfo={() => setShowDebugInfo((prev) => !prev)}
                 showDebugInfo={showDebugInfo}

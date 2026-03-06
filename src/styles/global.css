@@ -302,6 +302,49 @@ h3 {
   width: 100%;
 }
 
+.danger-zone {
+  margin-top: 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border-default));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface-card-soft));
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.danger-zone__warning {
+  margin: 0;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--warning) 88%, var(--text-primary));
+}
+
+.danger-zone__actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.45rem;
+}
+
+.danger-btn {
+  width: 100%;
+  border-color: color-mix(in srgb, var(--warning) 50%, var(--border-default));
+  background: color-mix(in srgb, var(--warning) 20%, var(--surface-button));
+  color: color-mix(in srgb, var(--warning) 92%, var(--text-primary));
+}
+
+.danger-btn:hover {
+  background: color-mix(in srgb, var(--warning) 30%, var(--surface-button-hover));
+}
+
+.danger-btn--critical {
+  border-color: color-mix(in srgb, var(--warning) 72%, var(--border-default));
+  background: color-mix(in srgb, var(--warning) 28%, var(--surface-button));
+  color: color-mix(in srgb, #ffffff 85%, var(--warning));
+}
+
+.danger-btn--critical:hover {
+  background: color-mix(in srgb, var(--warning) 38%, var(--surface-button-hover));
+}
+
 .data-status {
   margin-top: 0.45rem;
 }
