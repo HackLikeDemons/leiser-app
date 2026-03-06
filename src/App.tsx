@@ -18,6 +18,7 @@ import {
   listArchiveHardDeleteCandidates,
   listNotesByStatus,
   listRecentActiveNotes,
+  listTodoReturnToInboxCandidates,
   listTodoNotes,
   hardDeleteNotes,
   setSyncEnabled,
@@ -42,7 +43,9 @@ type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA'
 const SOFT_CHAR_LIMIT = 200
 const REVIEW_LIMIT = 50
 const FRESH_HOURS = 12
-const TODO_STALE_HOURS = 1
+const TODO_STALE_DAYS = 7
+const TODO_RETURN_TO_REVIEW_DAYS = 14
+const TODO_RETURN_TO_REVIEW_BATCH_LIMIT = 200
 const OVERDUE_DAYS = 3
 const AUTOSCROLL_NEAR_BOTTOM_PX = 80
 const BRAINDUMP_FETCH_LIMIT = 300
@@ -404,7 +407,7 @@ function getTodoStaleInfo(note: Note): { isStale: boolean; ageHours: number } {
   const ageMs = Date.now() - basisMs
   const ageHours = Math.floor(ageMs / (60 * 60 * 1000))
   return {
-    isStale: ageMs >= TODO_STALE_HOURS * 60 * 60 * 1000,
+    isStale: ageMs >= TODO_STALE_DAYS * 24 * 60 * 60 * 1000,
     ageHours: Math.max(0, ageHours),
   }
 }
@@ -1121,6 +1124,15 @@ function AppContent() {
           await hardDeleteNotes(hardDeleteCandidates.map((note) => note.id))
         }
         localStorage.setItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY, archiveCleanupRunDay)
+      }
+
+      const todoReturnCutoffDate = new Date(Date.now() - TODO_RETURN_TO_REVIEW_DAYS * 24 * 60 * 60 * 1000)
+      const todoReturnCandidates = await listTodoReturnToInboxCandidates(
+        todoReturnCutoffDate.toISOString(),
+        TODO_RETURN_TO_REVIEW_BATCH_LIMIT,
+      )
+      if (todoReturnCandidates.length > 0) {
+        await Promise.all(todoReturnCandidates.map((note) => updateNoteStatus(note.id, 'INBOX')))
       }
 
       const activeRoomId = roomIdOverride ?? syncRoomId
