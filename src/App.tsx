@@ -801,7 +801,7 @@ function AppContent() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
-  const [showDebugInfo, setShowDebugInfo] = useState(() => localStorage.getItem(SHOW_DEBUG_INFO_STORAGE_KEY) === '1')
+  const [showDebugInfo, setShowDebugInfo] = useState(false)
   const [devSyncInfo, setDevSyncInfo] = useState<DevSyncInfo | null>(null)
   const [syncEnabled, setSyncEnabledState] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncUiStatus>('disabled')
@@ -923,10 +923,6 @@ function AppContent() {
     })
     return stop
   }, [refreshAll, syncRoomId])
-
-  useEffect(() => {
-    localStorage.setItem(SHOW_DEBUG_INFO_STORAGE_KEY, showDebugInfo ? '1' : '0')
-  }, [showDebugInfo])
 
   useEffect(() => {
     localStorage.setItem(SYNC_ID_STORAGE_KEY, syncRoomId)
