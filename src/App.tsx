@@ -644,6 +644,7 @@ function BraindumpComposer({
   }
 
   const stopDictation = useCallback(() => {
+    dictationAutoSubmitOnEndRef.current = false
     if (recognitionRef.current) {
       recognitionRef.current.stop()
       recognitionRef.current = null
@@ -699,8 +700,17 @@ function BraindumpComposer({
       latestTextRef.current = nextText
       setText(nextText)
     }
-    recognition.onerror = () => {
-      setDictationError('Diktieren konnte nicht gestartet werden.')
+    recognition.onerror = (event?: { error?: string }) => {
+      const errorCode = event?.error ?? ''
+      const message =
+        errorCode === 'not-allowed' || errorCode === 'service-not-allowed'
+          ? 'Mikrofonzugriff blockiert. Bitte in Edge erlauben und erneut versuchen.'
+          : errorCode === 'network'
+            ? 'Spracherkennung derzeit nicht erreichbar. Bitte erneut versuchen.'
+            : errorCode === 'no-speech'
+              ? 'Keine Sprache erkannt. Bitte erneut versuchen.'
+              : 'Diktieren konnte nicht gestartet werden.'
+      setDictationError(message)
       setIsDictating(false)
       dictationAutoSubmitOnEndRef.current = false
       recognitionRef.current = null
@@ -716,10 +726,17 @@ function BraindumpComposer({
       const textToSave = latestFromInput.trim().length > 0 ? latestFromInput : latestTextRef.current
       void submit([textToSave])
     }
-    recognition.start()
-    dictationAutoSubmitOnEndRef.current = true
-    recognitionRef.current = recognition
-    setIsDictating(true)
+    try {
+      recognition.start()
+      dictationAutoSubmitOnEndRef.current = true
+      recognitionRef.current = recognition
+      setIsDictating(true)
+    } catch {
+      dictationAutoSubmitOnEndRef.current = false
+      recognitionRef.current = null
+      setIsDictating(false)
+      setDictationError('Diktieren konnte nicht gestartet werden. Bitte Edge-Mikrofonrechte prüfen.')
+    }
   }, [submit, supportsDictation, text])
 
   useEffect(() => {
