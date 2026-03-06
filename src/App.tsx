@@ -644,7 +644,6 @@ function BraindumpComposer({
   }
 
   const stopDictation = useCallback(() => {
-    dictationAutoSubmitOnEndRef.current = false
     if (recognitionRef.current) {
       recognitionRef.current.stop()
       recognitionRef.current = null
@@ -715,8 +714,10 @@ function BraindumpComposer({
     const recognition = new RecognitionCtor()
     const prefix = text.trim().length > 0 ? `${text.trim()} ` : ''
     setDictationError('')
-    recognition.lang = navigator.language || 'de-DE'
-    recognition.continuous = true
+    const preferredLang = navigator.language?.trim() || 'de-DE'
+    recognition.lang = preferredLang.includes('-') ? preferredLang : `${preferredLang}-${preferredLang.toUpperCase()}`
+    // Edge is noticeably more reliable with single-utterance sessions.
+    recognition.continuous = false
     recognition.interimResults = true
     recognition.onresult = (event) => {
       let transcript = ''
@@ -738,7 +739,7 @@ function BraindumpComposer({
           void probeMicrophoneAccess().then((hasMicAccess) => {
             setDictationError(
               hasMicAccess
-                ? 'Edge-Spracherkennung wurde blockiert. Bitte Seite neu laden und erneut klicken.'
+                ? `Edge-Spracherkennung wurde blockiert (${errorCode || 'unknown'}). Bitte Seite neu laden und erneut klicken.`
                 : 'Mikrofonzugriff blockiert. Bitte in Edge für diese Seite erlauben.',
             )
           })
