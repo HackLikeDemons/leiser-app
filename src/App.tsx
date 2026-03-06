@@ -1213,7 +1213,7 @@ function AppContent() {
     } catch {
       setError('Neuer Sync-Raum konnte nicht erstellt werden.')
     }
-  }, [refreshAll, showTransientInfo, syncEnabled])
+  }, [refreshAll, showTransientInfo, syncEnabled, syncRoomId])
 
   const handleSyncNow = useCallback(async () => {
     setSyncNowBusy(true)
@@ -1552,6 +1552,21 @@ function AppContent() {
       errorCorrectionLevel: 'M',
     })
   }, [pairQrValue, showPairQr])
+
+  useEffect(() => {
+    if (!showPairQr) {
+      return
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return
+      }
+      event.preventDefault()
+      setShowPairQr(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [showPairQr])
 
   useEffect(() => {
     if (!showScanner) {
