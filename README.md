@@ -39,6 +39,8 @@ npm run preview
 - [Datenmodell und IndexedDB](docs/data-model.md)
 - [Backup und Import](docs/backup-import.md)
 - [Optionaler Supabase Sync](docs/sync.md)
+- [Sync E2E Matrix](docs/sync-e2e-matrix.md)
+- [Sync Contract](SYNC_CONTRACT.md)
 - [Entwicklung](docs/development.md)
 - [Deploy auf Netlify](docs/deploy-netlify.md)
 - [Test-Checklisten](docs/testing.md)
