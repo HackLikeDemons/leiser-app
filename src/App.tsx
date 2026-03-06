@@ -1112,6 +1112,7 @@ function AppContent() {
   const refreshAll = useCallback(async (roomIdOverride?: string) => {
     const runSeq = ++refreshRunSeqRef.current
     try {
+      const maintenanceMessages: string[] = []
       const archiveCleanupRunDay = getLocalDayISO()
       if (localStorage.getItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY) !== archiveCleanupRunDay) {
         const cutoffDate = new Date()
@@ -1120,6 +1121,9 @@ function AppContent() {
         const hardDeleteCandidates = await listArchiveHardDeleteCandidates(cutoffISO, ARCHIVE_HARD_DELETE_BATCH_LIMIT)
         if (hardDeleteCandidates.length > 0) {
           await hardDeleteNotes(hardDeleteCandidates.map((note) => note.id))
+          maintenanceMessages.push(
+            `Archiv bereinigt: ${hardDeleteCandidates.length} Eintrag${hardDeleteCandidates.length === 1 ? '' : 'e'} endgültig gelöscht.`,
+          )
         }
         localStorage.setItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY, archiveCleanupRunDay)
       }
@@ -1131,6 +1135,13 @@ function AppContent() {
       )
       if (todoReturnCandidates.length > 0) {
         await Promise.all(todoReturnCandidates.map((note) => updateNoteStatus(note.id, 'INBOX')))
+        maintenanceMessages.push(
+          `Wiedervorlage: ${todoReturnCandidates.length} alte Handlung${todoReturnCandidates.length === 1 ? '' : 'en'} zurück nach Sortieren verschoben.`,
+        )
+      }
+
+      if (maintenanceMessages.length > 0) {
+        showTransientInfo(maintenanceMessages.join(' '))
       }
 
       const activeRoomId = roomIdOverride ?? syncRoomId
@@ -1164,7 +1175,7 @@ function AppContent() {
       }
       setError('Daten konnten nicht geladen werden.')
     }
-  }, [syncRoomId])
+  }, [showTransientInfo, syncRoomId])
 
   useEffect(() => {
     void refreshAll()
@@ -1477,6 +1488,12 @@ function AppContent() {
           syncTokenPresent: Boolean(debugInfo.syncToken),
         },
         diagnostics: syncDiagnostics,
+        maintenance: {
+          todoFadeAfterDays: TODO_STALE_DAYS,
+          todoReturnToReviewAfterDays: TODO_RETURN_TO_REVIEW_DAYS,
+          archiveHardDeleteAfterDays: ARCHIVE_HARD_DELETE_DAYS,
+          archiveHardDeleteLastRunDay: localStorage.getItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY),
+        },
         localStorage: {
           syncId: localStorage.getItem(SYNC_ID_STORAGE_KEY),
           syncTokenMasked: maskSecret(localStorage.getItem(SYNC_TOKEN_STORAGE_KEY)),
