@@ -59,6 +59,8 @@ type MergeResult = {
 
 const DEFAULT_DEBOUNCE_MS = 1200
 const DEFAULT_PULL_INTERVAL_MS = 90000
+const ARCHIVE_HARD_DELETE_DAYS = 30
+const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 function isOnline() {
   return typeof navigator === 'undefined' ? true : navigator.onLine
@@ -199,6 +201,17 @@ function compareEnvelopes(a: ChangeEnvelope, b: ChangeEnvelope): number {
   return a.changeId.localeCompare(b.changeId)
 }
 
+function isHardDeleteEligibleArchive(note: Note | null, nowMs = Date.now()): boolean {
+  if (!note) {
+    return false
+  }
+  if (note.status !== 'ARCHIVE' || note.deletedAt != null) {
+    return false
+  }
+  const cutoffMs = nowMs - ARCHIVE_HARD_DELETE_DAYS * MS_PER_DAY
+  return toEpochMs(note.updatedAt) <= cutoffMs
+}
+
 function selectLatestEnvelopePerNote(envelopes: ChangeEnvelope[]): Map<string, ChangeEnvelope> {
   const latestByNoteId = new Map<string, ChangeEnvelope>()
   for (const envelope of envelopes) {
@@ -254,6 +267,7 @@ async function normalizeRemoteEnvelopes(blob: SyncBlob | null): Promise<{ envelo
 }
 
 async function mergeRemoteSnapshots(blob: SyncBlob | null): Promise<MergeResult> {
+  const nowMs = Date.now()
   const normalized = await normalizeRemoteEnvelopes(blob)
   if (normalized.envelopes.length === 0) {
     return {
@@ -268,6 +282,9 @@ async function mergeRemoteSnapshots(blob: SyncBlob | null): Promise<MergeResult>
   for (const envelope of normalized.envelopes) {
     const snapshot = asSnapshotNote(envelope.snapshot, envelope.noteId)
     if (snapshot) {
+      if (isHardDeleteEligibleArchive(snapshot, nowMs)) {
+        continue
+      }
       const current = await getNoteById(envelope.noteId)
       if (!shouldApplySnapshot(current, snapshot)) {
         continue
@@ -295,7 +312,10 @@ async function mergeRemoteSnapshots(blob: SyncBlob | null): Promise<MergeResult>
   }
 }
 
-function mergeEnvelopeSets(remoteEnvelopes: ChangeEnvelope[], localEnvelopes: ChangeEnvelope[]): ChangeEnvelope[] {
+function mergeEnvelopeSets(
+  remoteEnvelopes: ChangeEnvelope[],
+  localEnvelopes: ChangeEnvelope[],
+): { changes: ChangeEnvelope[]; droppedExpiredArchives: number } {
   const merged = new Map<string, ChangeEnvelope>()
 
   for (const envelope of remoteEnvelopes) {
@@ -309,13 +329,25 @@ function mergeEnvelopeSets(remoteEnvelopes: ChangeEnvelope[], localEnvelopes: Ch
     }
   }
 
-  return [...merged.values()].sort((a, b) => {
+  const nowMs = Date.now()
+  const values = [...merged.values()]
+  const filtered = values.filter((envelope) => {
+    const snapshot = asSnapshotNote(envelope.snapshot, envelope.noteId)
+    return !isHardDeleteEligibleArchive(snapshot, nowMs)
+  })
+
+  const changes = filtered.sort((a, b) => {
     const tsDiff = (a.ts ?? 0) - (b.ts ?? 0)
     if (tsDiff !== 0) {
       return tsDiff
     }
     return a.noteId.localeCompare(b.noteId)
   })
+
+  return {
+    changes,
+    droppedExpiredArchives: values.length - filtered.length,
+  }
 }
 
 function collectNoteIds(envelopes: ChangeEnvelope[]): Set<string> {
@@ -634,14 +666,14 @@ export async function syncNow(options: SyncNowOptions = {}) {
         }
 
         const combined = mergeEnvelopeSets(merged.remoteEnvelopes, pending.envelopes)
-        if (combined.length === 0) {
+        if (combined.changes.length === 0 && combined.droppedExpiredArchives === 0) {
           synced = true
           break
         }
 
         const blob: SyncBlob = {
           version: 1,
-          changes: combined,
+          changes: combined.changes,
         }
 
         try {

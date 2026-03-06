@@ -15,10 +15,11 @@ import {
   getSyncPairCode,
   listPendingOutboxChanges,
   listInboxNotes,
-  listAutoArchiveCandidates,
+  listArchiveHardDeleteCandidates,
   listNotesByStatus,
   listRecentActiveNotes,
   listTodoNotes,
+  hardDeleteNotes,
   setSyncEnabled,
   updateSyncState,
   updateNoteArchiveBucket,
@@ -26,7 +27,7 @@ import {
   updateNoteStarred,
   updateNoteStatus,
 } from './lib/dbNotes'
-import { buildActiveBackupData, buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
+import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO } from './lib/date'
 import type { ContextTag, Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
@@ -44,9 +45,9 @@ const FRESH_HOURS = 12
 const OVERDUE_DAYS = 3
 const AUTOSCROLL_NEAR_BOTTOM_PX = 80
 const BRAINDUMP_FETCH_LIMIT = 300
-const AUTO_ARCHIVE_DAYS = 90
-const AUTO_ARCHIVE_BATCH_LIMIT = 100
-const AUTO_ARCHIVE_LAST_RUN_KEY = 'leiser:auto-archive-last-run-day'
+const ARCHIVE_HARD_DELETE_DAYS = 30
+const ARCHIVE_HARD_DELETE_BATCH_LIMIT = 200
+const ARCHIVE_HARD_DELETE_LAST_RUN_KEY = 'leiser:archive-hard-delete-last-run-day'
 const SYNC_ID_STORAGE_KEY = 'leiser-sync-id'
 const SYNC_TOKEN_STORAGE_KEY = 'leiser-sync-token'
 const SYNC_KEY_STORAGE_KEY = 'leiser-sync-key'
@@ -1094,16 +1095,16 @@ function AppContent() {
   const refreshAll = useCallback(async (roomIdOverride?: string) => {
     const runSeq = ++refreshRunSeqRef.current
     try {
-      const autoArchiveRunDay = getLocalDayISO()
-      if (localStorage.getItem(AUTO_ARCHIVE_LAST_RUN_KEY) !== autoArchiveRunDay) {
+      const archiveCleanupRunDay = getLocalDayISO()
+      if (localStorage.getItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY) !== archiveCleanupRunDay) {
         const cutoffDate = new Date()
-        cutoffDate.setDate(cutoffDate.getDate() - AUTO_ARCHIVE_DAYS)
+        cutoffDate.setDate(cutoffDate.getDate() - ARCHIVE_HARD_DELETE_DAYS)
         const cutoffISO = cutoffDate.toISOString()
-        const autoArchiveCandidates = await listAutoArchiveCandidates(cutoffISO, AUTO_ARCHIVE_BATCH_LIMIT)
-        if (autoArchiveCandidates.length > 0) {
-          await Promise.all(autoArchiveCandidates.map((note) => updateNoteStatus(note.id, 'ARCHIVE')))
+        const hardDeleteCandidates = await listArchiveHardDeleteCandidates(cutoffISO, ARCHIVE_HARD_DELETE_BATCH_LIMIT)
+        if (hardDeleteCandidates.length > 0) {
+          await hardDeleteNotes(hardDeleteCandidates.map((note) => note.id))
         }
-        localStorage.setItem(AUTO_ARCHIVE_LAST_RUN_KEY, autoArchiveRunDay)
+        localStorage.setItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY, archiveCleanupRunDay)
       }
 
       const activeRoomId = roomIdOverride ?? syncRoomId
@@ -2056,63 +2057,6 @@ function AppContent() {
     }
   }
 
-  const handleExportActive = async () => {
-    setInfo('')
-    setError('')
-    try {
-      const backup = await buildActiveBackupData()
-      const day = getLocalDayISO()
-      const filename = `leiser-active-backup-${day}.json`
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
-      const file = new File([blob], filename, { type: 'application/json' })
-      let canShareFiles = false
-      if (typeof navigator.canShare === 'function') {
-        try {
-          canShareFiles = navigator.canShare({ files: [file] })
-        } catch {
-          canShareFiles = false
-        }
-      }
-
-      let shared = false
-      if (typeof navigator.share === 'function' && canShareFiles) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: 'Leiser Aktive Eintraege Backup',
-          })
-          shared = true
-        } catch (shareError) {
-          if (shareError instanceof DOMException && shareError.name === 'AbortError') {
-            return
-          }
-          shared = false
-        }
-      }
-
-      if (!shared) {
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = filename
-        link.rel = 'noopener'
-        document.body.appendChild(link)
-        link.click()
-        link.remove()
-        window.setTimeout(() => URL.revokeObjectURL(url), 1500)
-      }
-      const exportedAt = new Date().toISOString()
-      setLastBackupAt(exportedAt)
-      localStorage.setItem(LAST_BACKUP_AT_STORAGE_KEY, exportedAt)
-      showTransientInfo('Aktive Eintraege exportiert.')
-    } catch (exportError) {
-      if (exportError instanceof DOMException && exportError.name === 'AbortError') {
-        return
-      }
-      setError('Aktive Eintraege konnten nicht exportiert werden.')
-    }
-  }
-
   const handleImport = async () => {
     if (!importFile) {
       setError('Bitte zuerst eine Backup-Datei auswählen.')
@@ -2203,6 +2147,9 @@ function AppContent() {
     }
     return CONTEXT_OPTIONS.filter((option) => used.has(option.value))
   }, [processNotes, thinkingArchivedNotes])
+  const thinkingHasNoContextNotes = useMemo(() => {
+    return [...processNotes, ...thinkingArchivedNotes].some((note) => !note.context)
+  }, [processNotes, thinkingArchivedNotes])
   const todoContextOptions = useMemo(() => {
     const used = new Set<ContextTag>()
     for (const note of todoNotes) {
@@ -2213,24 +2160,39 @@ function AppContent() {
     }
     return CONTEXT_OPTIONS.filter((option) => used.has(option.value))
   }, [todoNotes, todoArchivedNotes])
+  const todoHasNoContextNotes = useMemo(() => {
+    return [...todoNotes, ...todoArchivedNotes].some((note) => !note.context)
+  }, [todoNotes, todoArchivedNotes])
 
   useEffect(() => {
-    if (!thinkingContextFilter || thinkingContextFilter === '__none') {
+    if (!thinkingContextFilter) {
+      return
+    }
+    if (thinkingContextFilter === '__none') {
+      if (!thinkingHasNoContextNotes) {
+        setThinkingContextFilter('')
+      }
       return
     }
     if (!thinkingContextOptions.some((option) => option.value === thinkingContextFilter)) {
       setThinkingContextFilter('')
     }
-  }, [thinkingContextFilter, thinkingContextOptions])
+  }, [thinkingContextFilter, thinkingContextOptions, thinkingHasNoContextNotes])
 
   useEffect(() => {
-    if (!todoContextFilter || todoContextFilter === '__none') {
+    if (!todoContextFilter) {
+      return
+    }
+    if (todoContextFilter === '__none') {
+      if (!todoHasNoContextNotes) {
+        setTodoContextFilter('')
+      }
       return
     }
     if (!todoContextOptions.some((option) => option.value === todoContextFilter)) {
       setTodoContextFilter('')
     }
-  }, [todoContextFilter, todoContextOptions])
+  }, [todoContextFilter, todoContextOptions, todoHasNoContextNotes])
 
   const staleTodos = useMemo(() => {
     const today = new Date()
@@ -2670,7 +2632,6 @@ function AppContent() {
             {activeTab === 'DATA' ? (
               <DataScreen
                 onExport={() => void handleExport()}
-                onExportActive={() => void handleExportActive()}
                 showImportPanel={showImportPanel}
                 onToggleImportPanel={() => setShowImportPanel((prev) => !prev)}
                 onImportFileChange={setImportFile}
@@ -2945,7 +2906,7 @@ function AppContent() {
                   title="Bereich filtern"
                 >
                   <option value="">Alle Bereiche</option>
-                  <option value="__none">Ohne Bereich</option>
+                  {thinkingHasNoContextNotes ? <option value="__none">Ohne Bereich</option> : null}
                   {thinkingContextOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -3058,7 +3019,7 @@ function AppContent() {
                   title="Bereich filtern"
                 >
                   <option value="">Alle Bereiche</option>
-                  <option value="__none">Ohne Bereich</option>
+                  {todoHasNoContextNotes ? <option value="__none">Ohne Bereich</option> : null}
                   {todoContextOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}

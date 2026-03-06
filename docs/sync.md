@@ -36,7 +36,7 @@ Beim erstmaligen Abgleich eines Geräts werden fehlende Bestandsdaten per Snapsh
 
 Wenn ein bestehender Verbund driftet, diese Reihenfolge einhalten:
 
-1. Auf Client A `Aktive Einträge exportieren` (Backup) ausführen.
+1. Auf Client A `Backup exportieren` ausführen.
 2. Auf Client A `Client bereinigen`.
 3. Auf Client A `Neuen Sync-Raum erstellen`.
 4. Auf Client A Backup importieren.
@@ -87,6 +87,7 @@ Ergebnis: Das verlorene Gerät bleibt im alten Verbund und hat keinen Zugriff me
 - Debounced Push nach lokalen Änderungen (aktuell ca. `600ms`)
 - periodischer Pull (aktuell ca. alle `4s`)
 - zusätzlicher Pull bei Fokus/Visibility
+- Archivierte Einträge älter als 30 Tage werden im normalen Betrieb als Hard-Delete entfernt und im Sync-Raum mitbereinigt.
 - Debug-Infos standardmäßig ausgeblendet
 - manuelles Diagnose-Exportformat per `Sync-Protokoll kopieren`
 

@@ -118,17 +118,6 @@ function importedWins(imported: Note, local: Note) {
 
 export async function buildBackupData(): Promise<BackupFileV1> {
   const notes = await listAllNotes()
-  return {
-    app: 'Leiser',
-    schemaVersion: 1,
-    exportedAt: new Date().toISOString(),
-    deviceId: getOrCreateDeviceId(),
-    notes,
-  }
-}
-
-export async function buildActiveBackupData(): Promise<BackupFileV1> {
-  const notes = await listAllNotes()
   const activeNotes = notes.filter(
     (note) => note.deletedAt == null && note.status !== 'ARCHIVE' && note.status !== 'DISCARD',
   )

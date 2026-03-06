@@ -523,12 +523,8 @@ h3 {
 
 @media (min-width: 980px) {
   .data-layout {
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
-  }
-
-  .data-layout > .data-card:nth-child(3) {
-    grid-column: 1 / -1;
   }
 
   .sync-primary-actions {

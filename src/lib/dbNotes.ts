@@ -873,6 +873,37 @@ export async function listAutoArchiveCandidates(cutoffISO: string, limit = 100):
   })
 }
 
+export async function listArchiveHardDeleteCandidates(cutoffISO: string, limit = 100): Promise<Note[]> {
+  const db = await openDb()
+
+  return new Promise<Note[]>((resolve, reject) => {
+    const notes: Note[] = []
+    const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_VIEW_STORE)
+    const index = store.index(STATUS_UPDATED_AT_INDEX)
+    const lower = ['ARCHIVE', '']
+    const upper = ['ARCHIVE', cutoffISO]
+    const request = index.openCursor(IDBKeyRange.bound(lower, upper), 'next')
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve(notes)
+
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor || notes.length >= limit) {
+        return
+      }
+      const note = asActiveNote(cursor.value)
+      if (note && note.status === 'ARCHIVE') {
+        notes.push(note)
+      }
+      cursor.continue()
+    }
+  })
+}
+
 export async function listNotesByDay(dayISO: string, limit = 500): Promise<Note[]> {
   const db = await openDb()
 
@@ -1137,6 +1168,51 @@ export async function countActiveNotesWithEmptyText(): Promise<number> {
 export async function deleteNote(id: string): Promise<void> {
   await applyLocalEdit(id, (doc) => {
     doc.deletedAt = Date.now()
+  })
+}
+
+export async function hardDeleteNotes(ids: string[]): Promise<void> {
+  if (ids.length === 0) {
+    return
+  }
+
+  const noteIds = new Set(ids)
+  const db = await openDb()
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction([NOTES_STORE, NOTES_VIEW_STORE, CRDT_DOCS_STORE, OUTBOX_STORE], 'readwrite')
+    const notesStore = transaction.objectStore(NOTES_STORE)
+    const notesViewStore = transaction.objectStore(NOTES_VIEW_STORE)
+    const crdtStore = transaction.objectStore(CRDT_DOCS_STORE)
+    const outboxStore = transaction.objectStore(OUTBOX_STORE)
+    const outboxCursorRequest = outboxStore.openCursor()
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    transaction.oncomplete = () => resolve()
+
+    for (const id of noteIds) {
+      const r1 = notesStore.delete(id)
+      r1.onerror = () => reject(r1.error)
+      const r2 = notesViewStore.delete(id)
+      r2.onerror = () => reject(r2.error)
+      const r3 = crdtStore.delete(id)
+      r3.onerror = () => reject(r3.error)
+    }
+
+    outboxCursorRequest.onerror = () => reject(outboxCursorRequest.error)
+    outboxCursorRequest.onsuccess = () => {
+      const cursor = outboxCursorRequest.result
+      if (!cursor) {
+        return
+      }
+      const row = cursor.value as OutboxRow
+      if (row && noteIds.has(row.noteId)) {
+        const deleteRequest = cursor.delete()
+        deleteRequest.onerror = () => reject(deleteRequest.error)
+      }
+      cursor.continue()
+    }
   })
 }
 

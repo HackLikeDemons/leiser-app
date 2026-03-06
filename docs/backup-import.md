@@ -4,15 +4,15 @@
 
 ## Export
 
-- Exportiert alle Notes als JSON
-- enthält auch soft-deleted Einträge (`deletedAt`)
+- Exportiert aktive Notes als JSON
+- ohne soft-deleted Einträge (`deletedAt`)
+- ohne `ARCHIVE` und ohne `DISCARD`
 - Dateiname: `leiser-backup-YYYY-MM-DD.json`
 - arbeitet je nach Gerät mit Datei-Download oder Share-Sheet
-- Optional: `Aktive Einträge exportieren` (ohne `deletedAt`, ohne `ARCHIVE`, ohne `DISCARD`)
 
 ## Reihenfolge bei Neuaufbau mit neuem Sync-Raum
 
-1. Auf dem Quell-Client aktiven Export erstellen.
+1. Auf dem Quell-Client `Backup exportieren`.
 2. Quell-Client bereinigen.
 3. Neuen Sync-Raum anlegen.
 4. Backup importieren.
@@ -58,3 +58,8 @@ Im Datenbereich (`...` -> `Backup und Sync`) zeigt Leiser:
 
 - Pair-Code sicher extern hinterlegen (z. B. Passwortmanager)
 - regelmäßigen Export als Offline-Backup einplanen
+
+## Aufbewahrung
+
+- Es gibt keine automatische Verschiebung aktiver Einträge mehr nach `ARCHIVE`.
+- Einträge im Status `ARCHIVE` werden nach 30 Tagen automatisch endgültig gelöscht (Hard-Delete).
