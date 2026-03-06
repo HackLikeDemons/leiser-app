@@ -1,6 +1,7 @@
 import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
 import { clearNotesStore, getNoteById, listAllNotes, upsertNote } from './dbNotes'
+import { normalizeContextTag } from './types'
 import type { ArchiveBucket, Note, NoteStatus, NoteType } from './types'
 
 export type ImportMode = 'MERGE' | 'REPLACE'
@@ -83,6 +84,7 @@ function normalizeImportedNote(raw: unknown, nowISO: string): Note | null {
       ? (input.archiveBucket as ArchiveBucket)
       : null
 
+  const context = normalizeContextTag(input.context)
   return {
     id: input.id,
     createdAt,
@@ -96,6 +98,7 @@ function normalizeImportedNote(raw: unknown, nowISO: string): Note | null {
     type,
     starred: Boolean(input.starred),
     archiveBucket,
+    context,
   }
 }
 

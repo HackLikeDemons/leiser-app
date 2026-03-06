@@ -961,6 +961,36 @@ button:hover {
   gap: 0.24rem;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.context-select-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.context-select {
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  padding: 0.3rem 0.5rem;
+  height: 32px;
+  min-width: 124px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 0.79rem;
 }
 
 .note-text {

@@ -22,12 +22,13 @@ import {
   setSyncEnabled,
   updateSyncState,
   updateNoteArchiveBucket,
+  updateNoteContext,
   updateNoteStarred,
   updateNoteStatus,
 } from './lib/dbNotes'
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO, getYesterdayISO, groupNotesByDay } from './lib/date'
-import type { Note, NoteStatus, NoteType } from './lib/types'
+import type { ContextTag, Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FlowHero } from './app/FlowHero'
 import { FooterProvider } from './app/FooterContext'
@@ -206,12 +207,34 @@ function noteTypeLabel(type: NoteType) {
   return null
 }
 
+const CONTEXT_OPTIONS: Array<{ value: ContextTag; label: string }> = [
+  { value: 'arbeit', label: 'Arbeit' },
+  { value: 'projekt', label: 'Projekt' },
+  { value: 'familie', label: 'Familie' },
+  { value: 'gesundheit', label: 'Gesundheit' },
+  { value: 'haushalt', label: 'Haushalt' },
+  { value: 'finanzen', label: 'Finanzen' },
+  { value: 'privat', label: 'Privat' },
+]
+
+function contextLabel(context: ContextTag) {
+  const match = CONTEXT_OPTIONS.find((option) => option.value === context)
+  return match?.label ?? context
+}
+
 function NoteTypeBadge({ note }: { note: Note }) {
   const label = noteTypeLabel(note.type)
   if (!label) {
     return null
   }
   return <span className="note-type-badge">{label}</span>
+}
+
+function ContextBadge({ context }: { context?: ContextTag }) {
+  if (!context) {
+    return null
+  }
+  return <span className="status-badge">Bereich: {contextLabel(context)}</span>
 }
 
 function ExpandableNoteText({ text }: { text: string }) {
@@ -342,11 +365,13 @@ function TodoNoteRow({
   onToggleStar,
   onDone,
   onBack,
+  onContextChange,
 }: {
   note: Note
   onToggleStar: (id: string, starred: boolean) => void
   onDone: (id: string) => void
   onBack: (id: string) => void
+  onContextChange: (id: string, context: ContextTag | undefined) => void
 }) {
   return (
     <li key={note.id} className="note-item note-item--todo">
@@ -354,8 +379,29 @@ function TodoNoteRow({
         <ExpandableNoteText text={note.text} />
         {note.starred ? <span className="status-badge">Wichtig</span> : null}
         <NoteTypeBadge note={note} />
+        <ContextBadge context={note.context} />
       </span>
       <div className="todo-actions">
+        <label className="context-select-wrap">
+          <span className="sr-only">Bereich setzen</span>
+          <select
+            className="context-select"
+            value={note.context ?? ''}
+            onChange={(event) => {
+              const nextValue = event.target.value
+              onContextChange(note.id, nextValue ? (nextValue as ContextTag) : undefined)
+            }}
+            aria-label="Bereich"
+            title="Bereich"
+          >
+            <option value="">Kein Bereich</option>
+            {CONTEXT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <button
           type="button"
           className={note.starred ? 'review-btn review-btn--star review-btn--star-active review-btn--icon' : 'review-btn review-btn--star review-btn--icon'}
@@ -542,6 +588,7 @@ function ArchivedTodoNoteRow({
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
         <NoteTypeBadge note={note} />
+        <ContextBadge context={note.context} />
       </span>
       <div className="todo-actions">
         <button
@@ -2103,6 +2150,19 @@ function AppContent() {
     [refreshAll],
   )
 
+  const handleTodoContextChange = useCallback(
+    async (id: string, context: ContextTag | undefined) => {
+      setError('')
+      try {
+        await updateNoteContext(id, context)
+        await refreshAll()
+      } catch {
+        setError('Bereich konnte nicht aktualisiert werden.')
+      }
+    },
+    [refreshAll],
+  )
+
   const handleUndoLastTodoAction = async () => {
     if (!lastTodoAction || todoUndoBusy) {
       return
@@ -2736,6 +2796,7 @@ function AppContent() {
                       onToggleStar={handleTodoToggleStar}
                       onDone={handleTodoDone}
                       onBack={handleTodoBack}
+                      onContextChange={handleTodoContextChange}
                     />
                   ))}
                 </ul>

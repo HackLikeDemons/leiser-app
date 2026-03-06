@@ -1,6 +1,23 @@
 export type NoteStatus = 'INBOX' | 'TODO' | 'PROCESS' | 'DISCARD' | 'ARCHIVE'
 export type NoteType = 'NOTE' | 'QUESTION' | 'IDEA' | 'TASK'
 export type ArchiveBucket = 'THINKING' | 'TODO'
+export type ContextTag = 'arbeit' | 'projekt' | 'familie' | 'gesundheit' | 'haushalt' | 'finanzen' | 'privat'
+
+export const CONTEXT_TAGS: ContextTag[] = [
+  'arbeit',
+  'projekt',
+  'familie',
+  'gesundheit',
+  'haushalt',
+  'finanzen',
+  'privat',
+]
+
+export function normalizeContextTag(value: unknown): ContextTag | undefined {
+  return typeof value === 'string' && CONTEXT_TAGS.includes(value as ContextTag)
+    ? (value as ContextTag)
+    : undefined
+}
 
 export type Note = {
   id: string
@@ -15,6 +32,7 @@ export type Note = {
   type: NoteType
   starred: boolean
   archiveBucket?: ArchiveBucket | null
+  context?: ContextTag
 }
 
 export type NotesView = Note

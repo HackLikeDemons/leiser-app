@@ -11,6 +11,15 @@
 5. Archiv-Autoclose: letzten Archiv-Eintrag löschen -> Archiv klappt automatisch zu
 6. Globale Shortcuts: `1/2/3/4` wechseln Tabs; in Eingabefeldern inaktiv
 
+## Kontext (kontrolliert)
+
+1. Altdaten ohne `context` laden ohne Fehler
+2. In `Handeln` pro Item `Bereich` setzen, ändern und auf `Kein Bereich` zurücksetzen
+3. Nur erlaubte Werte (`arbeit`, `projekt`, `familie`, `gesundheit`, `haushalt`, `finanzen`, `privat`) werden gespeichert
+4. Ungültige `context`-Werte aus manipuliertem Backup/Sync führen nicht zu Crash und werden verworfen
+5. Statuswechsel (`INBOX/PROCESS/TODO/ARCHIVE/DISCARD`), Archivieren, Löschen und Stern-Filter funktionieren unverändert mit und ohne `context`
+6. Sync zweier Geräte mit Item `mit` und `ohne` `context` (inkl. Änderung/Entfernung) bleibt konsistent
+
 ## Backup/Import
 
 1. Export erzeugen

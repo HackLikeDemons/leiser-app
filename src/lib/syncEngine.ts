@@ -18,6 +18,7 @@ import {
 } from './dbNotes'
 import { pullSync, pushSync, REMOTE_CHANGED_ERROR, type SyncBlob } from './sync/supabaseAdapter'
 import { verifyTrustedEnvelope } from './syncSigning'
+import { normalizeContextTag } from './types'
 import type { ChangeEnvelope, Note } from './types'
 
 type SyncUiStatus = 'idle' | 'syncing' | 'offline' | 'error' | 'disabled'
@@ -108,6 +109,7 @@ function asSnapshotNote(value: unknown, noteId: string): Note | null {
   if (typeof note.createdAt !== 'string' || typeof note.updatedAt !== 'string' || typeof note.dayISO !== 'string') {
     return null
   }
+  const context = normalizeContextTag(note.context)
   return {
     id: noteId,
     createdAt: note.createdAt,
@@ -124,6 +126,7 @@ function asSnapshotNote(value: unknown, noteId: string): Note | null {
     type: note.type === 'QUESTION' || note.type === 'IDEA' || note.type === 'TASK' || note.type === 'NOTE' ? note.type : 'NOTE',
     starred: Boolean(note.starred),
     archiveBucket: note.archiveBucket === 'THINKING' || note.archiveBucket === 'TODO' ? note.archiveBucket : null,
+    context,
   }
 }
 

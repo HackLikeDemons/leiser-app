@@ -4,7 +4,8 @@ import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
 import { generateSyncToken } from './syncToken'
 import { signEnvelope } from './syncSigning'
-import type { ArchiveBucket, ChangeEnvelope, Note, NoteStatus, NoteType } from './types'
+import { normalizeContextTag } from './types'
+import type { ArchiveBucket, ChangeEnvelope, ContextTag, Note, NoteStatus, NoteType } from './types'
 
 const DB_NAME = 'leiser-db'
 const DB_VERSION = 9
@@ -52,6 +53,7 @@ type CrdtNoteDoc = {
   type: NoteType
   starred: boolean
   archiveBucket: ArchiveBucket | null
+  context: ContextTag | null
   createdAt: number
   updatedAt: number
   dayISO: string
@@ -114,6 +116,7 @@ function noteToCrdtDoc(note: Note): CrdtNoteDoc {
     type: normalizeType(note.type),
     starred: Boolean(note.starred),
     archiveBucket: normalizeArchiveBucket(note.archiveBucket),
+    context: normalizeContextTag(note.context) ?? null,
     createdAt: toEpochMs(note.createdAt),
     updatedAt: toEpochMs(note.updatedAt),
     dayISO: note.dayISO,
@@ -126,6 +129,7 @@ function noteToCrdtDoc(note: Note): CrdtNoteDoc {
 
 function crdtDocToNote(noteId: string, doc: CrdtNoteDoc): Note {
   const createdAtIso = msToIso(doc.createdAt)
+  const context = normalizeContextTag(doc.context)
   return {
     id: noteId,
     createdAt: createdAtIso,
@@ -139,6 +143,7 @@ function crdtDocToNote(noteId: string, doc: CrdtNoteDoc): Note {
     type: normalizeType(doc.type),
     starred: Boolean(doc.starred),
     archiveBucket: normalizeArchiveBucket(doc.archiveBucket),
+    context,
   }
 }
 
@@ -148,6 +153,7 @@ function asStoredNote(value: unknown): Note | null {
     return null
   }
 
+  const context = normalizeContextTag(note.context)
   return {
     id: String(note.id ?? ''),
     createdAt: String(note.createdAt ?? ''),
@@ -161,6 +167,7 @@ function asStoredNote(value: unknown): Note | null {
     type: normalizeType(note.type),
     starred: Boolean(note.starred),
     archiveBucket: normalizeArchiveBucket(note.archiveBucket),
+    context,
   }
 }
 
@@ -250,6 +257,7 @@ function createEmptyCrdtDoc() {
     type: 'NOTE',
     starred: false,
     archiveBucket: null,
+    context: null,
     createdAt: now,
     updatedAt: now,
     dayISO: getLocalDayISO(new Date(now)),
@@ -268,6 +276,7 @@ function buildDocFromPayload(payload: CrdtNoteDoc) {
     draft.type = payload.type
     draft.starred = payload.starred
     draft.archiveBucket = payload.archiveBucket
+    draft.context = payload.context
     draft.createdAt = payload.createdAt
     draft.updatedAt = payload.updatedAt
     draft.dayISO = payload.dayISO
@@ -434,6 +443,7 @@ function materializeFromDoc(noteId: string, doc: Automerge.Doc<CrdtNoteDoc>): No
     type: doc.type,
     starred: doc.starred,
     archiveBucket: doc.archiveBucket ?? null,
+    context: normalizeContextTag(doc.context) ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     dayISO: doc.dayISO,
@@ -1155,6 +1165,12 @@ export async function updateNoteArchiveBucket(id: string, bucket: ArchiveBucket)
   await applyLocalEdit(id, (doc) => {
     doc.status = 'ARCHIVE'
     doc.archiveBucket = bucket
+  })
+}
+
+export async function updateNoteContext(id: string, context: ContextTag | undefined): Promise<void> {
+  await applyLocalEdit(id, (doc) => {
+    doc.context = normalizeContextTag(context) ?? null
   })
 }
 
