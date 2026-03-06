@@ -8,7 +8,7 @@
 type NoteStatus = "INBOX" | "TODO" | "PROCESS" | "DISCARD" | "ARCHIVE";
 type NoteType = "NOTE" | "QUESTION" | "IDEA" | "TASK";
 type ArchiveBucket = "THINKING" | "TODO";
-type ContextTag = "arbeit" | "projekt" | "familie" | "gesundheit" | "haushalt" | "finanzen" | "privat";
+type ContextTag = "arbeit" | "familie" | "finanzen" | "freunde" | "gesundheit" | "haushalt" | "privat" | "projekt";
 
 type Note = {
   id: string;

@@ -779,6 +779,9 @@ button:hover {
   margin-bottom: 0.1rem;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 0.36rem;
+  flex-wrap: wrap;
 }
 
 .archive-toggle {
@@ -991,6 +994,10 @@ button:hover {
   color: var(--text-primary);
   font-family: var(--font-ui);
   font-size: 0.79rem;
+}
+
+.context-select--filter {
+  min-width: 138px;
 }
 
 .note-text {

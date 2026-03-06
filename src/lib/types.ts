@@ -1,16 +1,25 @@
 export type NoteStatus = 'INBOX' | 'TODO' | 'PROCESS' | 'DISCARD' | 'ARCHIVE'
 export type NoteType = 'NOTE' | 'QUESTION' | 'IDEA' | 'TASK'
 export type ArchiveBucket = 'THINKING' | 'TODO'
-export type ContextTag = 'arbeit' | 'projekt' | 'familie' | 'gesundheit' | 'haushalt' | 'finanzen' | 'privat'
+export type ContextTag =
+  | 'arbeit'
+  | 'familie'
+  | 'finanzen'
+  | 'freunde'
+  | 'gesundheit'
+  | 'haushalt'
+  | 'privat'
+  | 'projekt'
 
 export const CONTEXT_TAGS: ContextTag[] = [
   'arbeit',
-  'projekt',
   'familie',
+  'finanzen',
+  'freunde',
   'gesundheit',
   'haushalt',
-  'finanzen',
   'privat',
+  'projekt',
 ]
 
 export function normalizeContextTag(value: unknown): ContextTag | undefined {

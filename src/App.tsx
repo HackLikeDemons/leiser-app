@@ -27,7 +27,7 @@ import {
   updateNoteStatus,
 } from './lib/dbNotes'
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
-import { getLocalDayISO, getYesterdayISO, groupNotesByDay } from './lib/date'
+import { getLocalDayISO } from './lib/date'
 import type { ContextTag, Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FlowHero } from './app/FlowHero'
@@ -74,6 +74,13 @@ type LastAction = {
 type CaptureFeedback = {
   id: number
   text: string
+}
+
+type ContextFilter = '' | '__none' | ContextTag
+type ContextGroup = {
+  contextKey: '__none' | ContextTag
+  label: string
+  notes: Note[]
 }
 
 function encodeBase64Url(input: string) {
@@ -209,17 +216,57 @@ function noteTypeLabel(type: NoteType) {
 
 const CONTEXT_OPTIONS: Array<{ value: ContextTag; label: string }> = [
   { value: 'arbeit', label: 'Arbeit' },
-  { value: 'projekt', label: 'Projekt' },
   { value: 'familie', label: 'Familie' },
+  { value: 'finanzen', label: 'Finanzen' },
+  { value: 'freunde', label: 'Freunde' },
   { value: 'gesundheit', label: 'Gesundheit' },
   { value: 'haushalt', label: 'Haushalt' },
-  { value: 'finanzen', label: 'Finanzen' },
   { value: 'privat', label: 'Privat' },
+  { value: 'projekt', label: 'Projekt' },
 ]
 
 function contextLabel(context: ContextTag) {
   const match = CONTEXT_OPTIONS.find((option) => option.value === context)
   return match?.label ?? context
+}
+
+function contextGroupLabel(context: '__none' | ContextTag) {
+  if (context === '__none') {
+    return 'Ohne Bereich'
+  }
+  return contextLabel(context)
+}
+
+function matchesContextFilter(note: Note, filter: ContextFilter) {
+  if (!filter) {
+    return true
+  }
+  if (filter === '__none') {
+    return !note.context
+  }
+  return note.context === filter
+}
+
+function groupNotesByContext(notes: Note[], noteSort: (a: Note, b: Note) => number): ContextGroup[] {
+  const grouped = new Map<'__none' | ContextTag, Note[]>()
+  for (const note of notes) {
+    const key: '__none' | ContextTag = note.context ?? '__none'
+    const existing = grouped.get(key)
+    if (existing) {
+      existing.push(note)
+    } else {
+      grouped.set(key, [note])
+    }
+  }
+
+  const groups: ContextGroup[] = Array.from(grouped.entries()).map(([contextKey, groupedNotes]) => ({
+    contextKey,
+    label: contextGroupLabel(contextKey),
+    notes: [...groupedNotes].sort(noteSort),
+  }))
+
+  groups.sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
+  return groups
 }
 
 function NoteTypeBadge({ note }: { note: Note }) {
@@ -228,13 +275,6 @@ function NoteTypeBadge({ note }: { note: Note }) {
     return null
   }
   return <span className="note-type-badge">{label}</span>
-}
-
-function ContextBadge({ context }: { context?: ContextTag }) {
-  if (!context) {
-    return null
-  }
-  return <span className="status-badge">Bereich: {contextLabel(context)}</span>
 }
 
 function ExpandableNoteText({ text }: { text: string }) {
@@ -365,43 +405,19 @@ function TodoNoteRow({
   onToggleStar,
   onDone,
   onBack,
-  onContextChange,
 }: {
   note: Note
   onToggleStar: (id: string, starred: boolean) => void
   onDone: (id: string) => void
   onBack: (id: string) => void
-  onContextChange: (id: string, context: ContextTag | undefined) => void
 }) {
   return (
     <li key={note.id} className="note-item note-item--todo">
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
-        {note.starred ? <span className="status-badge">Wichtig</span> : null}
         <NoteTypeBadge note={note} />
-        <ContextBadge context={note.context} />
       </span>
       <div className="todo-actions">
-        <label className="context-select-wrap">
-          <span className="sr-only">Bereich setzen</span>
-          <select
-            className="context-select"
-            value={note.context ?? ''}
-            onChange={(event) => {
-              const nextValue = event.target.value
-              onContextChange(note.id, nextValue ? (nextValue as ContextTag) : undefined)
-            }}
-            aria-label="Bereich"
-            title="Bereich"
-          >
-            <option value="">Kein Bereich</option>
-            {CONTEXT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
         <button
           type="button"
           className={note.starred ? 'review-btn review-btn--star review-btn--star-active review-btn--icon' : 'review-btn review-btn--star review-btn--icon'}
@@ -588,7 +604,6 @@ function ArchivedTodoNoteRow({
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
         <NoteTypeBadge note={note} />
-        <ContextBadge context={note.context} />
       </span>
       <div className="todo-actions">
         <button
@@ -940,8 +955,10 @@ function AppContent() {
   const [inboxNotes, setInboxNotes] = useState<Note[]>([])
   const [processNotes, setProcessNotes] = useState<Note[]>([])
   const [processCount, setProcessCount] = useState(0)
+  const [thinkingContextFilter, setThinkingContextFilter] = useState<ContextFilter>('')
   const [todoNotes, setTodoNotes] = useState<Note[]>([])
   const [todoStarOnly, setTodoStarOnly] = useState(false)
+  const [todoContextFilter, setTodoContextFilter] = useState<ContextFilter>('')
   const [archivedNotes, setArchivedNotes] = useState<Note[]>([])
   const [showArchive, setShowArchive] = useState(false)
   const [showTodoArchive, setShowTodoArchive] = useState(false)
@@ -1009,8 +1026,6 @@ function AppContent() {
     }, FEEDBACK_VISIBILITY_MS)
   }, [])
 
-  const todayISO = useMemo(() => getLocalDayISO(), [])
-  const yesterdayISO = useMemo(() => getYesterdayISO(), [])
   const backupOverdue = useMemo(() => {
     if (!lastBackupAt) {
       return true
@@ -1953,20 +1968,19 @@ function AppContent() {
   }
 
   const showUpdateNotice = needRefresh && !dismissedUpdateNotice
+  const visibleProcessNotes = useMemo(() => {
+    return processNotes.filter((note) => matchesContextFilter(note, thinkingContextFilter))
+  }, [processNotes, thinkingContextFilter])
+
   const thinkingGroups = useMemo(() => {
-    return groupNotesByDay(processNotes, {
-      todayISO,
-      yesterdayISO,
-      daySort: 'desc',
-      noteSort: (a, b) => {
-        const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
-        if (byUpdated !== 0) {
-          return byUpdated
-        }
-        return b.createdAt.localeCompare(a.createdAt)
-      },
+    return groupNotesByContext(visibleProcessNotes, (a, b) => {
+      const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
+      if (byUpdated !== 0) {
+        return byUpdated
+      }
+      return b.createdAt.localeCompare(a.createdAt)
     })
-  }, [processNotes, todayISO, yesterdayISO])
+  }, [visibleProcessNotes])
   const thinkingArchivedNotes = useMemo(
     () =>
       archivedNotes.filter(
@@ -1974,6 +1988,9 @@ function AppContent() {
       ),
     [archivedNotes],
   )
+  const visibleThinkingArchivedNotes = useMemo(() => {
+    return thinkingArchivedNotes.filter((note) => matchesContextFilter(note, thinkingContextFilter))
+  }, [thinkingArchivedNotes, thinkingContextFilter])
   const todoArchivedNotes = useMemo(
     () =>
       archivedNotes.filter(
@@ -1981,36 +1998,29 @@ function AppContent() {
       ),
     [archivedNotes],
   )
-  const thinkingArchiveCount = thinkingArchivedNotes.length
-  const todoArchiveCount = todoArchivedNotes.length
+  const thinkingArchiveCount = visibleThinkingArchivedNotes.length
+  const visibleTodoArchivedNotes = useMemo(() => {
+    return todoArchivedNotes.filter((note) => matchesContextFilter(note, todoContextFilter))
+  }, [todoArchivedNotes, todoContextFilter])
+  const todoArchiveCount = visibleTodoArchivedNotes.length
   const archivedThinkingGroups = useMemo(() => {
-    return groupNotesByDay(thinkingArchivedNotes, {
-      todayISO,
-      yesterdayISO,
-      daySort: 'desc',
-      noteSort: (a, b) => {
-        const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
-        if (byUpdated !== 0) {
-          return byUpdated
-        }
-        return b.createdAt.localeCompare(a.createdAt)
-      },
+    return groupNotesByContext(visibleThinkingArchivedNotes, (a, b) => {
+      const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
+      if (byUpdated !== 0) {
+        return byUpdated
+      }
+      return b.createdAt.localeCompare(a.createdAt)
     })
-  }, [thinkingArchivedNotes, todayISO, yesterdayISO])
+  }, [visibleThinkingArchivedNotes])
   const archivedTodoGroups = useMemo(() => {
-    return groupNotesByDay(todoArchivedNotes, {
-      todayISO,
-      yesterdayISO,
-      daySort: 'desc',
-      noteSort: (a, b) => {
-        const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
-        if (byUpdated !== 0) {
-          return byUpdated
-        }
-        return b.createdAt.localeCompare(a.createdAt)
-      },
+    return groupNotesByContext(visibleTodoArchivedNotes, (a, b) => {
+      const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
+      if (byUpdated !== 0) {
+        return byUpdated
+      }
+      return b.createdAt.localeCompare(a.createdAt)
     })
-  }, [todoArchivedNotes, todayISO, yesterdayISO])
+  }, [visibleTodoArchivedNotes])
 
   const staleTodos = useMemo(() => {
     const today = new Date()
@@ -2150,7 +2160,7 @@ function AppContent() {
     [refreshAll],
   )
 
-  const handleTodoContextChange = useCallback(
+  const handleReviewContextChange = useCallback(
     async (id: string, context: ContextTag | undefined) => {
       setError('')
       try {
@@ -2244,24 +2254,26 @@ function AppContent() {
     [refreshAll, showTransientInfo, todoArchiveCount],
   )
 
-  const visibleTodoNotes = useMemo(
-    () => (todoStarOnly ? todoNotes.filter((note) => note.starred) : todoNotes),
-    [todoNotes, todoStarOnly],
-  )
+  const visibleTodoNotes = useMemo(() => {
+    return todoNotes.filter((note) => {
+      if (todoStarOnly && !note.starred) {
+        return false
+      }
+      if (!matchesContextFilter(note, todoContextFilter)) {
+        return false
+      }
+      return true
+    })
+  }, [todoNotes, todoStarOnly, todoContextFilter])
 
   const todoGroups = useMemo(() => {
-    return groupNotesByDay(visibleTodoNotes, {
-      todayISO,
-      yesterdayISO,
-      daySort: 'desc',
-      noteSort: (a, b) => {
-        if (a.starred !== b.starred) {
-          return a.starred ? -1 : 1
-        }
-        return b.createdAt.localeCompare(a.createdAt)
-      },
+    return groupNotesByContext(visibleTodoNotes, (a, b) => {
+      if (a.starred !== b.starred) {
+        return a.starred ? -1 : 1
+      }
+      return b.createdAt.localeCompare(a.createdAt)
     })
-  }, [visibleTodoNotes, todayISO, yesterdayISO])
+  }, [visibleTodoNotes])
 
   useEffect(() => {
     if (activeTab !== 'BRAINDUMP') {
@@ -2592,6 +2604,26 @@ function AppContent() {
                             <NoteTypeBadge note={note} />
                           </span>
                           <div className="todo-actions">
+                            <label className="context-select-wrap">
+                              <span className="sr-only">Bereich setzen</span>
+                              <select
+                                className="context-select"
+                                value={note.context ?? ''}
+                                onChange={(event) => {
+                                  const nextValue = event.target.value
+                                  void handleReviewContextChange(note.id, nextValue ? (nextValue as ContextTag) : undefined)
+                                }}
+                                aria-label="Bereich"
+                                title="Bereich"
+                              >
+                                <option value="">Kein Bereich</option>
+                                {CONTEXT_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
                             <button
                               type="button"
                               className="review-btn review-btn--todo review-btn--icon"
@@ -2682,9 +2714,36 @@ function AppContent() {
               title="Gedanken vertiefen"
               subtitle=""
             />
+            <div className="todo-filter-row">
+              <label className="context-select-wrap">
+                <span className="sr-only">Bereich filtern</span>
+                <select
+                  className="context-select context-select--filter"
+                  value={thinkingContextFilter}
+                  onChange={(event) => setThinkingContextFilter(event.target.value as ContextFilter)}
+                  aria-label="Bereich filtern"
+                  title="Bereich filtern"
+                >
+                  <option value="">Alle Bereiche</option>
+                  <option value="__none">Ohne Bereich</option>
+                  {CONTEXT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             {processCount === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
+            {processCount > 0 && visibleProcessNotes.length === 0 ? (
+              <p className="empty-text">
+                {thinkingContextFilter === '__none'
+                  ? 'Keine Gedanken ohne Bereich.'
+                  : 'Keine Gedanken mit diesem Bereich.'}
+              </p>
+            ) : null}
             {thinkingGroups.map((group) => (
-              <section key={group.dayISO} className="note-group">
+              <section key={group.contextKey} className="note-group">
                 <div className="day-divider">{group.label}</div>
                 <ul className="notes-list" aria-label={`Denken ${group.label}`}>
                   {group.notes.map((note) => (
@@ -2720,9 +2779,9 @@ function AppContent() {
             {showArchive ? (
               <>
                 <h3 className="archive-title">Archiv</h3>
-                {thinkingArchivedNotes.length === 0 ? <p className="empty-text">Archiv ist leer.</p> : null}
+                {visibleThinkingArchivedNotes.length === 0 ? <p className="empty-text">Archiv ist leer.</p> : null}
                 {archivedThinkingGroups.map((group) => (
-                  <section key={group.dayISO} className="note-group">
+                  <section key={group.contextKey} className="note-group">
                     <div className="day-divider">{group.label}</div>
                     <ul className="notes-list" aria-label={`Archiv ${group.label}`}>
                       {group.notes.map((note) => (
@@ -2768,6 +2827,24 @@ function AppContent() {
                   />
                 </svg>
               </button>
+              <label className="context-select-wrap">
+                <span className="sr-only">Bereich filtern</span>
+                <select
+                  className="context-select context-select--filter"
+                  value={todoContextFilter}
+                  onChange={(event) => setTodoContextFilter(event.target.value as ContextFilter)}
+                  aria-label="Bereich filtern"
+                  title="Bereich filtern"
+                >
+                  <option value="">Alle Bereiche</option>
+                  <option value="__none">Ohne Bereich</option>
+                  {CONTEXT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             {lastTodoAction ? (
               <div className="undo-snackbar undo-snackbar--subtle" role="status" aria-live="polite">
@@ -2783,10 +2860,20 @@ function AppContent() {
             ) : null}
             {todoNotes.length === 0 ? <p className="empty-text">Keine offenen Handlungen.</p> : null}
             {todoNotes.length > 0 && visibleTodoNotes.length === 0 ? (
-              <p className="empty-text">Keine Handlungen mit Stern.</p>
+              <p className="empty-text">
+                {todoStarOnly && todoContextFilter
+                  ? 'Keine Handlungen mit diesem Bereich und Stern.'
+                  : todoStarOnly
+                    ? 'Keine Handlungen mit Stern.'
+                    : todoContextFilter === '__none'
+                      ? 'Keine Handlungen ohne Bereich.'
+                      : todoContextFilter
+                      ? 'Keine Handlungen mit diesem Bereich.'
+                      : 'Keine passenden Handlungen.'}
+              </p>
             ) : null}
             {todoGroups.map((group) => (
-              <section key={group.dayISO} className="note-group">
+              <section key={group.contextKey} className="note-group">
                 <div className="day-divider">{group.label}</div>
                 <ul className="notes-list" aria-label={`Handlungen ${group.label}`}>
                   {group.notes.map((note) => (
@@ -2796,7 +2883,6 @@ function AppContent() {
                       onToggleStar={handleTodoToggleStar}
                       onDone={handleTodoDone}
                       onBack={handleTodoBack}
-                      onContextChange={handleTodoContextChange}
                     />
                   ))}
                 </ul>
@@ -2824,9 +2910,9 @@ function AppContent() {
             {showTodoArchive ? (
               <>
                 <h3 className="archive-title">Archiv</h3>
-                {todoArchivedNotes.length === 0 ? <p className="empty-text">Archiv ist leer.</p> : null}
+                {visibleTodoArchivedNotes.length === 0 ? <p className="empty-text">Archiv ist leer.</p> : null}
                 {archivedTodoGroups.map((group) => (
-                  <section key={group.dayISO} className="note-group">
+                  <section key={group.contextKey} className="note-group">
                     <div className="day-divider">{group.label}</div>
                     <ul className="notes-list" aria-label={`Handlungen Archiv ${group.label}`}>
                       {group.notes.map((note) => (
