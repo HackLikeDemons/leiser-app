@@ -2681,7 +2681,7 @@ function AppContent() {
                     ) : null}
                     <ul className="notes-list" aria-label="Review Liste">
                       {orderedInbox.map((note) => (
-                        <li key={note.id} className="note-item note-item--todo">
+                        <li key={note.id} className="note-item note-item--todo note-item--review-row">
                           <span className="note-content">
                             <ExpandableNoteText text={note.text} />
                             {reviewAgeLabel(getReviewAgeCategory(note)) ? (

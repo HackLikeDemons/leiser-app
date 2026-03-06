@@ -1487,6 +1487,32 @@ button:focus {
     font-size: 0.8rem;
     line-height: 1.2;
   }
+
+  .note-item--review-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .note-item--review-row .note-content {
+    align-items: flex-start;
+  }
+
+  .note-item--review-row .note-text {
+    -webkit-line-clamp: 3;
+  }
+
+  .note-item--review-row .todo-actions {
+    width: 100%;
+    margin-top: 0.3rem;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+  }
+
+  .note-item--review-row .context-select {
+    min-width: 0;
+    width: min(42vw, 150px);
+  }
 }
 
 @media (max-width: 390px) {
