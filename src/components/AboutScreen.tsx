@@ -4,8 +4,8 @@ type AboutScreenProps = {
 
 const ABOUT_COPY = {
   title: 'Leiser',
-  intro: 'Leiser hilft dir, deine Gedanken schnell festzuhalten und sie später in Ruhe zu sortieren.',
-  privacy: 'Deine Gedanken sind Ende-zu-Ende verschlüsselt und können nicht von Dritten eingesehen werden.',
+  intro: 'hilft dir, deine Gedanken schnell festzuhalten und sie später in Ruhe zu sortieren.',
+  privacy: 'Deine Gedanken werden lokal auf deinem Gerät gespeichert. Wenn jemand Zugriff auf dein Gerät oder Browser-Profil hat, kann er sie einsehen.',
   steps: [
     'Erfassen: Gedanken sofort in die Inbox schreiben.',
     'Sortieren: Gedanken behalten, in eine Aufgabe überführen oder verwerfen.',

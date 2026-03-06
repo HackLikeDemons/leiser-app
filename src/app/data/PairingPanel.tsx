@@ -30,6 +30,7 @@ export function PairingPanel({
   return (
     <section className="data-card pairing-panel" aria-label="Geräte koppeln">
       <h3>Geräte koppeln</h3>
+      <p className="hint data-card__intro">Verbinde ein weiteres Gerät per QR-Code oder durch Einfügen deines Sync Codes.</p>
       <div className="data-actions">
         <button type="button" onClick={onShowPairQr} disabled={!syncPairCode}>
           QR-Code anzeigen

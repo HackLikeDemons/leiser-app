@@ -2,6 +2,8 @@ import type { RefObject } from 'react'
 import type { ImportMode, ImportReport } from '../../lib/backup'
 import type { SyncDiagnostics, SyncUiStatus } from '../../lib/syncEngine'
 import { FlowHero } from '../FlowHero'
+import { BackupPanel } from './BackupPanel'
+import { DebugPanel } from './DebugPanel'
 import { PairingPanel } from './PairingPanel'
 import { SyncPanel, type DevSyncInfo } from './SyncPanel'
 
@@ -23,6 +25,7 @@ type DataScreenProps = {
   onRekeySyncCluster: () => void
   onWipeClient: () => void
   syncEnabled: boolean
+  hasConfiguredSyncRoom: boolean
   onToggleDebugInfo: () => void
   showDebugInfo: boolean
   onSyncNow: () => void
@@ -69,6 +72,7 @@ export function DataScreen({
   onRekeySyncCluster,
   onWipeClient,
   syncEnabled,
+  hasConfiguredSyncRoom,
   onToggleDebugInfo,
   showDebugInfo,
   onSyncNow,
@@ -104,40 +108,22 @@ export function DataScreen({
   return (
     <section className="data-section" aria-label="Daten">
       <FlowHero
-        title="Sichern, verbinden, verwalten"
-        subtitle=""
+        title="Daten syncen und sichern"
+        subtitle="Sichere zuerst deine Daten, aktiviere bei Bedarf den Sync und verbinde dann weitere Geräte über den QR Code"
       />
       <div className="data-panel">
         <div className="data-layout">
           <SyncPanel
-            onExport={onExport}
-            onToggleImportPanel={onToggleImportPanel}
-            showImportPanel={showImportPanel}
-            onImportFileChange={onImportFileChange}
-            importMode={importMode}
-            onImportModeChange={onImportModeChange}
-            onImport={onImport}
             onToggleSyncEnabled={onToggleSyncEnabled}
             onCreateSyncRoom={onCreateSyncRoom}
             onRekeySyncCluster={onRekeySyncCluster}
             onWipeClient={onWipeClient}
             syncEnabled={syncEnabled}
-            onToggleDebugInfo={onToggleDebugInfo}
-            showDebugInfo={showDebugInfo}
+            hasConfiguredSyncRoom={hasConfiguredSyncRoom}
             onSyncNow={onSyncNow}
-            onCopySyncProtocol={onCopySyncProtocol}
             syncNowBusy={syncNowBusy}
-            lastBackupAtLabel={lastBackupAtLabel}
-            backupOverdue={backupOverdue}
-            importReport={importReport}
-            info={info}
-            offlineReady={offlineReady}
             syncStatus={syncStatus}
             syncError={syncError}
-            supabaseConfigStatus={supabaseConfigStatus}
-            devSyncInfo={devSyncInfo}
-            syncDiagnostics={syncDiagnostics}
-            formatSyncTimeLabel={formatSyncTimeLabel}
           />
           <PairingPanel
             syncPairCode={syncPairCode}
@@ -149,6 +135,31 @@ export function DataScreen({
             onPairCodeDraftChange={onPairCodeDraftChange}
             onPasteFromClipboard={onPasteFromClipboard}
             onImportPairCode={onImportPairCode}
+          />
+          <BackupPanel
+            onExport={onExport}
+            onToggleImportPanel={onToggleImportPanel}
+            showImportPanel={showImportPanel}
+            onImportFileChange={onImportFileChange}
+            importMode={importMode}
+            onImportModeChange={onImportModeChange}
+            onImport={onImport}
+            lastBackupAtLabel={lastBackupAtLabel}
+            backupOverdue={backupOverdue}
+            importReport={importReport}
+            info={info}
+            offlineReady={offlineReady}
+          />
+          <DebugPanel
+            onToggleDebugInfo={onToggleDebugInfo}
+            showDebugInfo={showDebugInfo}
+            onCopySyncProtocol={onCopySyncProtocol}
+            syncStatus={syncStatus}
+            syncError={syncError}
+            supabaseConfigStatus={supabaseConfigStatus}
+            devSyncInfo={devSyncInfo}
+            syncDiagnostics={syncDiagnostics}
+            formatSyncTimeLabel={formatSyncTimeLabel}
           />
         </div>
 

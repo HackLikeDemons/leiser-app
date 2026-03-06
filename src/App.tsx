@@ -30,6 +30,12 @@ import {
 } from './lib/dbNotes'
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO } from './lib/date'
+import {
+  clearE2eeLocalMaterial,
+  ensureLocalEncryptionReady,
+  getWrappedContentKeyForPairing,
+  setWrappedContentKeyFromPairing,
+} from './lib/e2ee'
 import type { ContextTag, Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FlowHero } from './app/FlowHero'
@@ -73,6 +79,7 @@ type PairingPayloadV1 = {
   roomId: string
   token: string
   key?: string
+  wrappedContentKey?: string
 }
 
 type ReviewAgeCategory = 'OVERDUE' | 'READY' | 'FRESH'
@@ -145,6 +152,8 @@ function parsePairingPayload(input: string): PairingPayloadV1 {
   const roomId = typeof parsed.roomId === 'string' ? parsed.roomId.trim() : ''
   const token = typeof parsed.token === 'string' ? parsed.token.trim() : ''
   const key = typeof parsed.key === 'string' ? parsed.key.trim() : ''
+  const wrappedContentKey =
+    typeof parsed.wrappedContentKey === 'string' ? parsed.wrappedContentKey.trim() : ''
   const version = parsed.v
   const isLegacy = version == null
   if ((!isLegacy && version !== 1) || roomId.length === 0 || token.length === 0) {
@@ -156,6 +165,7 @@ function parsePairingPayload(input: string): PairingPayloadV1 {
     roomId,
     token,
     ...(key ? { key } : {}),
+    ...(wrappedContentKey ? { wrappedContentKey } : {}),
   }
 }
 
@@ -1439,8 +1449,10 @@ function AppContent() {
       localStorage.setItem(SYNC_ID_STORAGE_KEY, roomId)
       setSyncRoomId(roomId)
       await updateSyncState(roomId, { isEnabled: false, lastError: null })
+      const next = await setSyncEnabled(roomId, true)
+      setSyncEnabledState(next.isEnabled)
       await refreshAll(roomId)
-      showTransientInfo('Neuer Sync-Raum erstellt. Du kannst jetzt Sync aktivieren oder den Pairing-Code teilen.')
+      showTransientInfo('Neuer Sync-Raum erstellt und Sync aktiviert. Du kannst jetzt den Pairing-Code teilen.')
     } catch {
       setError('Neuer Sync-Raum konnte nicht erstellt werden.')
     }
@@ -1466,6 +1478,7 @@ function AppContent() {
       localStorage.removeItem(SYNC_ID_STORAGE_KEY)
       localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
       localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+      clearE2eeLocalMaterial()
       setShowPairQr(false)
       setShowScanner(false)
       setSyncRoomId(DEFAULT_SYNC_ROOM_ID)
@@ -1474,12 +1487,13 @@ function AppContent() {
       setSyncDiagnostics(null)
       setSyncError(null)
       setInfo('')
-      await refreshAll(DEFAULT_SYNC_ROOM_ID)
-      showTransientInfo('Client bereinigt. Dieses Gerät ist jetzt lokal leer und nicht mehr gekoppelt.')
+      localStorage.removeItem(HAS_VISITED_STORAGE_KEY)
+      window.location.reload()
+      return
     } catch {
       setError('Client konnte nicht bereinigt werden.')
     }
-  }, [refreshAll, showTransientInfo, syncRoomId])
+  }, [syncRoomId])
 
   const handleSyncNow = useCallback(async () => {
     setSyncNowBusy(true)
@@ -1650,27 +1664,28 @@ function AppContent() {
       return
     }
     const confirmed = window.confirm(
-      'Achtung: Dadurch wird ein neuer Sync-Verbund mit neuem Pair-Code erstellt. Das verlorene Gerät kann dann nicht mehr synchronisieren. Alle Geräte, die im Verbund bleiben sollen, müssen danach mit dem neuen Pair-Code neu gekoppelt werden. Fortfahren?',
+      'Achtung: Dieses Gerät wird aus dem Sync-Verbund entfernt und wechselt in den lokalen Modus. Andere gekoppelte Geräte bleiben unverändert. Fortfahren?',
     )
     if (!confirmed) {
       return
     }
 
     const previousRoomId = syncRoomId
+    const previousStorage = {
+      roomId: localStorage.getItem(SYNC_ID_STORAGE_KEY),
+      token: localStorage.getItem(SYNC_TOKEN_STORAGE_KEY),
+      key: localStorage.getItem(SYNC_KEY_STORAGE_KEY),
+    }
     try {
-      const nextRoomId = crypto.randomUUID()
-      localStorage.setItem(SYNC_ID_STORAGE_KEY, nextRoomId)
+      localStorage.removeItem(SYNC_ID_STORAGE_KEY)
       localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
-      setSyncRoomId(nextRoomId)
+      localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+      clearE2eeLocalMaterial()
+      setSyncRoomId(DEFAULT_SYNC_ROOM_ID)
+      setSyncEnabledState(false)
+      setSyncPairCode(null)
+      setSyncPairCodeDraft('')
 
-      await updateSyncState(nextRoomId, {
-        isEnabled: false,
-        syncToken: null,
-        lastError: null,
-        lastPulledSeq: 0,
-        lastPushedAt: null,
-      })
-      await setSyncEnabled(nextRoomId, true)
       await updateSyncState(previousRoomId, { isEnabled: false, lastError: null })
 
       setShowPairQr(false)
@@ -1678,21 +1693,29 @@ function AppContent() {
       setSyncDiagnostics(null)
       setSyncError(null)
       await clearInboxSeen()
-      await refreshAll(nextRoomId)
-
-      try {
-        await runSyncNowForRoom(nextRoomId)
-      } catch {
-        setError('Neuer Sync-Verbund wurde erstellt, aber der erste Sync ist fehlgeschlagen.')
-      }
-      showTransientInfo('Client entfernt. Neuer Verbund aktiv – verbleibende Geräte jetzt neu koppeln.')
+      await refreshAll(DEFAULT_SYNC_ROOM_ID)
+      showTransientInfo('Client aus Verbund entfernt. Dieses Gerät läuft jetzt nur lokal.')
     } catch {
       setSyncRoomId(previousRoomId)
-      localStorage.setItem(SYNC_ID_STORAGE_KEY, previousRoomId)
+      if (previousStorage.roomId) {
+        localStorage.setItem(SYNC_ID_STORAGE_KEY, previousStorage.roomId)
+      } else {
+        localStorage.removeItem(SYNC_ID_STORAGE_KEY)
+      }
+      if (previousStorage.token) {
+        localStorage.setItem(SYNC_TOKEN_STORAGE_KEY, previousStorage.token)
+      } else {
+        localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
+      }
+      if (previousStorage.key) {
+        localStorage.setItem(SYNC_KEY_STORAGE_KEY, previousStorage.key)
+      } else {
+        localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+      }
       setError('Client konnte nicht aus dem Verbund entfernt werden.')
       await refreshAll(previousRoomId)
     }
-  }, [refreshAll, runSyncNowForRoom, showTransientInfo, syncEnabled, syncRoomId])
+  }, [refreshAll, showTransientInfo, syncEnabled, syncRoomId])
 
   const applyPairingPayload = useCallback(
     async (payload: PairingPayloadV1) => {
@@ -1702,6 +1725,7 @@ function AppContent() {
         token: localStorage.getItem(SYNC_TOKEN_STORAGE_KEY),
         key: localStorage.getItem(SYNC_KEY_STORAGE_KEY),
       }
+      const previousWrappedContentKey = getWrappedContentKeyForPairing()
       const previousRoomState = await getSyncState(previousRoomId)
       const previousTargetState =
         payload.roomId === previousRoomId ? previousRoomState : await getSyncState(payload.roomId)
@@ -1713,6 +1737,10 @@ function AppContent() {
       } else {
         localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
       }
+      if (payload.wrappedContentKey) {
+        setWrappedContentKeyFromPairing(payload.wrappedContentKey)
+      }
+      await ensureLocalEncryptionReady()
 
       setSyncRoomId(payload.roomId)
       await updateSyncState(payload.roomId, {
@@ -1741,6 +1769,13 @@ function AppContent() {
             localStorage.setItem(SYNC_KEY_STORAGE_KEY, previousStorage.key)
           } else {
             localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+          }
+          if (payload.wrappedContentKey) {
+            if (previousWrappedContentKey) {
+              setWrappedContentKeyFromPairing(previousWrappedContentKey)
+            } else {
+              clearE2eeLocalMaterial()
+            }
           }
 
           await updateSyncState(payload.roomId, {
@@ -1781,6 +1816,7 @@ function AppContent() {
         roomId: parsed.roomId.trim(),
         token: parsed.token.trim(),
         ...(syncKey ? { key: syncKey } : {}),
+        ...(typeof parsed.wrappedContentKey === 'string' ? { wrappedContentKey: parsed.wrappedContentKey } : {}),
       }
       const encoded = encodeBase64Url(JSON.stringify(payload))
       setPairQrValue(`leiser://pair?${encoded}`)
@@ -2194,6 +2230,7 @@ function AppContent() {
   }
 
   const showUpdateNotice = needRefresh && !dismissedUpdateNotice
+  const hasConfiguredSyncRoom = syncRoomId.trim().length > 0 && syncRoomId.trim() !== DEFAULT_SYNC_ROOM_ID
   const hasAnyNotes =
     braindumpNotes.length > 0
     || inboxNotes.length > 0
@@ -2751,7 +2788,7 @@ function AppContent() {
             {showContextMenu ? (
               <div ref={contextMenuRef} className="context-menu" role="menu" aria-label="Kontextmenü">
                 <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('DATA')}>
-                  Daten & Sync
+                  Sync & Backup
                 </button>
                 <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('ABOUT')}>
                   Über Leiser
@@ -2777,6 +2814,7 @@ function AppContent() {
                 onRekeySyncCluster={() => void handleRekeySyncCluster()}
                 onWipeClient={() => void handleWipeClient()}
                 syncEnabled={syncEnabled}
+                hasConfiguredSyncRoom={hasConfiguredSyncRoom}
                 onToggleDebugInfo={() => setShowDebugInfo((prev) => !prev)}
                 showDebugInfo={showDebugInfo}
                 onSyncNow={() => void handleSyncNow()}

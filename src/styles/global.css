@@ -403,6 +403,10 @@ h3 {
   margin: 0 0 0.7rem;
 }
 
+.data-section .flow-hero {
+  margin-bottom: 0.9rem;
+}
+
 .data-panel {
   width: min(1120px, 100%);
   border: 1px solid var(--border-default);
@@ -424,8 +428,13 @@ h3 {
 }
 
 .data-card h3 {
-  margin: 0 0 0.55rem;
+  margin: 0 0 0.65rem;
   font-size: 1rem;
+}
+
+.data-card__intro {
+  margin: 0 0 0.85rem;
+  line-height: 1.45;
 }
 
 .tab-content {
@@ -459,6 +468,21 @@ h3 {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
+.sync-setup-actions {
+  margin-top: 0.72rem;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.sync-setup-actions > button {
+  width: 100%;
+}
+
+.sync-setup-actions .hint {
+  margin-top: 0;
+  text-align: center;
+}
+
 .danger-zone {
   margin-top: 0.9rem;
   border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border-default));
@@ -488,6 +512,10 @@ h3 {
 
 .danger-btn {
   width: 100%;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-color: color-mix(in srgb, var(--warning) 50%, var(--border-default));
   background: color-mix(in srgb, var(--warning) 20%, var(--surface-button));
   color: color-mix(in srgb, var(--warning) 92%, var(--text-primary));
@@ -512,6 +540,7 @@ h3 {
   font-size: 0.78rem;
   line-height: 1.35;
   color: color-mix(in srgb, var(--warning) 80%, var(--text-primary));
+  text-align: center;
 }
 
 @media (max-width: 640px) {
@@ -533,6 +562,20 @@ h3 {
   margin-top: 0.45rem;
 }
 
+.sync-status-slot {
+  min-height: 1.9rem;
+  display: flex;
+  align-items: flex-start;
+}
+
+.sync-status-slot__text {
+  margin-top: 0;
+}
+
+.sync-status-slot__text--placeholder {
+  visibility: hidden;
+}
+
 .backup-reminder {
   margin-top: 0.5rem;
   display: grid;
@@ -544,6 +587,49 @@ h3 {
   margin-top: 0.4rem;
   display: grid;
   gap: 0.45rem;
+}
+
+.import-panel input[type='file'] {
+  width: 100%;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.92rem;
+}
+
+.import-panel input[type='file']::file-selector-button {
+  border: 1px solid var(--border-soft);
+  background: var(--surface-button);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 0.42rem 0.68rem;
+  margin-right: 0.55rem;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  font-weight: 550;
+  transition: background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.import-panel input[type='file']::file-selector-button:hover {
+  background: var(--surface-button-hover);
+}
+
+.import-panel input[type='file']::-webkit-file-upload-button {
+  border: 1px solid var(--border-soft);
+  background: var(--surface-button);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 0.42rem 0.68rem;
+  margin-right: 0.55rem;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  font-weight: 550;
+  transition: background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.import-panel input[type='file']::-webkit-file-upload-button:hover {
+  background: var(--surface-button-hover);
 }
 
 .pairing-panel {
@@ -657,6 +743,21 @@ button {
 
 button:hover {
   background: var(--surface-button-hover);
+}
+
+button:disabled,
+button[disabled] {
+  opacity: 0.46;
+  cursor: not-allowed;
+  background: color-mix(in srgb, var(--surface-button) 72%, var(--surface));
+  border-color: color-mix(in srgb, var(--border-default) 92%, transparent);
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
+  box-shadow: none;
+}
+
+button:disabled:hover,
+button[disabled]:hover {
+  background: color-mix(in srgb, var(--surface-button) 72%, var(--surface));
 }
 
 .capture-form {

@@ -2,13 +2,22 @@ import * as Automerge from '@automerge/automerge/slim'
 import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64'
 import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
+import {
+  decryptNoteTextForRuntime,
+  encryptNoteTextForStorage,
+  ensureLocalEncryptionReady,
+  getWrappedContentKeyForPairing,
+  isE2eeMigrationDone,
+  isEncryptedNoteText,
+  markE2eeMigrationDone,
+} from './e2ee'
 import { generateSyncToken } from './syncToken'
 import { signEnvelope } from './syncSigning'
 import { normalizeContextTag } from './types'
 import type { ArchiveBucket, ChangeEnvelope, ContextTag, Note, NoteStatus, NoteType } from './types'
 
 const DB_NAME = 'leiser-db'
-const DB_VERSION = 9
+const DB_VERSION = 10
 
 const NOTES_STORE = 'notes'
 const NOTES_VIEW_STORE = 'notes_view'
@@ -39,6 +48,7 @@ const ALLOWED_ARCHIVE_BUCKETS: ArchiveBucket[] = ['THINKING', 'TODO']
 
 let dbPromise: Promise<IDBDatabase> | null = null
 let automergeInitPromise: Promise<void> | null = null
+let e2eeReadyPromise: Promise<void> | null = null
 
 function getActiveSyncRoomId() {
   if (typeof window === 'undefined') {
@@ -147,7 +157,7 @@ function crdtDocToNote(noteId: string, doc: CrdtNoteDoc): Note {
   }
 }
 
-function asStoredNote(value: unknown): Note | null {
+function asStoredNoteRaw(value: unknown): Note | null {
   const note = value as Partial<Note> | undefined
   if (!note || typeof note !== 'object') {
     return null
@@ -171,8 +181,19 @@ function asStoredNote(value: unknown): Note | null {
   }
 }
 
-function asActiveNote(value: unknown): Note | null {
-  const note = asStoredNote(value)
+async function asStoredNote(value: unknown): Promise<Note | null> {
+  const raw = asStoredNoteRaw(value)
+  if (!raw) {
+    return null
+  }
+  return {
+    ...raw,
+    text: await decryptNoteTextForRuntime(raw.text),
+  }
+}
+
+async function asActiveNote(value: unknown): Promise<Note | null> {
+  const note = await asStoredNote(value)
   if (!note) {
     return null
   }
@@ -296,24 +317,86 @@ function loadCrdtDoc(binary: Uint8Array) {
   return Automerge.load<CrdtNoteDoc>(binary)
 }
 
-function toUint8Array(value: unknown): Uint8Array {
-  if (value instanceof Uint8Array) {
-    return value
+async function migrateLegacyPlaintextNotes(db: IDBDatabase): Promise<void> {
+  if (typeof window === 'undefined' || isE2eeMigrationDone()) {
+    return
   }
-  if (value instanceof ArrayBuffer) {
-    return new Uint8Array(value)
+
+  const rawNotes = await new Promise<Note[]>((resolve, reject) => {
+    const notes: Note[] = []
+    const tx = db.transaction(NOTES_STORE, 'readonly')
+    const store = tx.objectStore(NOTES_STORE)
+    const cursorRequest = store.openCursor()
+
+    tx.onerror = () => reject(tx.error)
+    tx.onabort = () => reject(tx.error)
+    tx.oncomplete = () => resolve(notes)
+    cursorRequest.onerror = () => reject(cursorRequest.error)
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result
+      if (!cursor) {
+        return
+      }
+      const note = asStoredNoteRaw(cursor.value)
+      if (note) {
+        notes.push(note)
+      }
+      cursor.continue()
+    }
+  })
+
+  const changed = await Promise.all(
+    rawNotes.map(async (note) => {
+      if (isEncryptedNoteText(note.text)) {
+        return null
+      }
+      const encryptedText = await encryptNoteTextForStorage(note.text)
+      return {
+        note: { ...note, text: encryptedText },
+      }
+    }),
+  )
+
+  const toUpdate = changed.filter((item): item is { note: Note } => item !== null)
+  if (toUpdate.length === 0) {
+    markE2eeMigrationDone()
+    return
   }
-  return new Uint8Array(value as ArrayLike<number>)
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([NOTES_STORE, NOTES_VIEW_STORE, CRDT_DOCS_STORE], 'readwrite')
+    const notesStore = tx.objectStore(NOTES_STORE)
+    const notesViewStore = tx.objectStore(NOTES_VIEW_STORE)
+    const crdtStore = tx.objectStore(CRDT_DOCS_STORE)
+
+    tx.onerror = () => reject(tx.error)
+    tx.onabort = () => reject(tx.error)
+    tx.oncomplete = () => resolve()
+
+    for (const item of toUpdate) {
+      const note = item.note
+      const notePut = notesStore.put(note)
+      notePut.onerror = () => reject(notePut.error)
+      const viewPut = notesViewStore.put(note)
+      viewPut.onerror = () => reject(viewPut.error)
+
+      const { doc } = buildDocFromPayload(noteToCrdtDoc(note))
+      const crdtPut = crdtStore.put({
+        noteId: note.id,
+        docBinary: saveCrdtDoc(doc),
+        updatedAt: note.updatedAt,
+        schemaVersion: CRDT_SCHEMA_VERSION,
+      })
+      crdtPut.onerror = () => reject(crdtPut.error)
+    }
+  })
+
+  markE2eeMigrationDone()
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = ''
-  const chunkSize = 0x8000
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize)
-    binary += String.fromCharCode(...chunk)
-  }
-  return btoa(binary)
+async function ensureE2eeReadyAndMigrate(db: IDBDatabase): Promise<void> {
+  await ensureLocalEncryptionReady()
+  await migrateLegacyPlaintextNotes(db)
 }
 
 function openDb() {
@@ -327,7 +410,7 @@ function openDb() {
     }
     await automergeInitPromise
 
-    return new Promise<IDBDatabase>((resolve, reject) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
     request.onerror = () => reject(request.error)
@@ -413,7 +496,7 @@ function openDb() {
           if (!cursor) {
             return
           }
-          const note = asStoredNote(cursor.value)
+          const note = asStoredNoteRaw(cursor.value)
           if (note) {
             notesViewStore.put(note)
             const { doc } = buildDocFromPayload(noteToCrdtDoc(note))
@@ -431,6 +514,12 @@ function openDb() {
 
     request.onsuccess = () => resolve(request.result)
     })
+
+    if (!e2eeReadyPromise) {
+      e2eeReadyPromise = ensureE2eeReadyAndMigrate(db)
+    }
+    await e2eeReadyPromise
+    return db
   })()
 
   return dbPromise
@@ -457,7 +546,12 @@ function materializeFromDoc(noteId: string, doc: Automerge.Doc<CrdtNoteDoc>): No
 async function persistDocAndViews(noteId: string, doc: Automerge.Doc<CrdtNoteDoc>): Promise<Note> {
   const db = await openDb()
   const note = materializeFromDoc(noteId, doc)
-  const binary = saveCrdtDoc(doc)
+  const encryptedText = await encryptNoteTextForStorage(note.text)
+  const storedNote = { ...note, text: encryptedText }
+  const encryptedDoc = Automerge.change(doc, (draft: CrdtNoteDoc) => {
+    draft.text = encryptedText
+  })
+  const binary = saveCrdtDoc(encryptedDoc)
 
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction([NOTES_STORE, NOTES_VIEW_STORE, CRDT_DOCS_STORE], 'readwrite')
@@ -469,9 +563,9 @@ async function persistDocAndViews(noteId: string, doc: Automerge.Doc<CrdtNoteDoc
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => resolve()
 
-    const r1 = notesStore.put(note)
+    const r1 = notesStore.put(storedNote)
     r1.onerror = () => reject(r1.error)
-    const r2 = notesViewStore.put(note)
+    const r2 = notesViewStore.put(storedNote)
     r2.onerror = () => reject(r2.error)
     const r3 = crdtStore.put({
       noteId,
@@ -504,20 +598,49 @@ async function loadDocForNote(noteId: string): Promise<Automerge.Doc<CrdtNoteDoc
           : new Uint8Array(row.docBinary)
         : null
       if (bytes) {
-        resolve(loadCrdtDoc(bytes))
+        const storedDoc = loadCrdtDoc(bytes)
+        void (async () => {
+          try {
+            const decryptedText = await decryptNoteTextForRuntime(storedDoc.text)
+            const { doc } = buildDocFromPayload({
+              text: decryptedText,
+              status: normalizeStatus(storedDoc.status),
+              type: normalizeType(storedDoc.type),
+              starred: Boolean(storedDoc.starred),
+              archiveBucket: normalizeArchiveBucket(storedDoc.archiveBucket),
+              context: normalizeContextTag(storedDoc.context) ?? null,
+              createdAt: storedDoc.createdAt,
+              updatedAt: storedDoc.updatedAt,
+              dayISO: storedDoc.dayISO,
+              deletedAt: storedDoc.deletedAt ?? null,
+              revision: Math.max(1, storedDoc.revision || 1),
+              originDeviceId: storedDoc.originDeviceId || getOrCreateDeviceId(),
+              lastModifiedDeviceId: storedDoc.lastModifiedDeviceId || getOrCreateDeviceId(),
+            })
+            resolve(doc)
+          } catch (error) {
+            reject(error)
+          }
+        })()
         return
       }
 
       const noteRequest = notesStore.get(noteId)
       noteRequest.onerror = () => reject(noteRequest.error)
       noteRequest.onsuccess = () => {
-        const note = asStoredNote(noteRequest.result)
-        if (!note) {
-          resolve(null)
-          return
-        }
-        const { doc } = buildDocFromPayload(noteToCrdtDoc(note))
-        resolve(doc)
+        void (async () => {
+          try {
+            const note = await asStoredNote(noteRequest.result)
+            if (!note) {
+              resolve(null)
+              return
+            }
+            const { doc } = buildDocFromPayload(noteToCrdtDoc(note))
+            resolve(doc)
+          } catch (error) {
+            reject(error)
+          }
+        })()
       }
     }
   })
@@ -525,15 +648,18 @@ async function loadDocForNote(noteId: string): Promise<Automerge.Doc<CrdtNoteDoc
 
 async function enqueueAutomergeChanges(
   noteId: string,
-  changes: unknown[],
+  _changes: unknown[],
   snapshot?: Note,
   roomId = getActiveSyncRoomId(),
 ): Promise<void> {
-  if (!changes.length && !snapshot) {
+  if (!snapshot) {
     return
   }
 
-  const payload = changes.map((change) => bytesToBase64(toUint8Array(change)))
+  const encryptedSnapshot: Note = {
+    ...snapshot,
+    text: await encryptNoteTextForStorage(snapshot.text),
+  }
   const ts = Date.now()
   const envelope: ChangeEnvelope = {
     changeId: crypto.randomUUID(),
@@ -542,8 +668,8 @@ async function enqueueAutomergeChanges(
     noteId,
     ts,
     kind: CHANGE_KIND,
-    payload,
-    snapshot,
+    payload: [],
+    snapshot: encryptedSnapshot,
   }
   const signedEnvelope = await signEnvelope(envelope)
 
@@ -733,7 +859,15 @@ export async function getNoteById(id: string): Promise<Note | null> {
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
     request.onerror = () => reject(request.error)
-    request.onsuccess = () => resolve(asStoredNote(request.result))
+    request.onsuccess = () => {
+      void (async () => {
+        try {
+          resolve(await asStoredNote(request.result))
+        } catch (error) {
+          reject(error)
+        }
+      })()
+    }
   })
 }
 
@@ -788,7 +922,7 @@ export async function listAllNotes(): Promise<Note[]> {
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_STORE)
     const request = store.openCursor()
@@ -796,8 +930,15 @@ export async function listAllNotes(): Promise<Note[]> {
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => {
-      notes.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      resolve(notes)
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter((note): note is Note => note !== null)
+          notes.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+          resolve(notes)
+        } catch (error) {
+          reject(error)
+        }
+      })()
     }
 
     request.onerror = () => reject(request.error)
@@ -806,10 +947,7 @@ export async function listAllNotes(): Promise<Note[]> {
       if (!cursor) {
         return
       }
-      const note = asStoredNote(cursor.value)
-      if (note) {
-        notes.push(note)
-      }
+      notePromises.push(asStoredNote(cursor.value))
       cursor.continue()
     }
   })
@@ -819,7 +957,7 @@ export async function listRecentActiveNotes(limit = 500): Promise<Note[]> {
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const index = store.index(CREATED_AT_INDEX)
@@ -827,18 +965,24 @@ export async function listRecentActiveNotes(limit = 500): Promise<Note[]> {
 
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
-    transaction.oncomplete = () => resolve(notes)
+    transaction.oncomplete = () => {
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter((note): note is Note => note !== null)
+          resolve(notes.slice(0, limit))
+        } catch (error) {
+          reject(error)
+        }
+      })()
+    }
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor || notes.length >= limit) {
+      if (!cursor || notePromises.length >= limit) {
         return
       }
-      const note = asActiveNote(cursor.value)
-      if (note) {
-        notes.push(note)
-      }
+      notePromises.push(asActiveNote(cursor.value))
       cursor.continue()
     }
   })
@@ -848,7 +992,7 @@ export async function listArchiveHardDeleteCandidates(cutoffISO: string, limit =
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const index = store.index(STATUS_UPDATED_AT_INDEX)
@@ -858,18 +1002,26 @@ export async function listArchiveHardDeleteCandidates(cutoffISO: string, limit =
 
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
-    transaction.oncomplete = () => resolve(notes)
+    transaction.oncomplete = () => {
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter(
+            (note): note is Note => note !== null && note.status === 'ARCHIVE',
+          )
+          resolve(notes.slice(0, limit))
+        } catch (error) {
+          reject(error)
+        }
+      })()
+    }
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor || notes.length >= limit) {
+      if (!cursor || notePromises.length >= limit) {
         return
       }
-      const note = asActiveNote(cursor.value)
-      if (note && note.status === 'ARCHIVE') {
-        notes.push(note)
-      }
+      notePromises.push(asActiveNote(cursor.value))
       cursor.continue()
     }
   })
@@ -879,7 +1031,7 @@ export async function listNotesByDay(dayISO: string, limit = 500): Promise<Note[
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const index = store.index(DAY_INDEX)
@@ -888,20 +1040,24 @@ export async function listNotesByDay(dayISO: string, limit = 500): Promise<Note[
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => {
-      notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      resolve(notes)
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter((note): note is Note => note !== null)
+          notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          resolve(notes.slice(0, limit))
+        } catch (error) {
+          reject(error)
+        }
+      })()
     }
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor || notes.length >= limit) {
+      if (!cursor || notePromises.length >= limit) {
         return
       }
-      const note = asActiveNote(cursor.value)
-      if (note) {
-        notes.push(note)
-      }
+      notePromises.push(asActiveNote(cursor.value))
       cursor.continue()
     }
   })
@@ -911,14 +1067,25 @@ export async function listSearchableNotes(): Promise<Note[]> {
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const request = store.openCursor()
 
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
-    transaction.oncomplete = () => resolve(notes)
+    transaction.oncomplete = () => {
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter(
+            (note): note is Note => note !== null && note.status !== 'DISCARD',
+          )
+          resolve(notes)
+        } catch (error) {
+          reject(error)
+        }
+      })()
+    }
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
@@ -926,10 +1093,7 @@ export async function listSearchableNotes(): Promise<Note[]> {
       if (!cursor) {
         return
       }
-      const note = asActiveNote(cursor.value)
-      if (note && note.status !== 'DISCARD') {
-        notes.push(note)
-      }
+      notePromises.push(asActiveNote(cursor.value))
       cursor.continue()
     }
   })
@@ -939,7 +1103,7 @@ export async function listInboxNotes(limit = 50): Promise<Note[]> {
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const index = store.index(STATUS_INDEX)
@@ -948,20 +1112,24 @@ export async function listInboxNotes(limit = 50): Promise<Note[]> {
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => {
-      notes.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      resolve(notes)
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter((note): note is Note => note !== null)
+          notes.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+          resolve(notes.slice(0, limit))
+        } catch (error) {
+          reject(error)
+        }
+      })()
     }
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor || notes.length >= limit) {
+      if (!cursor || notePromises.length >= limit) {
         return
       }
-      const note = asActiveNote(cursor.value)
-      if (note) {
-        notes.push(note)
-      }
+      notePromises.push(asActiveNote(cursor.value))
       cursor.continue()
     }
   })
@@ -971,7 +1139,7 @@ export async function listDecidedNotesByDay(dayISO: string, limit = 200): Promis
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const index = store.index(DAY_INDEX)
@@ -980,20 +1148,26 @@ export async function listDecidedNotesByDay(dayISO: string, limit = 200): Promis
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => {
-      notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      resolve(notes)
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter(
+            (note): note is Note => note !== null && note.status !== 'INBOX',
+          )
+          notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          resolve(notes.slice(0, limit))
+        } catch (error) {
+          reject(error)
+        }
+      })()
     }
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor || notes.length >= limit) {
+      if (!cursor || notePromises.length >= limit) {
         return
       }
-      const note = asActiveNote(cursor.value)
-      if (note && note.status !== 'INBOX') {
-        notes.push(note)
-      }
+      notePromises.push(asActiveNote(cursor.value))
       cursor.continue()
     }
   })
@@ -1003,7 +1177,7 @@ export async function listTodoNotes(limit = 200): Promise<Note[]> {
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const index = store.index(STATUS_INDEX)
@@ -1012,25 +1186,29 @@ export async function listTodoNotes(limit = 200): Promise<Note[]> {
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => {
-      notes.sort((a, b) => {
-        if (a.starred !== b.starred) {
-          return a.starred ? -1 : 1
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter((note): note is Note => note !== null)
+          notes.sort((a, b) => {
+            if (a.starred !== b.starred) {
+              return a.starred ? -1 : 1
+            }
+            return b.createdAt.localeCompare(a.createdAt)
+          })
+          resolve(notes.slice(0, limit))
+        } catch (error) {
+          reject(error)
         }
-        return b.createdAt.localeCompare(a.createdAt)
-      })
-      resolve(notes)
+      })()
     }
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor || notes.length >= limit) {
+      if (!cursor || notePromises.length >= limit) {
         return
       }
-      const note = asActiveNote(cursor.value)
-      if (note) {
-        notes.push(note)
-      }
+      notePromises.push(asActiveNote(cursor.value))
       cursor.continue()
     }
   })
@@ -1040,7 +1218,7 @@ export async function listTodoReturnToInboxCandidates(cutoffISO: string, limit =
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const index = store.index(STATUS_UPDATED_AT_INDEX)
@@ -1050,18 +1228,26 @@ export async function listTodoReturnToInboxCandidates(cutoffISO: string, limit =
 
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
-    transaction.oncomplete = () => resolve(notes)
+    transaction.oncomplete = () => {
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter(
+            (note): note is Note => note !== null && note.status === 'TODO',
+          )
+          resolve(notes.slice(0, limit))
+        } catch (error) {
+          reject(error)
+        }
+      })()
+    }
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor || notes.length >= limit) {
+      if (!cursor || notePromises.length >= limit) {
         return
       }
-      const note = asActiveNote(cursor.value)
-      if (note && note.status === 'TODO') {
-        notes.push(note)
-      }
+      notePromises.push(asActiveNote(cursor.value))
       cursor.continue()
     }
   })
@@ -1071,7 +1257,7 @@ export async function listNotesByStatus(status: NoteStatus, limit = 200): Promis
   const db = await openDb()
 
   return new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const index = store.index(STATUS_UPDATED_AT_INDEX)
@@ -1081,18 +1267,24 @@ export async function listNotesByStatus(status: NoteStatus, limit = 200): Promis
 
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
-    transaction.oncomplete = () => resolve(notes)
+    transaction.oncomplete = () => {
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter((note): note is Note => note !== null)
+          resolve(notes.slice(0, limit))
+        } catch (error) {
+          reject(error)
+        }
+      })()
+    }
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor || notes.length >= limit) {
+      if (!cursor || notePromises.length >= limit) {
         return
       }
-      const note = asActiveNote(cursor.value)
-      if (note) {
-        notes.push(note)
-      }
+      notePromises.push(asActiveNote(cursor.value))
       cursor.continue()
     }
   })
@@ -1106,7 +1298,7 @@ export async function countNotesByStatus(status: NoteStatus): Promise<number> {
   const db = await openDb()
 
   return new Promise<number>((resolve, reject) => {
-    let count = 0
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const index = store.index(STATUS_INDEX)
@@ -1114,7 +1306,16 @@ export async function countNotesByStatus(status: NoteStatus): Promise<number> {
 
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
-    transaction.oncomplete = () => resolve(count)
+    transaction.oncomplete = () => {
+      void (async () => {
+        try {
+          const notes = await Promise.all(notePromises)
+          resolve(notes.filter((note): note is Note => note !== null).length)
+        } catch (error) {
+          reject(error)
+        }
+      })()
+    }
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
@@ -1122,10 +1323,7 @@ export async function countNotesByStatus(status: NoteStatus): Promise<number> {
       if (!cursor) {
         return
       }
-      const note = asActiveNote(cursor.value)
-      if (note) {
-        count += 1
-      }
+      notePromises.push(asActiveNote(cursor.value))
       cursor.continue()
     }
   })
@@ -1138,30 +1336,37 @@ export async function countInboxNotes(): Promise<number> {
 export async function countActiveNotesWithEmptyText(): Promise<number> {
   const db = await openDb()
   return new Promise<number>((resolve, reject) => {
-    let count = 0
+    const notePromises: Array<Promise<Note | null>> = []
     const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
     const store = transaction.objectStore(NOTES_VIEW_STORE)
     const request = store.openCursor()
 
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
-    transaction.oncomplete = () => resolve(count)
+    transaction.oncomplete = () => {
+      void (async () => {
+        try {
+          const notes = (await Promise.all(notePromises)).filter((note): note is Note => note !== null)
+          const count = notes.filter(
+            (note) =>
+              note.deletedAt == null &&
+              note.status !== 'DISCARD' &&
+              note.status !== 'ARCHIVE' &&
+              note.text.trim().length === 0,
+          ).length
+          resolve(count)
+        } catch (error) {
+          reject(error)
+        }
+      })()
+    }
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
       if (!cursor) {
         return
       }
-      const note = asStoredNote(cursor.value)
-      if (
-        note &&
-        note.deletedAt == null &&
-        note.status !== 'DISCARD' &&
-        note.status !== 'ARCHIVE' &&
-        note.text.trim().length === 0
-      ) {
-        count += 1
-      }
+      notePromises.push(asStoredNote(cursor.value))
       cursor.continue()
     }
   })
@@ -1395,7 +1600,12 @@ export async function getSyncPairCode(roomId = DEFAULT_ROOM_ID): Promise<string 
   if (!state.syncToken) {
     return null
   }
-  return JSON.stringify({ roomId, token: state.syncToken })
+  const wrappedContentKey = getWrappedContentKeyForPairing()
+  return JSON.stringify({
+    roomId,
+    token: state.syncToken,
+    ...(wrappedContentKey ? { wrappedContentKey } : {}),
+  })
 }
 
 export async function listPendingOutboxChanges(roomId: string, limit = 50): Promise<OutboxRow[]> {
