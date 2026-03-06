@@ -480,10 +480,12 @@ function ThinkingNoteRow({
   note,
   onArchive,
   onTodo,
+  onBack,
 }: {
   note: Note
   onArchive: (id: string) => void
   onTodo: (id: string) => void
+  onBack: (id: string) => void
 }) {
   return (
     <li className="note-item note-item--todo">
@@ -523,6 +525,24 @@ function ThinkingNoteRow({
               fill="none"
               stroke="currentColor"
               strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="review-btn review-btn--back review-btn--icon"
+          onClick={() => onBack(note.id)}
+          aria-label="Zurück zu Sortieren"
+          title="Zurück zu Sortieren"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M10 7 5 12l5 5M6 12h13"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.9"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -2209,6 +2229,12 @@ function AppContent() {
     },
     [handleReviewDecision],
   )
+  const handleThinkingBackToReview = useCallback(
+    (id: string) => {
+      void handleReviewDecision(id, 'INBOX')
+    },
+    [handleReviewDecision],
+  )
   const handleArchivedBackToThinking = useCallback(
     (id: string) => {
       void handleReviewDecision(id, 'PROCESS')
@@ -2752,6 +2778,7 @@ function AppContent() {
                       note={note}
                       onArchive={handleThinkingArchive}
                       onTodo={handleThinkingToTodo}
+                      onBack={handleThinkingBackToReview}
                     />
                   ))}
                 </ul>
