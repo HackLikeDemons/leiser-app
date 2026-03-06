@@ -212,6 +212,20 @@ async function mergeRemoteChanges(syncId: string, blob: SyncBlob | null): Promis
     const dedupeKey = `${syncId}:${item.changeId}`
     if (await hasInboxSeen(dedupeKey)) {
       remoteEnvelopes.push(item)
+      // Recovery path: if seen-cache is stale on this client, replay the change payload.
+      try {
+        const bytes = decodeChangePayload(item.payload)
+        if (bytes.length > 0) {
+          const currentBeforeReplay = await getNoteById(item.noteId)
+          const replayed = await applyRemoteChanges(item.noteId, bytes)
+          if (!currentBeforeReplay || ((currentBeforeReplay.text ?? '').trim().length === 0 && (replayed?.text ?? '').trim().length > 0)) {
+            changeApplied += 1
+            applied = true
+          }
+        }
+      } catch {
+        // ignore replay errors; snapshot fallback below may still recover
+      }
       const seenSnapshot = asSnapshotNote(item.snapshot, item.noteId)
       if (seenSnapshot) {
         const current = await getNoteById(item.noteId)
