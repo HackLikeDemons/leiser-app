@@ -49,9 +49,11 @@ const SYNC_ID_STORAGE_KEY = 'leiser-sync-id'
 const SYNC_TOKEN_STORAGE_KEY = 'leiser-sync-token'
 const SYNC_KEY_STORAGE_KEY = 'leiser-sync-key'
 const SHOW_DEBUG_INFO_STORAGE_KEY = 'leiser:show-debug-info'
+const LAST_BACKUP_AT_STORAGE_KEY = 'leiser:last-backup-at'
 const RELOAD_AFTER_INACTIVITY_MS = 20 * 60 * 1000
 const FEEDBACK_VISIBILITY_MS = 3000
 const SW_UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
+const BACKUP_OVERDUE_DAYS = 7
 
 type PairingPayloadV1 = {
   v: 1
@@ -92,6 +94,17 @@ function decodeBase64Url(input: string) {
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function isTypingInInput(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+  const tagName = target.tagName
+  if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') {
+    return true
+  }
+  return target.isContentEditable
 }
 
 function parsePairingPayload(input: string): PairingPayloadV1 {
@@ -150,6 +163,20 @@ function toSyncTimeLabel(isoTimestamp: string | null) {
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
   return `${hours}:${minutes}`
+}
+
+function toBackupTimeLabel(isoTimestamp: string | null) {
+  if (!isoTimestamp) {
+    return 'noch keines'
+  }
+  const date = new Date(isoTimestamp)
+  if (Number.isNaN(date.getTime())) {
+    return 'noch keines'
+  }
+  return new Intl.DateTimeFormat('de-DE', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
 }
 
 function maskSecret(value: string | null) {
@@ -802,6 +829,7 @@ function AppContent() {
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
   const [showDebugInfo, setShowDebugInfo] = useState(false)
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(() => localStorage.getItem(LAST_BACKUP_AT_STORAGE_KEY))
   const [devSyncInfo, setDevSyncInfo] = useState<DevSyncInfo | null>(null)
   const [syncEnabled, setSyncEnabledState] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncUiStatus>('disabled')
@@ -862,6 +890,17 @@ function AppContent() {
 
   const todayISO = useMemo(() => getLocalDayISO(), [])
   const yesterdayISO = useMemo(() => getYesterdayISO(), [])
+  const backupOverdue = useMemo(() => {
+    if (!lastBackupAt) {
+      return true
+    }
+    const backupDate = new Date(lastBackupAt)
+    if (Number.isNaN(backupDate.getTime())) {
+      return true
+    }
+    const elapsedMs = Date.now() - backupDate.getTime()
+    return elapsedMs >= BACKUP_OVERDUE_DAYS * 24 * 60 * 60 * 1000
+  }, [lastBackupAt])
 
   const refreshAll = useCallback(async (roomIdOverride?: string) => {
     try {
@@ -933,6 +972,33 @@ function AppContent() {
       setDismissedUpdateNotice(false)
     }
   }, [needRefresh])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return
+      }
+      if (isTypingInInput(event.target)) {
+        return
+      }
+      if (event.key === '1') {
+        setActiveTab('BRAINDUMP')
+        event.preventDefault()
+      } else if (event.key === '2') {
+        setActiveTab('REVIEW')
+        event.preventDefault()
+      } else if (event.key === '3') {
+        setActiveTab('THINKING')
+        event.preventDefault()
+      } else if (event.key === '4') {
+        setActiveTab('TODO')
+        event.preventDefault()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) {
@@ -1636,6 +1702,9 @@ function AppContent() {
         link.remove()
         window.setTimeout(() => URL.revokeObjectURL(url), 1500)
       }
+      const exportedAt = new Date().toISOString()
+      setLastBackupAt(exportedAt)
+      localStorage.setItem(LAST_BACKUP_AT_STORAGE_KEY, exportedAt)
       showTransientInfo('Backup erzeugt.')
     } catch (exportError) {
       if (exportError instanceof DOMException && exportError.name === 'AbortError') {
@@ -1915,13 +1984,16 @@ function AppContent() {
       setError('')
       try {
         await deleteNote(id)
+        if (thinkingArchiveCount <= 1) {
+          setShowArchive(false)
+        }
         showTransientInfo('Gedanke endgültig gelöscht.')
         await refreshAll()
       } catch {
         setError('Gedanke konnte nicht gelöscht werden.')
       }
     },
-    [refreshAll, showTransientInfo],
+    [refreshAll, showTransientInfo, thinkingArchiveCount],
   )
   const handleArchivedBackToTodo = useCallback(
     (id: string) => {
@@ -1934,13 +2006,16 @@ function AppContent() {
       setError('')
       try {
         await deleteNote(id)
+        if (todoArchiveCount <= 1) {
+          setShowTodoArchive(false)
+        }
         showTransientInfo('Handlung endgültig gelöscht.')
         await refreshAll()
       } catch {
         setError('Handlung konnte nicht gelöscht werden.')
       }
     },
-    [refreshAll, showTransientInfo],
+    [refreshAll, showTransientInfo, todoArchiveCount],
   )
 
   const visibleTodoNotes = useMemo(
@@ -2101,6 +2176,8 @@ function AppContent() {
                 onSyncNow={() => void handleSyncNow()}
                 onCopySyncProtocol={() => void handleCopySyncProtocol()}
                 syncNowBusy={syncNowBusy}
+                lastBackupAtLabel={toBackupTimeLabel(lastBackupAt)}
+                backupOverdue={backupOverdue}
                 importReport={importReport}
                 info={info}
                 offlineReady={offlineReady}

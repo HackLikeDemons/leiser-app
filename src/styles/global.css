@@ -315,6 +315,13 @@ h3 {
   margin-top: 0.45rem;
 }
 
+.backup-reminder {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.4rem;
+  justify-items: start;
+}
+
 .import-panel {
   margin-top: 0.4rem;
   display: grid;

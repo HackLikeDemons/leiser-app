@@ -31,6 +31,8 @@ type SyncPanelProps = {
   onSyncNow: () => void
   onCopySyncProtocol: () => void
   syncNowBusy: boolean
+  lastBackupAtLabel: string
+  backupOverdue: boolean
   importReport: ImportReport | null
   info: string
   offlineReady: boolean
@@ -57,6 +59,8 @@ export function SyncPanel({
   onSyncNow,
   onCopySyncProtocol,
   syncNowBusy,
+  lastBackupAtLabel,
+  backupOverdue,
   importReport,
   info,
   offlineReady,
@@ -125,6 +129,15 @@ export function SyncPanel({
       ) : null}
 
       <div className="data-status">
+        <p className="hint">Letztes Backup: {lastBackupAtLabel}</p>
+        {backupOverdue ? (
+          <div className="backup-reminder">
+            <p className="hint">Backup überfällig. Sichere jetzt kurz deine Daten.</p>
+            <button type="button" onClick={onExport}>
+              Jetzt sichern
+            </button>
+          </div>
+        ) : null}
         {importReport ? (
           <p className="hint">
             Importiert: {importReport.imported} · Aktualisiert: {importReport.updated} · Übersprungen:{' '}

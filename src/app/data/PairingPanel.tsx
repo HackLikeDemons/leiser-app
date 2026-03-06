@@ -43,6 +43,7 @@ export function PairingPanel({
       {syncPairCode ? (
         <div className="import-panel">
           <p className="hint">Pair Code ist aus Sicherheitsgründen ausgeblendet.</p>
+          <p className="hint">Bitte sicher extern hinterlegen, sonst kann der Zugriff auf bestehende Daten verloren gehen.</p>
           <button type="button" onClick={onCopyPairCode}>
             Pair Code kopieren
           </button>

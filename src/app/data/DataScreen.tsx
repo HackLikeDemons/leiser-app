@@ -25,6 +25,8 @@ type DataScreenProps = {
   onSyncNow: () => void
   onCopySyncProtocol: () => void
   syncNowBusy: boolean
+  lastBackupAtLabel: string
+  backupOverdue: boolean
   importReport: ImportReport | null
   info: string
   offlineReady: boolean
@@ -66,6 +68,8 @@ export function DataScreen({
   onSyncNow,
   onCopySyncProtocol,
   syncNowBusy,
+  lastBackupAtLabel,
+  backupOverdue,
   importReport,
   info,
   offlineReady,
@@ -114,6 +118,8 @@ export function DataScreen({
             onSyncNow={onSyncNow}
             onCopySyncProtocol={onCopySyncProtocol}
             syncNowBusy={syncNowBusy}
+            lastBackupAtLabel={lastBackupAtLabel}
+            backupOverdue={backupOverdue}
             importReport={importReport}
             info={info}
             offlineReady={offlineReady}
