@@ -52,6 +52,8 @@ const BRAINDUMP_FETCH_LIMIT = 300
 const ARCHIVE_HARD_DELETE_DAYS = 30
 const ARCHIVE_HARD_DELETE_BATCH_LIMIT = 200
 const ARCHIVE_HARD_DELETE_LAST_RUN_KEY = 'leiser:archive-hard-delete-last-run-day'
+const MS_PER_HOUR = 60 * 60 * 1000
+const MS_PER_DAY = 24 * MS_PER_HOUR
 const SYNC_ID_STORAGE_KEY = 'leiser-sync-id'
 const SYNC_TOKEN_STORAGE_KEY = 'leiser-sync-token'
 const SYNC_KEY_STORAGE_KEY = 'leiser-sync-key'
@@ -398,18 +400,14 @@ function reviewAgeLabel(category: ReviewAgeCategory): string | null {
   return null
 }
 
-function getTodoStaleInfo(note: Note): { isStale: boolean; ageHours: number } {
+function isTodoStale(note: Note): boolean {
   const basisISO = note.updatedAt || note.createdAt
   const basisMs = Date.parse(basisISO)
   if (!Number.isFinite(basisMs)) {
-    return { isStale: false, ageHours: 0 }
+    return false
   }
   const ageMs = Date.now() - basisMs
-  const ageHours = Math.floor(ageMs / (60 * 60 * 1000))
-  return {
-    isStale: ageMs >= TODO_STALE_DAYS * 24 * 60 * 60 * 1000,
-    ageHours: Math.max(0, ageHours),
-  }
+  return ageMs >= TODO_STALE_DAYS * MS_PER_DAY
 }
 
 function sortInboxForReview(notes: Note[]) {
@@ -462,9 +460,9 @@ function TodoNoteRow({
   onDone: (id: string) => void
   onBack: (id: string) => void
 }) {
-  const staleInfo = getTodoStaleInfo(note)
+  const stale = isTodoStale(note)
   return (
-    <li key={note.id} className={staleInfo.isStale ? 'note-item note-item--todo note-item--todo-stale' : 'note-item note-item--todo'}>
+    <li key={note.id} className={stale ? 'note-item note-item--todo note-item--todo-stale' : 'note-item note-item--todo'}>
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
         <NoteTypeBadge note={note} />
@@ -1108,7 +1106,7 @@ function AppContent() {
       return true
     }
     const elapsedMs = Date.now() - backupDate.getTime()
-    return elapsedMs >= BACKUP_OVERDUE_DAYS * 24 * 60 * 60 * 1000
+    return elapsedMs >= BACKUP_OVERDUE_DAYS * MS_PER_DAY
   }, [lastBackupAt])
 
   const refreshAll = useCallback(async (roomIdOverride?: string) => {
@@ -1126,7 +1124,7 @@ function AppContent() {
         localStorage.setItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY, archiveCleanupRunDay)
       }
 
-      const todoReturnCutoffDate = new Date(Date.now() - TODO_RETURN_TO_REVIEW_DAYS * 24 * 60 * 60 * 1000)
+      const todoReturnCutoffDate = new Date(Date.now() - TODO_RETURN_TO_REVIEW_DAYS * MS_PER_DAY)
       const todoReturnCandidates = await listTodoReturnToInboxCandidates(
         todoReturnCutoffDate.toISOString(),
         TODO_RETURN_TO_REVIEW_BATCH_LIMIT,
