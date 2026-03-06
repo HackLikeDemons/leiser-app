@@ -1061,6 +1061,7 @@ function AppContent() {
   const nextAutoScrollBehaviorRef = useRef<ScrollBehavior>('auto')
   const hiddenAtRef = useRef<number | null>(null)
   const swReloadedRef = useRef(false)
+  const refreshRunSeqRef = useRef(0)
 
   const clearTransientInfoTimeout = () => {
     if (transientInfoTimeoutRef.current !== null) {
@@ -1091,6 +1092,7 @@ function AppContent() {
   }, [lastBackupAt])
 
   const refreshAll = useCallback(async (roomIdOverride?: string) => {
+    const runSeq = ++refreshRunSeqRef.current
     try {
       const autoArchiveRunDay = getLocalDayISO()
       if (localStorage.getItem(AUTO_ARCHIVE_LAST_RUN_KEY) !== autoArchiveRunDay) {
@@ -1113,6 +1115,9 @@ function AppContent() {
         listTodoNotes(200),
         listNotesByStatus('ARCHIVE', 50),
       ])
+      if (runSeq !== refreshRunSeqRef.current) {
+        return
+      }
       setBraindumpNotes(braindump)
       setInboxNotes(inbox)
       setProcessNotes(process)
@@ -1120,10 +1125,16 @@ function AppContent() {
       setTodoNotes(todo)
       setArchivedNotes(archived)
       const syncInfo = await getSyncDebugInfo(activeRoomId)
+      if (runSeq !== refreshRunSeqRef.current) {
+        return
+      }
       setSyncEnabledState(syncInfo.isEnabled)
       setSyncPairCode(await getSyncPairCode(activeRoomId))
       setDevSyncInfo(syncInfo)
     } catch {
+      if (runSeq !== refreshRunSeqRef.current) {
+        return
+      }
       setError('Daten konnten nicht geladen werden.')
     }
   }, [syncRoomId])

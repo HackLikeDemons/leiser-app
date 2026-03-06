@@ -1489,36 +1489,44 @@ button:focus {
   }
 
   .note-item--review-row {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
+    gap: 0.55rem;
   }
 
   .note-item--review-row .note-content {
     align-items: flex-start;
+    grid-column: 1;
+    grid-row: 1;
   }
 
   .note-item--review-row .note-text {
-    -webkit-line-clamp: 3;
+    display: block;
+    -webkit-line-clamp: unset;
+    -webkit-box-orient: unset;
+    overflow: visible;
   }
 
-.note-item--review-row .todo-actions {
-  width: 100%;
-  margin-top: 0.3rem;
-  justify-content: flex-start;
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 0.38rem;
-}
+  .note-item--review-row .todo-actions {
+    width: min(42vw, 178px);
+    margin-top: 0;
+    justify-content: flex-start;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.38rem;
+    grid-column: 2;
+    grid-row: 1;
+  }
 
-.note-item--review-row .context-select-wrap {
-  width: 100%;
-}
+  .note-item--review-row .context-select-wrap {
+    width: 100%;
+  }
 
-.note-item--review-row .context-select {
-  min-width: 0;
-  width: 100%;
-  max-width: 320px;
-}
+  .note-item--review-row .context-select {
+    min-width: 0;
+    width: 100%;
+    max-width: 178px;
+  }
 
 .note-item--review-row .review-action-row {
   display: inline-flex;
