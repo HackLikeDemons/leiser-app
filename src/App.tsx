@@ -918,6 +918,10 @@ function AppContent() {
   }, [showDebugInfo])
 
   useEffect(() => {
+    localStorage.setItem(SYNC_ID_STORAGE_KEY, syncRoomId)
+  }, [syncRoomId])
+
+  useEffect(() => {
     if (needRefresh) {
       setDismissedUpdateNotice(false)
     }
@@ -1113,10 +1117,8 @@ function AppContent() {
         lastError: null,
       })
       setSyncEnabledState(true)
-      if (payload.roomId !== previousRoomId) {
-        // Ensure a freshly paired room can fully hydrate existing remote notes.
-        await clearInboxSeen()
-      }
+      // Always reset seen cache on pairing to force full hydration from the target room.
+      await clearInboxSeen()
       await refreshAll(payload.roomId)
 
       try {
