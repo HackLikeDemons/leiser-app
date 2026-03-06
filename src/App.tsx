@@ -35,11 +35,14 @@ import { AppShell } from './app/AppShell'
 import { FlowHero } from './app/FlowHero'
 import { FooterProvider } from './app/FooterContext'
 import { DataScreen } from './app/data/DataScreen'
+import { AboutScreen } from './components/AboutScreen'
+import { InboxEmptyState } from './components/InboxEmptyState'
+import { LandingScreen } from './components/LandingScreen'
 import type { DevSyncInfo } from './app/data/SyncPanel'
 import { getSupabaseRuntimeConfig } from './lib/runtimeConfig'
 import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } from './lib/syncEngine'
 
-type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA'
+type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA' | 'ABOUT'
 const SOFT_CHAR_LIMIT = 200
 const REVIEW_LIMIT = 50
 const FRESH_HOURS = 12
@@ -63,6 +66,7 @@ const RELOAD_AFTER_INACTIVITY_MS = 20 * 60 * 1000
 const FEEDBACK_VISIBILITY_MS = 3000
 const SW_UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
 const BACKUP_OVERDUE_DAYS = 7
+const HAS_VISITED_STORAGE_KEY = 'leiser_hasVisited'
 
 type PairingPayloadV1 = {
   v: 1
@@ -254,6 +258,29 @@ function contextFilterPhrase(filter: ContextFilter) {
   return 'alle Bereiche'
 }
 
+function readHasVisitedFlag() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  try {
+    const value = window.localStorage.getItem(HAS_VISITED_STORAGE_KEY)
+    return value === '1' || value === 'true'
+  } catch {
+    return false
+  }
+}
+
+function persistHasVisitedFlag() {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.localStorage.setItem(HAS_VISITED_STORAGE_KEY, '1')
+  } catch {
+    // Storage can fail in privacy-restricted environments.
+  }
+}
+
 function matchesContextFilter(note: Note, filter: ContextFilter) {
   if (!filter) {
     return true
@@ -429,9 +456,11 @@ function sortInboxForReview(notes: Note[]) {
 
 const BraindumpList = memo(function BraindumpList({
   captureFeedback,
+  showInboxEmptyState,
   onSubmitEntries,
 }: {
   captureFeedback: CaptureFeedback | null
+  showInboxEmptyState: boolean
   onSubmitEntries: (entries: string[]) => Promise<void>
 }) {
   return (
@@ -439,6 +468,7 @@ const BraindumpList = memo(function BraindumpList({
       <section className="braindump-hero" aria-label="Braindump Einführung">
         <h2>Lass es raus</h2>
       </section>
+      {showInboxEmptyState ? <InboxEmptyState /> : null}
       {captureFeedback ? (
         <p key={captureFeedback.id} className="braindump-capture-feedback" role="status" aria-live="polite">
           {captureFeedback.text}
@@ -993,16 +1023,19 @@ function BraindumpComposer({
 function BraindumpPage({
   captureFeedback,
   endRef,
+  showInboxEmptyState,
   onSubmitEntries,
 }: {
   captureFeedback: CaptureFeedback | null
   endRef: RefObject<HTMLDivElement | null>
+  showInboxEmptyState: boolean
   onSubmitEntries: (entries: string[]) => Promise<void>
 }) {
   return (
     <>
       <BraindumpList
         captureFeedback={captureFeedback}
+        showInboxEmptyState={showInboxEmptyState}
         onSubmitEntries={onSubmitEntries}
       />
       <div ref={endRef} />
@@ -1054,6 +1087,7 @@ function AppContent() {
   const [showScanner, setShowScanner] = useState(false)
   const [scannerHint, setScannerHint] = useState<string | null>(null)
   const [staleReviewMode, setStaleReviewMode] = useState(false)
+  const [showContextMenu, setShowContextMenu] = useState(false)
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
   const [staleReviewTotal, setStaleReviewTotal] = useState(0)
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
@@ -1072,6 +1106,8 @@ function AppContent() {
   const mainScrollRef = useRef<HTMLElement | null>(null)
   const braindumpEndRef = useRef<HTMLDivElement | null>(null)
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement | null>(null)
+  const contextMenuButtonRef = useRef<HTMLButtonElement | null>(null)
   const scannerVideoRef = useRef<HTMLVideoElement | null>(null)
   const scannerReaderRef = useRef<BrowserMultiFormatReader | null>(null)
   const scannerControlsRef = useRef<IScannerControls | null>(null)
@@ -1236,6 +1272,37 @@ function AppContent() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  useEffect(() => {
+    if (!showContextMenu) {
+      return
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        return
+      }
+      if (contextMenuRef.current?.contains(target) || contextMenuButtonRef.current?.contains(target)) {
+        return
+      }
+      setShowContextMenu(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowContextMenu(false)
+      }
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [showContextMenu])
+
+  useEffect(() => {
+    setShowContextMenu(false)
+  }, [activeTab])
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) {
@@ -2127,6 +2194,12 @@ function AppContent() {
   }
 
   const showUpdateNotice = needRefresh && !dismissedUpdateNotice
+  const hasAnyNotes =
+    braindumpNotes.length > 0
+    || inboxNotes.length > 0
+    || processNotes.length > 0
+    || todoNotes.length > 0
+    || archivedNotes.length > 0
   const visibleProcessNotes = useMemo(() => {
     return processNotes.filter((note) => matchesContextFilter(note, thinkingContextFilter))
   }, [processNotes, thinkingContextFilter])
@@ -2520,6 +2593,11 @@ function AppContent() {
     return () => cancelAnimationFrame(frame)
   }, [activeTab, braindumpNotes, scrollToBraindumpBottom])
 
+  const openContextScreen = useCallback((tab: Extract<TabKey, 'DATA' | 'ABOUT'>) => {
+    setActiveTab(tab)
+    setShowContextMenu(false)
+  }, [])
+
   return (
     <AppShell
       updateNotice={
@@ -2653,9 +2731,12 @@ function AppContent() {
             <button
               type="button"
               className="icon-button"
-              onClick={() => setActiveTab('DATA')}
-              aria-label="Daten öffnen"
-              title="Daten öffnen"
+              ref={contextMenuButtonRef}
+              onClick={() => setShowContextMenu((prev) => !prev)}
+              aria-label="Kontextmenü öffnen"
+              aria-haspopup="menu"
+              aria-expanded={showContextMenu}
+              title="Kontextmenü"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
@@ -2667,6 +2748,16 @@ function AppContent() {
                 />
               </svg>
             </button>
+            {showContextMenu ? (
+              <div ref={contextMenuRef} className="context-menu" role="menu" aria-label="Kontextmenü">
+                <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('DATA')}>
+                  Daten & Sync
+                </button>
+                <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('ABOUT')}>
+                  Über Leiser
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       }
@@ -2719,12 +2810,14 @@ function AppContent() {
                 scannerVideoRef={scannerVideoRef}
               />
             ) : null}
+            {activeTab === 'ABOUT' ? <AboutScreen onBackToCapture={() => setActiveTab('BRAINDUMP')} /> : null}
 
             <div className="tab-content">
           {activeTab === 'BRAINDUMP' ? (
             <BraindumpPage
               captureFeedback={braindumpCaptureFeedback}
               endRef={braindumpEndRef}
+              showInboxEmptyState={!hasAnyNotes}
               onSubmitEntries={handleBraindumpSubmitEntries}
             />
           ) : null}
@@ -3166,6 +3259,17 @@ function AppContent() {
 }
 
 export function App() {
+  const [hasVisited, setHasVisited] = useState(readHasVisitedFlag)
+
+  const handleStart = useCallback(() => {
+    persistHasVisitedFlag()
+    setHasVisited(true)
+  }, [])
+
+  if (!hasVisited) {
+    return <LandingScreen onStart={handleStart} />
+  }
+
   return (
     <FooterProvider>
       <AppContent />

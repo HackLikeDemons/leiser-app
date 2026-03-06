@@ -38,12 +38,12 @@ export function PairingPanel({
           QR scannen
         </button>
       </div>
-      <p className="hint">Nur mit Geräten teilen, denen du vertraust.</p>
+      <p className="hint">Teile deinen Sync Code nur mit Geräten denen du vertraust.</p>
       {scannerHint ? <p className="hint">{scannerHint}</p> : null}
       {syncPairCode ? (
         <div className="import-panel">
           <p className="hint">Pair Code ist aus Sicherheitsgründen ausgeblendet.</p>
-          <p className="hint">Bitte sicher extern hinterlegen, sonst kann der Zugriff auf bestehende Daten verloren gehen.</p>
+          <p className="hint">Bitte verwahre deinen Sync Code als Backup an einem sicheren Ort, sonst kann der Zugriff auf bestehende Daten verloren gehen.</p>
           <button type="button" onClick={onCopyPairCode}>
             Pair Code kopieren
           </button>

@@ -209,7 +209,7 @@ export function SyncPanel({
                 : 'fehlt'}
             </p>
           ) : null}
-          {showDebugInfo && roomAlias ? <p className="hint">Raumname: {roomAlias}</p> : null}
+          {showDebugInfo && roomAlias ? <p className="hint">Syncraum: {roomAlias}</p> : null}
           {showDebugInfo ? <p className="hint">Letzter Sync: {formatSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p> : null}
         </div>
 

@@ -163,7 +163,7 @@ export function DataScreen({
             >
               <h3>Pairing QR-Code</h3>
               <canvas ref={qrCanvasRef} width={256} height={256} />
-              <p className="hint">Nur mit Geräten teilen, denen du vertraust.</p>
+              <p className="hint">Teile deinen Sync Code nur mit Geräten denen du vertraust.</p>
               <button type="button" onClick={onClosePairQr}>
                 Schließen
               </button>
