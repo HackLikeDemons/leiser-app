@@ -237,6 +237,16 @@ function contextGroupLabel(context: '__none' | ContextTag) {
   return contextLabel(context)
 }
 
+function contextFilterPhrase(filter: ContextFilter) {
+  if (filter === '__none') {
+    return 'ohne Bereich'
+  }
+  if (filter) {
+    return contextLabel(filter)
+  }
+  return 'alle Bereiche'
+}
+
 function matchesContextFilter(note: Note, filter: ContextFilter) {
   if (!filter) {
     return true
@@ -1489,6 +1499,57 @@ function AppContent() {
     [refreshAll],
   )
 
+  const handleRekeySyncCluster = useCallback(async () => {
+    setError('')
+    if (!syncEnabled) {
+      setError('Sync muss aktiv sein, um einen Client aus dem Verbund zu entfernen.')
+      return
+    }
+    const confirmed = window.confirm(
+      'Achtung: Dadurch wird ein neuer Sync-Verbund mit neuem Pair-Code erstellt. Das verlorene Gerät kann dann nicht mehr synchronisieren. Alle Geräte, die im Verbund bleiben sollen, müssen danach mit dem neuen Pair-Code neu gekoppelt werden. Fortfahren?',
+    )
+    if (!confirmed) {
+      return
+    }
+
+    const previousRoomId = syncRoomId
+    try {
+      const nextRoomId = crypto.randomUUID()
+      localStorage.setItem(SYNC_ID_STORAGE_KEY, nextRoomId)
+      localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
+      setSyncRoomId(nextRoomId)
+
+      await updateSyncState(nextRoomId, {
+        isEnabled: false,
+        syncToken: null,
+        lastError: null,
+        lastPulledSeq: 0,
+        lastPushedAt: null,
+      })
+      await setSyncEnabled(nextRoomId, true)
+      await updateSyncState(previousRoomId, { isEnabled: false, lastError: null })
+
+      setShowPairQr(false)
+      setShowScanner(false)
+      setSyncDiagnostics(null)
+      setSyncError(null)
+      await clearInboxSeen()
+      await refreshAll(nextRoomId)
+
+      try {
+        await runSyncNowForRoom(nextRoomId)
+      } catch {
+        setError('Neuer Sync-Verbund wurde erstellt, aber der erste Sync ist fehlgeschlagen.')
+      }
+      showTransientInfo('Client entfernt. Neuer Verbund aktiv – verbleibende Geräte jetzt neu koppeln.')
+    } catch {
+      setSyncRoomId(previousRoomId)
+      localStorage.setItem(SYNC_ID_STORAGE_KEY, previousRoomId)
+      setError('Client konnte nicht aus dem Verbund entfernt werden.')
+      await refreshAll(previousRoomId)
+    }
+  }, [refreshAll, runSyncNowForRoom, showTransientInfo, syncEnabled, syncRoomId])
+
   const applyPairingPayload = useCallback(
     async (payload: PairingPayloadV1) => {
       const previousRoomId = syncRoomId
@@ -2488,6 +2549,7 @@ function AppContent() {
                 onImport={() => void handleImport()}
                 onToggleSyncEnabled={() => void handleToggleSyncEnabled()}
                 onCreateSyncRoom={() => void handleCreateSyncRoom()}
+                onRekeySyncCluster={() => void handleRekeySyncCluster()}
                 onWipeClient={() => void handleWipeClient()}
                 syncEnabled={syncEnabled}
                 onToggleDebugInfo={() => setShowDebugInfo((prev) => !prev)}
@@ -2889,13 +2951,11 @@ function AppContent() {
             {todoNotes.length > 0 && visibleTodoNotes.length === 0 ? (
               <p className="empty-text">
                 {todoStarOnly && todoContextFilter
-                  ? 'Keine Handlungen mit diesem Bereich und Stern.'
+                  ? `Keine Handlungen in ${contextFilterPhrase(todoContextFilter)} mit Stern.`
                   : todoStarOnly
                     ? 'Keine Handlungen mit Stern.'
-                    : todoContextFilter === '__none'
-                      ? 'Keine Handlungen ohne Bereich.'
-                      : todoContextFilter
-                      ? 'Keine Handlungen mit diesem Bereich.'
+                    : todoContextFilter
+                      ? `Keine Handlungen in ${contextFilterPhrase(todoContextFilter)}.`
                       : 'Keine passenden Handlungen.'}
               </p>
             ) : null}

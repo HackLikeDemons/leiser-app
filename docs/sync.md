@@ -52,6 +52,16 @@ Ergebnis: Dieser Client synchronisiert nur mit Geräten, die exakt denselben Pai
 
 Ergebnis: Der neue Client hängt im selben Vault wie die bestehenden Geräte.
 
+## Verlorenes Gerät: einzelnen Client aus dem Verbund entfernen
+
+Wenn ein Gerät verloren geht, kann der bisherige Pair-Code nicht selektiv für nur dieses eine Gerät gesperrt werden. Stattdessen wird ein neuer Verbund erstellt:
+
+1. Auf einem vertrauenswürdigen Gerät im Datenbereich `Client aus Verbund entfernen` ausführen.
+2. Dadurch erstellt Leiser eine neue `roomId` und ein neues `syncToken` (neuer Pair-Code).
+3. Verbleibende Geräte mit dem neuen Pair-Code erneut koppeln.
+
+Ergebnis: Das verlorene Gerät bleibt im alten Verbund und hat keinen Zugriff mehr auf neue Änderungen.
+
 ### Hinweis zu `roomId = default`
 
 - `default` ist ein technischer Fallbackwert für frische lokale Zustände ohne gesetzte Room-ID.

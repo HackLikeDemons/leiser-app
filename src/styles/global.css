@@ -345,8 +345,24 @@ h3 {
   width: 100%;
 }
 
+.sync-primary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 0.7rem;
+}
+
+.sync-primary-actions > button {
+  width: 100%;
+  min-height: 46px;
+}
+
+.sync-secondary-actions {
+  margin-top: 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 .danger-zone {
-  margin-top: 0.55rem;
+  margin-top: 0.9rem;
   border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border-default));
   border-radius: 10px;
   background: color-mix(in srgb, var(--warning) 10%, var(--surface-card-soft));
@@ -364,7 +380,12 @@ h3 {
 .danger-zone__actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.45rem;
+  gap: 0.7rem;
+}
+
+.danger-zone__item {
+  display: grid;
+  gap: 0.34rem;
 }
 
 .danger-btn {
@@ -386,6 +407,19 @@ h3 {
 
 .danger-btn--critical:hover {
   background: color-mix(in srgb, var(--warning) 38%, var(--surface-button-hover));
+}
+
+.danger-zone__hint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--warning) 80%, var(--text-primary));
+}
+
+@media (max-width: 640px) {
+  .sync-primary-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .data-status {
