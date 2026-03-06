@@ -2135,6 +2135,44 @@ function AppContent() {
       return b.createdAt.localeCompare(a.createdAt)
     })
   }, [visibleTodoArchivedNotes])
+  const thinkingContextOptions = useMemo(() => {
+    const used = new Set<ContextTag>()
+    for (const note of processNotes) {
+      if (note.context) used.add(note.context)
+    }
+    for (const note of thinkingArchivedNotes) {
+      if (note.context) used.add(note.context)
+    }
+    return CONTEXT_OPTIONS.filter((option) => used.has(option.value))
+  }, [processNotes, thinkingArchivedNotes])
+  const todoContextOptions = useMemo(() => {
+    const used = new Set<ContextTag>()
+    for (const note of todoNotes) {
+      if (note.context) used.add(note.context)
+    }
+    for (const note of todoArchivedNotes) {
+      if (note.context) used.add(note.context)
+    }
+    return CONTEXT_OPTIONS.filter((option) => used.has(option.value))
+  }, [todoNotes, todoArchivedNotes])
+
+  useEffect(() => {
+    if (!thinkingContextFilter || thinkingContextFilter === '__none') {
+      return
+    }
+    if (!thinkingContextOptions.some((option) => option.value === thinkingContextFilter)) {
+      setThinkingContextFilter('')
+    }
+  }, [thinkingContextFilter, thinkingContextOptions])
+
+  useEffect(() => {
+    if (!todoContextFilter || todoContextFilter === '__none') {
+      return
+    }
+    if (!todoContextOptions.some((option) => option.value === todoContextFilter)) {
+      setTodoContextFilter('')
+    }
+  }, [todoContextFilter, todoContextOptions])
 
   const staleTodos = useMemo(() => {
     const today = new Date()
@@ -2842,14 +2880,14 @@ function AppContent() {
                 <span className="sr-only">Bereich filtern</span>
                 <select
                   className="context-select context-select--filter"
-                  value={thinkingContextFilter}
+                  value={thinkingContextFilter === '__none' ? '' : thinkingContextFilter}
                   onChange={(event) => setThinkingContextFilter(event.target.value as ContextFilter)}
                   aria-label="Bereich filtern"
                   title="Bereich filtern"
                 >
                   <option value="">Alle Bereiche</option>
                   <option value="__none">Ohne Bereich</option>
-                  {CONTEXT_OPTIONS.map((option) => (
+                  {thinkingContextOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -2955,14 +2993,14 @@ function AppContent() {
                 <span className="sr-only">Bereich filtern</span>
                 <select
                   className="context-select context-select--filter"
-                  value={todoContextFilter}
+                  value={todoContextFilter === '__none' ? '' : todoContextFilter}
                   onChange={(event) => setTodoContextFilter(event.target.value as ContextFilter)}
                   aria-label="Bereich filtern"
                   title="Bereich filtern"
                 >
                   <option value="">Alle Bereiche</option>
                   <option value="__none">Ohne Bereich</option>
-                  {CONTEXT_OPTIONS.map((option) => (
+                  {todoContextOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
