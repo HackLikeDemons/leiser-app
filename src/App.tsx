@@ -607,6 +607,15 @@ function BraindumpComposer({
     }
     return 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window
   }, [])
+  const browserHints = useMemo(() => {
+    if (typeof navigator === 'undefined') {
+      return { isEdge: false, isSafari: false }
+    }
+    const ua = navigator.userAgent
+    const isEdge = /\bEdg\//.test(ua)
+    const isSafari = /\bSafari\//.test(ua) && !/\bChrom(e|ium)\//.test(ua) && !isEdge
+    return { isEdge, isSafari }
+  }, [])
 
   const submit = useCallback(async (entries: string[]) => {
     const cleaned = entries.map((entry) => entry.trim()).filter((entry) => entry.length > 0)
@@ -716,8 +725,7 @@ function BraindumpComposer({
     setDictationError('')
     const preferredLang = navigator.language?.trim() || 'de-DE'
     recognition.lang = preferredLang.includes('-') ? preferredLang : `${preferredLang}-${preferredLang.toUpperCase()}`
-    // Edge is noticeably more reliable with single-utterance sessions.
-    recognition.continuous = false
+    recognition.continuous = !browserHints.isEdge
     recognition.interimResults = true
     recognition.onresult = (event) => {
       let transcript = ''
@@ -733,7 +741,7 @@ function BraindumpComposer({
       if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
         if (!window.isSecureContext) {
           setDictationError('Spracherkennung braucht eine sichere Verbindung (HTTPS oder localhost).')
-        } else {
+        } else if (browserHints.isEdge) {
           // Probe actual mic permission only after recognition error, to keep start()
           // inside the direct user gesture path (important for Chromium/Edge).
           void probeMicrophoneAccess().then((hasMicAccess) => {
@@ -743,6 +751,10 @@ function BraindumpComposer({
                 : 'Mikrofonzugriff blockiert. Bitte in Edge für diese Seite erlauben.',
             )
           })
+        } else if (browserHints.isSafari) {
+          setDictationError('Safari-Spracherkennung wurde blockiert. Bitte Siri/Diktat-Einstellungen prüfen.')
+        } else {
+          setDictationError('Spracherkennung wurde blockiert. Bitte Browser-Berechtigungen prüfen.')
         }
       } else if (errorCode === 'network') {
         setDictationError('Spracherkennung derzeit nicht erreichbar. Bitte erneut versuchen.')
@@ -775,9 +787,13 @@ function BraindumpComposer({
       dictationAutoSubmitOnEndRef.current = false
       recognitionRef.current = null
       setIsDictating(false)
-      setDictationError('Diktieren konnte nicht gestartet werden. Bitte Edge-Mikrofonrechte prüfen.')
+      setDictationError(
+        browserHints.isEdge
+          ? 'Diktieren konnte nicht gestartet werden. Bitte Edge-Mikrofonrechte prüfen.'
+          : 'Diktieren konnte nicht gestartet werden. Bitte Browser-Berechtigungen prüfen.',
+      )
     }
-  }, [probeMicrophoneAccess, submit, supportsDictation, text])
+  }, [browserHints.isEdge, browserHints.isSafari, probeMicrophoneAccess, submit, supportsDictation, text])
 
   useEffect(() => {
     latestTextRef.current = text
