@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, KeyboardEvent, RefObject } from 'react'
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import QRCode from 'qrcode'
 import { useRegisterSW } from 'virtual:pwa-register/react'
@@ -628,7 +628,7 @@ function BraindumpComposer({
     }
   }, [onSubmitEntries])
 
-  const handleTextKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleTextKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) {
       return
     }
