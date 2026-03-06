@@ -693,7 +693,19 @@ function BraindumpComposer({
         start: () => void
         stop: () => void
       }
-    }).SpeechRecognition ?? (window as Window & { webkitSpeechRecognition?: new () => never }).webkitSpeechRecognition
+    }).webkitSpeechRecognition
+      ?? (window as Window & {
+        SpeechRecognition?: new () => {
+          lang: string
+          continuous: boolean
+          interimResults: boolean
+          onresult: ((event: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+          onerror: (() => void) | null
+          onend: (() => void) | null
+          start: () => void
+          stop: () => void
+        }
+      }).SpeechRecognition
 
     if (!RecognitionCtor) {
       setDictationError('Diktieren wird auf diesem Gerät nicht unterstützt.')
