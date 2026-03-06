@@ -519,7 +519,7 @@ async function enqueueAutomergeChanges(
   snapshot?: Note,
   roomId = getActiveSyncRoomId(),
 ): Promise<void> {
-  if (!changes.length) {
+  if (!changes.length && !snapshot) {
     return
   }
 
@@ -566,6 +566,19 @@ async function enqueueAutomergeChanges(
       }),
     )
   }
+}
+
+export async function enqueueMissingRoomSnapshots(roomId: string, existingNoteIds: Set<string>): Promise<number> {
+  const notes = await listSearchableNotes()
+  let queued = 0
+  for (const note of notes) {
+    if (existingNoteIds.has(note.id)) {
+      continue
+    }
+    await enqueueAutomergeChanges(note.id, [], note, roomId)
+    queued += 1
+  }
+  return queued
 }
 
 export function decodeOutboxEnvelope(bytes: ArrayBuffer): ChangeEnvelope {

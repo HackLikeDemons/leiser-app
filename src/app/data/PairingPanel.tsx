@@ -42,8 +42,7 @@ export function PairingPanel({
       {scannerHint ? <p className="hint">{scannerHint}</p> : null}
       {syncPairCode ? (
         <div className="import-panel">
-          <label className="hint" htmlFor="sync-pair-code">Pair Code (mit Token)</label>
-          <textarea id="sync-pair-code" readOnly value={syncPairCode} rows={4} />
+          <p className="hint">Pair Code ist aus Sicherheitsgründen ausgeblendet.</p>
           <button type="button" onClick={onCopyPairCode}>
             Pair Code kopieren
           </button>

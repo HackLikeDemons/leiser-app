@@ -9,6 +9,7 @@ import {
   getNoteById,
   getSyncState,
   hasInboxSeen,
+  enqueueMissingRoomSnapshots,
   listPendingOutboxChanges,
   markInboxSeen,
   markOutboxChangesSent,
@@ -146,6 +147,20 @@ function collectChangeIdsFromBlob(blob: SyncBlob | null): Set<string> {
     const item = asSyncEnvelope(rawItem)
     if (item) {
       ids.add(item.changeId)
+    }
+  }
+  return ids
+}
+
+function collectNoteIdsFromBlob(blob: SyncBlob | null): Set<string> {
+  const ids = new Set<string>()
+  if (!blob) {
+    return ids
+  }
+  for (const rawItem of blob.changes) {
+    const item = asSyncEnvelope(rawItem)
+    if (item) {
+      ids.add(item.noteId)
     }
   }
   return ids
@@ -518,6 +533,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
     let pendingOutboxCount = 0
     let repairedInboxSeenCache = false
     let repairedBlankNotes = false
+    let bootstrappedSnapshots = false
 
     while (!synced && attempts <= maxRetries) {
       attempts += 1
@@ -536,9 +552,27 @@ export async function syncNow(options: SyncNowOptions = {}) {
       totalSignatureRejected += merged.signatureRejected
 
       const pending = await listPendingOutboxChanges(roomId, 200)
-      const localEnvelopes = pending.map((row) => decodeOutboxEnvelope(row.bytes))
+      let localEnvelopes = pending.map((row) => decodeOutboxEnvelope(row.bytes))
       pendingForAck = pending.map((row) => row.changeId)
       pendingOutboxCount = pending.length
+
+      if (!bootstrappedSnapshots) {
+        const remoteNoteIds = collectNoteIdsFromBlob(remoteBlob)
+        for (const env of localEnvelopes) {
+          remoteNoteIds.add(env.noteId)
+        }
+        const seeded = await enqueueMissingRoomSnapshots(roomId, remoteNoteIds)
+        if (seeded > 0) {
+          bootstrappedSnapshots = true
+          const refreshedPending = await listPendingOutboxChanges(roomId, 200)
+          localEnvelopes = refreshedPending.map((row) => decodeOutboxEnvelope(row.bytes))
+          pendingForAck = refreshedPending.map((row) => row.changeId)
+          pendingOutboxCount = refreshedPending.length
+          setStatus('syncing', `${seeded} Bestandsdaten werden synchronisiert…`)
+        } else {
+          bootstrappedSnapshots = true
+        }
+      }
 
       if (!repairedInboxSeenCache && merged.remoteSeen > 0 && merged.seen === 0 && pending.length === 0) {
         await clearInboxSeen()
