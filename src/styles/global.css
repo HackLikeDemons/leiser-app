@@ -60,12 +60,42 @@ body {
   overscroll-behavior: none;
   overflow-x: hidden;
   font-family: var(--font-body);
+  font-weight: 400;
   font-feature-settings: 'cv02' 1, 'cv03' 1, 'cv04' 1;
+  font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: linear-gradient(180deg, var(--surface-page-top) 0%, var(--surface-page-bottom) 100%);
   color: var(--text-primary);
+}
+
+/* Edge/Windows tends to render fallback faces slightly heavier. */
+@supports (-ms-ime-align: auto) {
+  :root {
+    --font-body: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-display: 'Segoe UI Variable Display', 'Segoe UI', 'Inter', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --note-text-weight: 460;
+    --note-meta-weight: 460;
+  }
+
+  body {
+    font-feature-settings: normal;
+    font-synthesis: none;
+  }
+
+  button {
+    font-weight: 500;
+  }
+
+  .tab-button {
+    font-weight: 560;
+  }
+
+  .tab-button--active {
+    font-weight: 600;
+  }
 }
 
 h1,
