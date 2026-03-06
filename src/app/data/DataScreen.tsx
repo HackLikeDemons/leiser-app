@@ -23,6 +23,7 @@ type DataScreenProps = {
   onToggleDebugInfo: () => void
   showDebugInfo: boolean
   onSyncNow: () => void
+  onCopySyncProtocol: () => void
   syncNowBusy: boolean
   importReport: ImportReport | null
   info: string
@@ -63,6 +64,7 @@ export function DataScreen({
   onToggleDebugInfo,
   showDebugInfo,
   onSyncNow,
+  onCopySyncProtocol,
   syncNowBusy,
   importReport,
   info,
@@ -110,6 +112,7 @@ export function DataScreen({
             onToggleDebugInfo={onToggleDebugInfo}
             showDebugInfo={showDebugInfo}
             onSyncNow={onSyncNow}
+            onCopySyncProtocol={onCopySyncProtocol}
             syncNowBusy={syncNowBusy}
             importReport={importReport}
             info={info}

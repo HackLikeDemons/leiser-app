@@ -12,6 +12,7 @@ import {
   getSyncDebugInfo,
   getSyncState,
   getSyncPairCode,
+  listPendingOutboxChanges,
   listInboxNotes,
   listAutoArchiveCandidates,
   listNotesByStatus,
@@ -149,6 +150,16 @@ function toSyncTimeLabel(isoTimestamp: string | null) {
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
   return `${hours}:${minutes}`
+}
+
+function maskSecret(value: string | null) {
+  if (!value) {
+    return null
+  }
+  if (value.length <= 8) {
+    return `${value.slice(0, 2)}***${value.slice(-2)}`
+  }
+  return `${value.slice(0, 4)}***${value.slice(-4)}`
 }
 
 function daysBetween(dateA: Date, dateB: Date) {
@@ -1051,6 +1062,99 @@ function AppContent() {
       setSyncNowBusy(false)
     }
   }, [refreshAll, syncRoomId])
+
+  const handleCopySyncProtocol = useCallback(async () => {
+    setError('')
+    try {
+      const [state, debugInfo, pendingOutbox] = await Promise.all([
+        getSyncState(syncRoomId),
+        getSyncDebugInfo(syncRoomId),
+        listPendingOutboxChanges(syncRoomId, 200),
+      ])
+
+      const outboxSummary = pendingOutbox.map((entry) => ({
+        changeId: entry.changeId,
+        noteId: entry.noteId,
+        createdAt: entry.createdAt,
+        sentAt: entry.sentAt,
+        attemptCount: entry.attemptCount,
+        bytesLength:
+          entry.bytes instanceof ArrayBuffer
+            ? entry.bytes.byteLength
+            : entry.bytes && 'byteLength' in entry.bytes
+              ? Number((entry.bytes as { byteLength?: unknown }).byteLength) || 0
+              : 0,
+      }))
+
+      const protocol = {
+        timestamp: new Date().toISOString(),
+        app: {
+          tab: activeTab,
+          syncRoomId,
+          syncEnabled,
+          syncStatus,
+          syncError,
+        },
+        syncState: {
+          roomId: state.roomId,
+          isEnabled: state.isEnabled,
+          lastPulledSeq: state.lastPulledSeq,
+          lastPushedAt: state.lastPushedAt,
+          lastError: state.lastError,
+          syncTokenMasked: maskSecret(state.syncToken),
+        },
+        syncDebug: {
+          deviceId: debugInfo.deviceId,
+          roomId: debugInfo.roomId,
+          lastPulledSeq: debugInfo.lastPulledSeq,
+          lastPushedAt: debugInfo.lastPushedAt,
+          isEnabled: debugInfo.isEnabled,
+          syncTokenPresent: Boolean(debugInfo.syncToken),
+        },
+        diagnostics: syncDiagnostics,
+        localStorage: {
+          syncId: localStorage.getItem(SYNC_ID_STORAGE_KEY),
+          syncTokenMasked: maskSecret(localStorage.getItem(SYNC_TOKEN_STORAGE_KEY)),
+          syncKeyMasked: maskSecret(localStorage.getItem(SYNC_KEY_STORAGE_KEY)),
+          showDebugInfo: localStorage.getItem(SHOW_DEBUG_INFO_STORAGE_KEY),
+        },
+        dataCounts: {
+          inbox: inboxNotes.length,
+          thinking: processCount,
+          todo: todoNotes.length,
+          archived: archivedNotes.length,
+        },
+        outbox: {
+          pendingCount: outboxSummary.length,
+          items: outboxSummary,
+        },
+        environment: {
+          userAgent: navigator.userAgent,
+          language: navigator.language,
+          online: navigator.onLine,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          url: window.location.href,
+        },
+      }
+
+      await navigator.clipboard.writeText(JSON.stringify(protocol, null, 2))
+      showTransientInfo('Sync-Protokoll kopiert.')
+    } catch {
+      setError('Sync-Protokoll konnte nicht kopiert werden.')
+    }
+  }, [
+    activeTab,
+    archivedNotes.length,
+    inboxNotes.length,
+    processCount,
+    showTransientInfo,
+    syncDiagnostics,
+    syncEnabled,
+    syncError,
+    syncRoomId,
+    syncStatus,
+    todoNotes.length,
+  ])
 
   const stopScanner = useCallback(() => {
     scannerControlsRef.current?.stop()
@@ -1999,6 +2103,7 @@ function AppContent() {
                 onToggleDebugInfo={() => setShowDebugInfo((prev) => !prev)}
                 showDebugInfo={showDebugInfo}
                 onSyncNow={() => void handleSyncNow()}
+                onCopySyncProtocol={() => void handleCopySyncProtocol()}
                 syncNowBusy={syncNowBusy}
                 importReport={importReport}
                 info={info}

@@ -29,6 +29,7 @@ type SyncPanelProps = {
   onToggleDebugInfo: () => void
   showDebugInfo: boolean
   onSyncNow: () => void
+  onCopySyncProtocol: () => void
   syncNowBusy: boolean
   importReport: ImportReport | null
   info: string
@@ -54,6 +55,7 @@ export function SyncPanel({
   onToggleDebugInfo,
   showDebugInfo,
   onSyncNow,
+  onCopySyncProtocol,
   syncNowBusy,
   importReport,
   info,
@@ -88,6 +90,11 @@ export function SyncPanel({
         <button type="button" onClick={onSyncNow} disabled={!syncEnabled || syncNowBusy}>
           {syncNowBusy ? 'Sync läuft…' : 'Sync now (Debug)'}
         </button>
+        {showDebugInfo ? (
+          <button type="button" onClick={onCopySyncProtocol}>
+            Sync-Protokoll kopieren
+          </button>
+        ) : null}
       </div>
 
       {showImportPanel ? (

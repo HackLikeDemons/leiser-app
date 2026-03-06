@@ -607,6 +607,13 @@ function toByteArray(value: unknown): Uint8Array | null {
     if (Array.isArray(record.data) && record.data.every((item) => typeof item === 'number')) {
       return Uint8Array.from(record.data)
     }
+    // Legacy JSON form of Uint8Array: {"0":12,"1":34,...}
+    const numericEntries = Object.entries(value as Record<string, unknown>)
+      .filter(([key, item]) => /^\d+$/.test(key) && typeof item === 'number')
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+    if (numericEntries.length > 0) {
+      return Uint8Array.from(numericEntries.map(([, item]) => item as number))
+    }
   }
   return null
 }
