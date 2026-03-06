@@ -32,6 +32,20 @@ oder zur Laufzeit per `localStorage`.
 
 Beim erstmaligen Abgleich eines Geräts werden fehlende Bestandsdaten per Snapshot-Envelopes nachgezogen.
 
+## Wiederaufbau nach Sync-Problemen (empfohlene Reihenfolge)
+
+Wenn ein bestehender Verbund driftet, diese Reihenfolge einhalten:
+
+1. Auf Client A `Aktive Einträge exportieren` (Backup) ausführen.
+2. Auf Client A `Client bereinigen`.
+3. Auf Client A `Neuen Sync-Raum erstellen`.
+4. Auf Client A Backup importieren.
+5. Auf Client A `Sync aktivieren` und einmal `Sync now (Debug)` laufen lassen, bis keine weiteren Bestandsdaten mehr gesendet werden.
+6. Erst danach Client B/C/... bereinigen und per Pair-Code mit Client A koppeln.
+7. Auf jedem neuen Client optional einmal `Sync now (Debug)` ausführen.
+
+Wichtig: Wenn Schritt 5 übersprungen wird, können frisch importierte Bestandsdaten auf weiteren Clients zunächst unvollständig erscheinen.
+
 ## Neuen Client in Betrieb nehmen
 
 ### Fall A: Eigener Vault (nicht mit anderen Geräten teilen)

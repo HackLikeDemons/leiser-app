@@ -4,6 +4,7 @@ import {
   bumpOutboxAttempt,
   decodeChangePayload,
   decodeOutboxEnvelope,
+  enqueueMissingRoomSnapshots,
   getNoteById,
   getSyncState,
   listPendingOutboxChanges,
@@ -317,6 +318,14 @@ function mergeEnvelopeSets(remoteEnvelopes: ChangeEnvelope[], localEnvelopes: Ch
   })
 }
 
+function collectNoteIds(envelopes: ChangeEnvelope[]): Set<string> {
+  const ids = new Set<string>()
+  for (const envelope of envelopes) {
+    ids.add(envelope.noteId)
+  }
+  return ids
+}
+
 async function getPendingEnvelopes(roomId: string, limit: number): Promise<{ rows: Awaited<ReturnType<typeof listPendingOutboxChanges>>; envelopes: ChangeEnvelope[] }> {
   const rows = await listPendingOutboxChanges(roomId, limit)
   const envelopes: ChangeEnvelope[] = []
@@ -580,6 +589,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
     let remoteChangedRetries = 0
     let pendingOutboxCount = 0
     let appliedAny = false
+    let bootstrappedSnapshots = false
 
     let hasMorePending = true
     let drainRounds = 0
@@ -604,9 +614,24 @@ export async function syncNow(options: SyncNowOptions = {}) {
         totalSignatureRejected += merged.signatureRejected
         appliedAny = appliedAny || merged.applied
 
-        const pending = await getPendingEnvelopes(roomId, outboxBatchLimit)
+        let pending = await getPendingEnvelopes(roomId, outboxBatchLimit)
         lastPendingRows = pending.rows
         pendingOutboxCount = pending.rows.length
+
+        if (!bootstrappedSnapshots) {
+          const existingIds = collectNoteIds(merged.remoteEnvelopes)
+          for (const envelope of pending.envelopes) {
+            existingIds.add(envelope.noteId)
+          }
+          const seeded = await enqueueMissingRoomSnapshots(roomId, existingIds)
+          bootstrappedSnapshots = true
+          if (seeded > 0) {
+            setStatus('syncing', `${seeded} Bestandsdaten werden synchronisiert…`)
+            pending = await getPendingEnvelopes(roomId, outboxBatchLimit)
+            lastPendingRows = pending.rows
+            pendingOutboxCount = pending.rows.length
+          }
+        }
 
         const combined = mergeEnvelopeSets(merged.remoteEnvelopes, pending.envelopes)
         if (combined.length === 0) {

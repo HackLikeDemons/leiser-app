@@ -2128,6 +2128,7 @@ function AppContent() {
       setImportReport(report)
       showTransientInfo('Backup erfolgreich importiert.')
       setImportFile(null)
+      setShowImportPanel(false)
       await refreshAll()
     } catch (importError) {
       if (importError instanceof Error) {

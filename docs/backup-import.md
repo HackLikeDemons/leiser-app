@@ -8,6 +8,16 @@
 - enthält auch soft-deleted Einträge (`deletedAt`)
 - Dateiname: `leiser-backup-YYYY-MM-DD.json`
 - arbeitet je nach Gerät mit Datei-Download oder Share-Sheet
+- Optional: `Aktive Einträge exportieren` (ohne `deletedAt`, ohne `ARCHIVE`, ohne `DISCARD`)
+
+## Reihenfolge bei Neuaufbau mit neuem Sync-Raum
+
+1. Auf dem Quell-Client aktiven Export erstellen.
+2. Quell-Client bereinigen.
+3. Neuen Sync-Raum anlegen.
+4. Backup importieren.
+5. Sync auf dem Quell-Client aktivieren und mindestens einen manuellen Lauf (`Sync now (Debug)`) abschließen.
+6. Erst danach weitere Clients bereinigen und per Pair-Code beitreten lassen.
 
 ## Import-Modi
 
