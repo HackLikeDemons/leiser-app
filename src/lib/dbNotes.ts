@@ -573,15 +573,53 @@ export function decodeOutboxEnvelope(bytes: ArrayBuffer): ChangeEnvelope {
   return JSON.parse(text) as ChangeEnvelope
 }
 
-export function decodeChangePayload(payload: string[]): Uint8Array[] {
-  return payload.map((part) => {
-    const binary = atob(part)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i)
+function decodeBase64Part(part: string): Uint8Array {
+  const binary = atob(part)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
+}
+
+function toByteArray(value: unknown): Uint8Array | null {
+  if (value instanceof Uint8Array) {
+    return value
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value)
+  }
+  if (typeof value === 'string') {
+    try {
+      return decodeBase64Part(value)
+    } catch {
+      return null
     }
-    return bytes
-  })
+  }
+  if (Array.isArray(value) && value.every((item) => typeof item === 'number')) {
+    return Uint8Array.from(value)
+  }
+  if (value && typeof value === 'object') {
+    const record = value as { type?: unknown; data?: unknown }
+    if (record.type === 'Buffer' && Array.isArray(record.data) && record.data.every((item) => typeof item === 'number')) {
+      return Uint8Array.from(record.data)
+    }
+    if (Array.isArray(record.data) && record.data.every((item) => typeof item === 'number')) {
+      return Uint8Array.from(record.data)
+    }
+  }
+  return null
+}
+
+export function decodeChangePayload(payload: unknown[]): Uint8Array[] {
+  const decoded: Uint8Array[] = []
+  for (const part of payload) {
+    const bytes = toByteArray(part)
+    if (bytes && bytes.length > 0) {
+      decoded.push(bytes)
+    }
+  }
+  return decoded
 }
 
 export async function addNote(text: string): Promise<Note> {

@@ -52,7 +52,7 @@ export type ChangeEnvelope = {
   noteId: string
   ts: number
   kind: 'automerge_changes_v1'
-  payload: string[]
+  payload: unknown[]
   signerDeviceId?: string
   signerPublicKey?: string
   signature?: string
