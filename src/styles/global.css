@@ -399,6 +399,24 @@ h3 {
   color: var(--text-primary);
 }
 
+.tab-button--disabled,
+.tab-button:disabled {
+  color: color-mix(in srgb, var(--text-secondary) 62%, transparent);
+  border-bottom-color: transparent;
+  background: color-mix(in srgb, var(--surface-card-soft) 72%, #000000 28%);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.tab-button--disabled:hover,
+.tab-button:disabled:hover {
+  background: color-mix(in srgb, var(--surface-card-soft) 72%, #000000 28%);
+  color: color-mix(in srgb, var(--text-secondary) 62%, transparent);
+}
+
 .data-section {
   margin: 0 0 0.7rem;
 }
@@ -484,18 +502,18 @@ h3 {
 
 .context-editor-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(2, minmax(132px, 10rem));
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 0.55rem;
   align-items: center;
 }
 
 .context-editor-row > .review-btn,
 .context-editor-row > .danger-btn {
-  width: 100%;
+  width: fit-content;
   justify-content: center;
   text-align: center;
   min-height: 36px;
-  padding: 0.3rem 0.62rem;
+  padding: 0.3rem 0.78rem;
   font-size: 0.88rem;
 }
 
@@ -846,6 +864,15 @@ h3 {
   font-size: 0.92rem;
 }
 
+.hint--transient {
+  opacity: 1;
+  transition: opacity 260ms ease;
+}
+
+.hint--transient.hint--fade-out {
+  opacity: 0;
+}
+
 button {
   width: fit-content;
   border: 1px solid var(--border-soft);
@@ -930,6 +957,23 @@ button[disabled]:hover {
   content: '·';
   margin: 0 0.34rem 0 0.1rem;
   opacity: 0.7;
+}
+
+.capture-context-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.capture-context-suggest__item {
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-default));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-button));
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 0.22rem 0.58rem;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .capture-dictate {
@@ -1696,10 +1740,12 @@ button[disabled]:hover {
 }
 
 .review-empty-cta-actions {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   flex-wrap: wrap;
   gap: 0.45rem;
   margin-top: 0.55rem;
+  justify-content: flex-end;
 }
 
 .age-badge {
@@ -1729,8 +1775,9 @@ button[disabled]:hover {
 }
 
 .undo-snackbar {
-  margin-top: 0.45rem;
-  display: inline-flex;
+  margin: 0.45rem 0 0 auto;
+  width: fit-content;
+  display: flex;
   align-items: center;
   gap: 0.45rem;
   border: 1px solid var(--border-default);
@@ -1742,13 +1789,16 @@ button[disabled]:hover {
 }
 
 .undo-snackbar button {
+  margin-left: auto;
   border-radius: 999px;
   padding: 0.22rem 0.55rem;
   font-size: 0.82rem;
 }
 
 .undo-snackbar--subtle {
-  margin-top: 0.5rem;
+  margin: 0.5rem 0 0 auto;
+  width: fit-content;
+  display: flex;
   opacity: 0.9;
   border-color: color-mix(in srgb, var(--border-default) 82%, transparent);
   background: color-mix(in srgb, var(--surface-card-soft) 88%, transparent);
@@ -1868,6 +1918,27 @@ button[disabled]:hover {
 .review-btn--skip {
   background: var(--surface-button);
   border-color: var(--border-default);
+}
+
+.review-btn--cta {
+  background: linear-gradient(180deg, #5d82e5 0%, #5577d8 55%, #4f70cc 100%);
+  border-color: #4a69c2;
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 14%, transparent);
+}
+
+.review-btn--cta:hover {
+  background: linear-gradient(180deg, #6289ef 0%, #587dde 55%, #5276d6 100%);
+  border-color: #4662b7;
+}
+
+.review-empty-cta-actions .review-btn--cta,
+.archive-toggle-row .archive-toggle--archive-action {
+  width: fit-content;
+  max-width: 100%;
+  justify-content: center;
+  padding-inline: 1rem;
+  white-space: nowrap;
 }
 
 .merge-label {
@@ -2002,6 +2073,15 @@ button:focus {
     line-height: 1.2;
   }
 
+  .capture-context-suggest {
+    gap: 0.32rem;
+  }
+
+  .capture-context-suggest__item {
+    font-size: 0.79rem;
+    padding: 0.22rem 0.52rem;
+  }
+
   .note-item--review-row {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
@@ -2090,7 +2170,8 @@ button:focus {
   }
 
   .context-editor-row > button {
-    width: 100%;
+    width: fit-content;
+    justify-self: start;
     min-height: 36px;
     font-size: 0.92rem;
   }

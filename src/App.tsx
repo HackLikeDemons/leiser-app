@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import QRCode from 'qrcode'
@@ -23,6 +23,7 @@ import {
   clearUnknownContexts,
   replaceContextAcrossNotes,
   hardDeleteNotes,
+  restoreNote,
   setSyncEnabled,
   updateSyncState,
   updateNoteArchiveBucket,
@@ -67,10 +68,12 @@ const SHOW_DEBUG_INFO_STORAGE_KEY = 'leiser:show-debug-info'
 const LAST_BACKUP_AT_STORAGE_KEY = 'leiser:last-backup-at'
 const RELOAD_AFTER_INACTIVITY_MS = 20 * 60 * 1000
 const FEEDBACK_VISIBILITY_MS = 3000
+const TRANSIENT_INFO_FADE_OUT_MS = 260
 const SW_UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
 const BACKUP_OVERDUE_DAYS = 7
 const HAS_VISITED_STORAGE_KEY = 'leiser_hasVisited'
 const CONTEXT_OPTIONS_STORAGE_KEY = 'leiser:context-options-v1'
+const MAX_CONTEXT_OPTIONS = 8
 
 type PairingPayloadV1 = {
   v: 1
@@ -85,6 +88,8 @@ type LastAction = {
   prevStatus: NoteStatus
   newStatus: NoteStatus
   at: number
+  restoresDelete?: boolean
+  scope?: 'THINKING' | 'TODO'
 }
 type CaptureFeedback = {
   id: number
@@ -100,6 +105,17 @@ type ContextGroup = {
 type ContextOption = {
   value: ContextTag
   label: string
+}
+
+type ParsedBraindumpEntry = {
+  text: string
+  context?: ContextTag
+}
+
+type ContextHashtagMatch = {
+  start: number
+  end: number
+  context: ContextTag
 }
 
 function encodeBase64Url(input: string) {
@@ -330,6 +346,48 @@ function contextFilterPhrase(filter: ContextFilter, options: ContextOption[]) {
   return 'alle Bereiche'
 }
 
+function findValidContextHashtags(entry: string, options: ContextOption[]): ContextHashtagMatch[] {
+  const optionByLowerValue = new Map(options.map((option) => [option.value.toLocaleLowerCase('de-DE'), option.value]))
+  const hashtagPattern = /(^|\s)#([^\s#]+)/g
+  const matches: ContextHashtagMatch[] = []
+  let current: RegExpExecArray | null = hashtagPattern.exec(entry)
+  while (current) {
+    const [, prefix, rawTag] = current
+    const normalizedTag = normalizeContextTag(rawTag)
+    if (normalizedTag) {
+      const context = optionByLowerValue.get(normalizedTag.toLocaleLowerCase('de-DE'))
+      if (context) {
+        const hashtagStart = current.index + prefix.length
+        const hashtagEnd = hashtagStart + 1 + rawTag.length
+        matches.push({ start: hashtagStart, end: hashtagEnd, context })
+      }
+    }
+    current = hashtagPattern.exec(entry)
+  }
+  return matches
+}
+
+function parseBraindumpEntryForContext(entry: string, options: ContextOption[]): ParsedBraindumpEntry {
+  const trimmed = entry.trim()
+  if (!trimmed) {
+    return { text: '' }
+  }
+
+  const match = findValidContextHashtags(trimmed, options)[0]
+
+  if (!match) {
+    return { text: trimmed }
+  }
+
+  const withoutHashtag = `${trimmed.slice(0, match.start)} ${trimmed.slice(match.end)}`
+    .replace(/\s+/g, ' ')
+    .trim()
+  return {
+    text: withoutHashtag,
+    context: match.context,
+  }
+}
+
 function readHasVisitedFlag() {
   if (typeof window === 'undefined') {
     return false
@@ -490,6 +548,7 @@ function ExpandableNoteText({ text }: { text: string }) {
 function todoActionLabel(status: NoteStatus) {
   if (status === 'ARCHIVE') return 'Als erledigt markiert.'
   if (status === 'INBOX') return 'Zurück in Inbox verschoben.'
+  if (status === 'DISCARD') return 'Im Archiv gelöscht.'
   return 'Handlung aktualisiert.'
 }
 
@@ -542,10 +601,12 @@ const BraindumpList = memo(function BraindumpList({
   captureFeedback,
   showInboxEmptyState,
   onSubmitEntries,
+  contextOptions,
 }: {
   captureFeedback: CaptureFeedback | null
   showInboxEmptyState: boolean
-  onSubmitEntries: (entries: string[]) => Promise<void>
+  onSubmitEntries: (entries: string[]) => Promise<boolean>
+  contextOptions: ContextOption[]
 }) {
   return (
     <>
@@ -558,7 +619,7 @@ const BraindumpList = memo(function BraindumpList({
           {captureFeedback.text}
         </p>
       ) : null}
-      <BraindumpComposer onSubmitEntries={onSubmitEntries} />
+      <BraindumpComposer onSubmitEntries={onSubmitEntries} contextOptions={contextOptions} />
     </>
   )
 })
@@ -833,10 +894,13 @@ function ArchivedTodoNoteRow({
 
 function BraindumpComposer({
   onSubmitEntries,
+  contextOptions,
 }: {
-  onSubmitEntries: (entries: string[]) => Promise<void>
+  onSubmitEntries: (entries: string[]) => Promise<boolean>
+  contextOptions: ContextOption[]
 }) {
   const [text, setText] = useState('')
+  const [caretPosition, setCaretPosition] = useState(0)
   const [flashInput, setFlashInput] = useState(false)
   const [isDictating, setIsDictating] = useState(false)
   const [dictationError, setDictationError] = useState('')
@@ -875,7 +939,10 @@ function BraindumpComposer({
       recognitionRef.current = null
       setIsDictating(false)
     }
-    await onSubmitEntries(cleaned)
+    const saved = await onSubmitEntries(cleaned)
+    if (!saved) {
+      return
+    }
     setText('')
     setFlashInput(true)
     window.setTimeout(() => setFlashInput(false), 120)
@@ -883,6 +950,72 @@ function BraindumpComposer({
       inputRef.current?.focus({ preventScroll: true })
     }
   }, [onSubmitEntries])
+
+  const activeHashtagToken = useMemo(() => {
+    const safeCaret = Math.max(0, Math.min(caretPosition, text.length))
+    const beforeCaret = text.slice(0, safeCaret)
+    const match = beforeCaret.match(/(^|\s)#([^\s#]*)$/)
+    if (!match) {
+      return null
+    }
+    const token = match[0]
+    const leadingSpace = match[1] ?? ''
+    const query = match[2] ?? ''
+    const start = safeCaret - token.length + leadingSpace.length
+    const end = safeCaret
+    return { query, start, end }
+  }, [caretPosition, text])
+
+  const validContextHashtags = useMemo(() => findValidContextHashtags(text, contextOptions), [text, contextOptions])
+  const selectedContextHint = validContextHashtags[0]?.context
+
+  const contextSuggestions = useMemo(() => {
+    if (activeHashtagToken == null) {
+      return []
+    }
+    const isEditingExistingValidTag = validContextHashtags.some(
+      (match) => activeHashtagToken.start < match.end && activeHashtagToken.end > match.start,
+    )
+    if (validContextHashtags.length > 0 && !isEditingExistingValidTag) {
+      return []
+    }
+    const normalizedQuery = activeHashtagToken.query.toLocaleLowerCase('de-DE')
+    const startsWith = contextOptions.filter((option) =>
+      option.value.toLocaleLowerCase('de-DE').startsWith(normalizedQuery),
+    )
+    const includes = normalizedQuery
+      ? contextOptions.filter(
+        (option) =>
+          !option.value.toLocaleLowerCase('de-DE').startsWith(normalizedQuery)
+          && option.value.toLocaleLowerCase('de-DE').includes(normalizedQuery),
+      )
+      : []
+    return [...startsWith, ...includes]
+  }, [activeHashtagToken, contextOptions, validContextHashtags])
+
+  const applyContextSuggestion = useCallback((nextContext: ContextTag) => {
+    const input = inputRef.current
+    const currentText = input?.value ?? text
+    const caret = input?.selectionStart ?? caretPosition
+    const beforeCaret = currentText.slice(0, caret)
+    const match = beforeCaret.match(/(^|\s)#([^\s#]*)$/)
+    if (!match) {
+      return
+    }
+    const fullMatch = match[0]
+    const leadingSpace = match[1] ?? ''
+    const replaceStart = caret - fullMatch.length + leadingSpace.length
+    const replaceEnd = caret
+    const nextText = `${currentText.slice(0, replaceStart)}#${nextContext} ${currentText.slice(replaceEnd)}`
+    const nextCaret = replaceStart + nextContext.length + 2
+    latestTextRef.current = nextText
+    setText(nextText)
+    setCaretPosition(nextCaret)
+    requestAnimationFrame(() => {
+      input?.focus({ preventScroll: true })
+      input?.setSelectionRange(nextCaret, nextCaret)
+    })
+  }, [caretPosition, text])
 
   const handleTextKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) {
@@ -1066,15 +1199,38 @@ function BraindumpComposer({
           onChange={(event) => {
             latestTextRef.current = event.target.value
             setText(event.target.value)
+            setCaretPosition(event.target.selectionStart ?? event.target.value.length)
           }}
+          onClick={(event) => setCaretPosition(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
+          onKeyUp={(event) => setCaretPosition(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
           onKeyDown={handleTextKeyDown}
         />
+        {activeHashtagToken !== null && contextSuggestions.length > 0 ? (
+          <div className="capture-context-suggest" role="listbox" aria-label="Bestehende Bereiche">
+            {contextSuggestions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className="capture-context-suggest__item"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => applyContextSuggestion(option.value)}
+                aria-label={`Bereich ${option.label} einsetzen`}
+              >
+                #{option.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="capture-actions">
           <div className="capture-meta-row">
             <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
               {text.length} / {SOFT_CHAR_LIMIT}
             </small>
-            <small className="capture-hint">Enter: speichern</small>
+            <small className="capture-hint">
+              {selectedContextHint
+                ? `Enter: speichern, #${selectedContextHint}: zugeordnet`
+                : 'Enter: speichern, #Bereich: zuordnen'}
+            </small>
           </div>
           <button
             type="button"
@@ -1109,11 +1265,13 @@ function BraindumpPage({
   endRef,
   showInboxEmptyState,
   onSubmitEntries,
+  contextOptions,
 }: {
   captureFeedback: CaptureFeedback | null
   endRef: RefObject<HTMLDivElement | null>
   showInboxEmptyState: boolean
-  onSubmitEntries: (entries: string[]) => Promise<void>
+  onSubmitEntries: (entries: string[]) => Promise<boolean>
+  contextOptions: ContextOption[]
 }) {
   return (
     <>
@@ -1121,6 +1279,7 @@ function BraindumpPage({
         captureFeedback={captureFeedback}
         showInboxEmptyState={showInboxEmptyState}
         onSubmitEntries={onSubmitEntries}
+        contextOptions={contextOptions}
       />
       <div ref={endRef} />
     </>
@@ -1177,6 +1336,8 @@ function AppContent() {
   const [contextDraftLabels, setContextDraftLabels] = useState<Record<string, string>>({})
   const [newContextLabel, setNewContextLabel] = useState('')
   const [isContextEditMode, setIsContextEditMode] = useState(false)
+  const [thinkingActionButtonWidth, setThinkingActionButtonWidth] = useState<number | null>(null)
+  const [todoActionButtonWidth, setTodoActionButtonWidth] = useState<number | null>(null)
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
   const [staleReviewTotal, setStaleReviewTotal] = useState(0)
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
@@ -1187,16 +1348,22 @@ function AppContent() {
   const [braindumpCaptureFeedback, setBraindumpCaptureFeedback] = useState<CaptureFeedback | null>(null)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
+  const [isInfoFadingOut, setIsInfoFadingOut] = useState(false)
   const undoTimeoutRef = useRef<number | null>(null)
   const todoUndoTimeoutRef = useRef<number | null>(null)
   const braindumpCaptureFeedbackTimeoutRef = useRef<number | null>(null)
   const braindumpCaptureFeedbackSeqRef = useRef(0)
-  const transientInfoTimeoutRef = useRef<number | null>(null)
+  const transientInfoFadeTimeoutRef = useRef<number | null>(null)
+  const transientInfoClearTimeoutRef = useRef<number | null>(null)
   const mainScrollRef = useRef<HTMLElement | null>(null)
   const braindumpEndRef = useRef<HTMLDivElement | null>(null)
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
   const contextMenuButtonRef = useRef<HTMLButtonElement | null>(null)
+  const thinkingCtaButtonRef = useRef<HTMLButtonElement | null>(null)
+  const thinkingArchiveButtonRef = useRef<HTMLButtonElement | null>(null)
+  const todoCtaButtonRef = useRef<HTMLButtonElement | null>(null)
+  const todoArchiveButtonRef = useRef<HTMLButtonElement | null>(null)
   const scannerVideoRef = useRef<HTMLVideoElement | null>(null)
   const scannerReaderRef = useRef<BrowserMultiFormatReader | null>(null)
   const scannerControlsRef = useRef<IScannerControls | null>(null)
@@ -1220,19 +1387,30 @@ function AppContent() {
     })
   }, [contextOptions])
 
-  const clearTransientInfoTimeout = () => {
-    if (transientInfoTimeoutRef.current !== null) {
-      window.clearTimeout(transientInfoTimeoutRef.current)
-      transientInfoTimeoutRef.current = null
+  const clearTransientInfoTimeouts = () => {
+    if (transientInfoFadeTimeoutRef.current !== null) {
+      window.clearTimeout(transientInfoFadeTimeoutRef.current)
+      transientInfoFadeTimeoutRef.current = null
+    }
+    if (transientInfoClearTimeoutRef.current !== null) {
+      window.clearTimeout(transientInfoClearTimeoutRef.current)
+      transientInfoClearTimeoutRef.current = null
     }
   }
 
   const showTransientInfo = useCallback((message: string) => {
+    clearTransientInfoTimeouts()
     setInfo(message)
-    clearTransientInfoTimeout()
-    transientInfoTimeoutRef.current = window.setTimeout(() => {
+    setIsInfoFadingOut(false)
+    const fadeDelay = Math.max(0, FEEDBACK_VISIBILITY_MS - TRANSIENT_INFO_FADE_OUT_MS)
+    transientInfoFadeTimeoutRef.current = window.setTimeout(() => {
+      setIsInfoFadingOut(true)
+      transientInfoFadeTimeoutRef.current = null
+    }, fadeDelay)
+    transientInfoClearTimeoutRef.current = window.setTimeout(() => {
       setInfo((current) => (current === message ? '' : current))
-      transientInfoTimeoutRef.current = null
+      setIsInfoFadingOut(false)
+      transientInfoClearTimeoutRef.current = null
     }, FEEDBACK_VISIBILITY_MS)
   }, [])
 
@@ -1357,16 +1535,20 @@ function AppContent() {
       if (isTypingInInput(event.target)) {
         return
       }
+      const hasReviewEntries =
+        inboxNotes.length > 0 || todoNotes.some((todo) => daysBetween(new Date(), new Date(todo.createdAt)) > 14)
+      const hasThinkingEntries = processNotes.length > 0 || thinkingArchivedNotes.length > 0
+      const hasTodoEntries = todoNotes.length > 0 || todoArchivedNotes.length > 0
       if (event.key === '1') {
         setActiveTab('BRAINDUMP')
         event.preventDefault()
-      } else if (event.key === '2') {
+      } else if (event.key === '2' && hasReviewEntries) {
         setActiveTab('REVIEW')
         event.preventDefault()
-      } else if (event.key === '3') {
+      } else if (event.key === '3' && hasThinkingEntries) {
         setActiveTab('THINKING')
         event.preventDefault()
-      } else if (event.key === '4') {
+      } else if (event.key === '4' && hasTodoEntries) {
         setActiveTab('TODO')
         event.preventDefault()
       }
@@ -1374,7 +1556,7 @@ function AppContent() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [inboxNotes.length, processNotes.length, todoNotes])
 
   useEffect(() => {
     if (!showContextMenu) {
@@ -2065,7 +2247,7 @@ function AppContent() {
   const handleBraindumpSubmitEntries = useCallback(
     async (entries: string[]) => {
       if (entries.length === 0) {
-        return
+        return false
       }
 
       const nearBottom = isNearBottom()
@@ -2073,7 +2255,21 @@ function AppContent() {
       nextAutoScrollBehaviorRef.current = nearBottom ? 'smooth' : 'auto'
       setError('')
       try {
-        const created = await Promise.all(entries.map((entry) => addNote(entry)))
+        const parsedEntries = entries.map((entry) => parseBraindumpEntryForContext(entry, contextOptions))
+        const hasEmptyContextOnlyEntry = parsedEntries.some((entry) => entry.context && entry.text.trim().length === 0)
+        if (hasEmptyContextOnlyEntry) {
+          setError('Ein Gedanke darf nicht nur aus einem Bereich bestehen.')
+          return false
+        }
+
+        const created = await Promise.all(parsedEntries.map(async (parsed) => {
+          const createdNote = await addNote(parsed.text)
+          if (parsed.context) {
+            await updateNoteContext(createdNote.id, parsed.context)
+            return { ...createdNote, context: parsed.context }
+          }
+          return createdNote
+        }))
         if (created.length > 0) {
           setBraindumpNotes((prev) => {
             const next = [...created, ...prev]
@@ -2099,11 +2295,13 @@ function AppContent() {
           }, FEEDBACK_VISIBILITY_MS)
         }
         void refreshAll()
+        return true
       } catch {
         setError('Notiz konnte nicht gespeichert werden.')
+        return false
       }
     },
-    [isNearBottom, refreshAll],
+    [contextOptions, isNearBottom, refreshAll],
   )
 
   const clearUndoTimeout = () => {
@@ -2132,7 +2330,7 @@ function AppContent() {
       clearUndoTimeout()
       clearTodoUndoTimeout()
       clearBraindumpCaptureFeedbackTimeout()
-      clearTransientInfoTimeout()
+      clearTransientInfoTimeouts()
     },
     [],
   )
@@ -2175,8 +2373,21 @@ function AppContent() {
     setError('')
     try {
       if (status === 'DISCARD') {
-        clearUndoTimeout()
-        setLastAction(null)
+        if (options?.enableUndo) {
+          const snapshot = options.sourceNote
+          if (snapshot) {
+            startUndoWindow({
+              noteId: snapshot.id,
+              prevStatus: snapshot.status,
+              newStatus: status,
+              at: Date.now(),
+              restoresDelete: true,
+            })
+          }
+        } else {
+          clearUndoTimeout()
+          setLastAction(null)
+        }
         await deleteNote(id)
         await refreshAll()
         return
@@ -2212,9 +2423,13 @@ function AppContent() {
     setUndoBusy(true)
     setError('')
     try {
+      if (lastAction.restoresDelete) {
+        await restoreNote(lastAction.noteId)
+      }
       await updateNoteStatus(lastAction.noteId, lastAction.prevStatus)
       clearUndoTimeout()
       setLastAction(null)
+      showTransientInfo('Rückgängig durchgeführt.')
       await refreshAll()
     } catch {
       setError('Rückgängig fehlgeschlagen.')
@@ -2539,6 +2754,7 @@ function AppContent() {
           prevStatus: sourceNote.status,
           newStatus: nextStatus,
           at: Date.now(),
+          scope: 'TODO',
         })
         await refreshAll()
       } catch {
@@ -2565,6 +2781,7 @@ function AppContent() {
           prevStatus: sourceNote.status,
           newStatus: 'ARCHIVE',
           at: Date.now(),
+          scope: 'TODO',
         })
         showTransientInfo('Handlung ins Archiv verschoben.')
         await refreshAll()
@@ -2632,19 +2849,27 @@ function AppContent() {
           .map((option) => (option.value === value ? { value: nextValue, label: nextValue } : option))
           .sort((a, b) => a.label.localeCompare(b.label, 'de-DE')),
       )
-      setInfo('Bereich aktualisiert.')
+      showTransientInfo('Bereich aktualisiert.')
       await refreshAll()
     } catch {
       setError('Bereich konnte nicht aktualisiert werden.')
     }
-  }, [contextDraftLabels, contextOptions, refreshAll])
+  }, [contextDraftLabels, contextOptions, refreshAll, showTransientInfo])
 
   const handleDeleteContextOption = useCallback(async (value: ContextTag) => {
+    const confirmed = typeof window === 'undefined'
+      ? true
+      : window.confirm(
+        `Bereich "${value}" wirklich entfernen?\n\nAlle zugeordneten Einträge werden auf "Ohne Bereich" gesetzt.`,
+      )
+    if (!confirmed) {
+      return
+    }
     setError('')
     try {
       const changed = await replaceContextAcrossNotes(value, undefined)
       setContextOptions((prev) => prev.filter((option) => option.value !== value))
-      setInfo(
+      showTransientInfo(
         changed > 0
           ? `Bereich entfernt. ${changed} Eintrag${changed === 1 ? '' : 'e'} jetzt ohne Bereich.`
           : 'Bereich entfernt.',
@@ -2653,12 +2878,16 @@ function AppContent() {
     } catch {
       setError('Bereich konnte nicht entfernt werden.')
     }
-  }, [refreshAll])
+  }, [refreshAll, showTransientInfo])
 
   const handleAddContextOption = useCallback(() => {
     const label = normalizeContextLabel(newContextLabel)
     if (!label) {
       setError('Bitte Namen für den Bereich eingeben.')
+      return
+    }
+    if (contextOptions.length >= MAX_CONTEXT_OPTIONS) {
+      setError(`Maximal ${MAX_CONTEXT_OPTIONS} Bereiche erlaubt.`)
       return
     }
     const value = normalizeContextTag(label)
@@ -2674,8 +2903,8 @@ function AppContent() {
       return [...prev, { value, label: value }].sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
     })
     setNewContextLabel('')
-    setInfo('Bereich hinzugefügt.')
-  }, [newContextLabel])
+    showTransientInfo('Bereich hinzugefügt.')
+  }, [contextOptions.length, newContextLabel, showTransientInfo])
 
   const handleUndoLastTodoAction = async () => {
     if (!lastTodoAction || todoUndoBusy) {
@@ -2685,9 +2914,13 @@ function AppContent() {
     setTodoUndoBusy(true)
     setError('')
     try {
+      if (lastTodoAction.restoresDelete) {
+        await restoreNote(lastTodoAction.noteId)
+      }
       await updateNoteStatus(lastTodoAction.noteId, lastTodoAction.prevStatus)
       clearTodoUndoTimeout()
       setLastTodoAction(null)
+      showTransientInfo('Rückgängig durchgeführt.')
       await refreshAll()
     } catch {
       setError('Rückgängig für Handlung fehlgeschlagen.')
@@ -2727,19 +2960,31 @@ function AppContent() {
   )
   const handleThinkingArchiveDiscard = useCallback(
     async (id: string) => {
+      const sourceNote = thinkingArchivedNotes.find((note) => note.id === id)
+      if (!sourceNote) {
+        return
+      }
       setError('')
       try {
         await deleteNote(id)
+        startTodoUndoWindow({
+          noteId: sourceNote.id,
+          prevStatus: sourceNote.status,
+          newStatus: 'DISCARD',
+          at: Date.now(),
+          restoresDelete: true,
+          scope: 'THINKING',
+        })
         if (thinkingArchiveCount <= 1) {
           setShowArchive(false)
         }
-        showTransientInfo('Gedanke endgültig gelöscht.')
+        showTransientInfo('Gedanke aus Archiv gelöscht.')
         await refreshAll()
       } catch {
         setError('Gedanke konnte nicht gelöscht werden.')
       }
     },
-    [refreshAll, showTransientInfo, thinkingArchiveCount],
+    [refreshAll, showTransientInfo, startTodoUndoWindow, thinkingArchiveCount, thinkingArchivedNotes],
   )
   const handleArchivedBackToTodo = useCallback(
     (id: string) => {
@@ -2749,19 +2994,31 @@ function AppContent() {
   )
   const handleTodoArchiveDiscard = useCallback(
     async (id: string) => {
+      const sourceNote = todoArchivedNotes.find((note) => note.id === id)
+      if (!sourceNote) {
+        return
+      }
       setError('')
       try {
         await deleteNote(id)
+        startTodoUndoWindow({
+          noteId: sourceNote.id,
+          prevStatus: sourceNote.status,
+          newStatus: 'DISCARD',
+          at: Date.now(),
+          restoresDelete: true,
+          scope: 'TODO',
+        })
         if (todoArchiveCount <= 1) {
           setShowTodoArchive(false)
         }
-        showTransientInfo('Handlung endgültig gelöscht.')
+        showTransientInfo('Handlung aus Archiv gelöscht.')
         await refreshAll()
       } catch {
         setError('Handlung konnte nicht gelöscht werden.')
       }
     },
-    [refreshAll, showTransientInfo, todoArchiveCount],
+    [refreshAll, showTransientInfo, startTodoUndoWindow, todoArchiveCount, todoArchivedNotes],
   )
 
   const visibleTodoNotes = useMemo(() => {
@@ -2805,6 +3062,10 @@ function AppContent() {
     }, allContextOptions)
   }, [allContextOptions, visibleTodoNotes])
 
+  const reviewTabDisabled = orderedInbox.length === 0 && staleTodos.length === 0
+  const thinkingTabDisabled = processNotes.length === 0 && thinkingArchivedNotes.length === 0
+  const todoTabDisabled = todoNotes.length === 0 && todoArchivedNotes.length === 0
+
   useEffect(() => {
     if (activeTab !== 'BRAINDUMP') {
       return
@@ -2828,6 +3089,38 @@ function AppContent() {
     const frame = requestAnimationFrame(() => scrollToBraindumpBottom(behavior))
     return () => cancelAnimationFrame(frame)
   }, [activeTab, braindumpNotes, scrollToBraindumpBottom])
+
+  useEffect(() => {
+    if (
+      (activeTab === 'REVIEW' && reviewTabDisabled)
+      || (activeTab === 'THINKING' && thinkingTabDisabled)
+      || (activeTab === 'TODO' && todoTabDisabled)
+    ) {
+      setActiveTab('BRAINDUMP')
+    }
+  }, [activeTab, reviewTabDisabled, thinkingTabDisabled, todoTabDisabled])
+
+  useLayoutEffect(() => {
+    const ctaButton = thinkingCtaButtonRef.current
+    const archiveButton = thinkingArchiveButtonRef.current
+    if (!ctaButton || !archiveButton) {
+      setThinkingActionButtonWidth(null)
+      return
+    }
+    const nextWidth = Math.ceil(Math.max(ctaButton.scrollWidth, archiveButton.scrollWidth))
+    setThinkingActionButtonWidth((current) => (current === nextWidth ? current : nextWidth))
+  }, [processCount, showArchive, thinkingArchiveCount])
+
+  useLayoutEffect(() => {
+    const ctaButton = todoCtaButtonRef.current
+    const archiveButton = todoArchiveButtonRef.current
+    if (!ctaButton || !archiveButton) {
+      setTodoActionButtonWidth(null)
+      return
+    }
+    const nextWidth = Math.ceil(Math.max(ctaButton.scrollWidth, archiveButton.scrollWidth))
+    setTodoActionButtonWidth((current) => (current === nextWidth ? current : nextWidth))
+  }, [showTodoArchive, todoArchiveCount, todoNotes.length])
 
   const openContextScreen = useCallback((tab: Extract<TabKey, 'DATA' | 'ABOUT' | 'CONTEXTS'>) => {
     setActiveTab(tab)
@@ -2893,10 +3186,17 @@ function AppContent() {
             </button>
             <button
               type="button"
-              className={activeTab === 'REVIEW' ? 'tab-button tab-button--active' : 'tab-button'}
+              className={
+                activeTab === 'REVIEW'
+                  ? 'tab-button tab-button--active'
+                  : reviewTabDisabled
+                    ? 'tab-button tab-button--disabled'
+                    : 'tab-button'
+              }
               onClick={() => setActiveTab('REVIEW')}
               aria-label="Ordnen"
-              title="Ordnen"
+              title={reviewTabDisabled ? 'Ordnen (noch nichts zu ordnen)' : 'Ordnen'}
+              disabled={reviewTabDisabled}
             >
               <span className="tab-button__inner">
                 <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -2914,10 +3214,17 @@ function AppContent() {
             </button>
             <button
               type="button"
-              className={activeTab === 'THINKING' ? 'tab-button tab-button--active' : 'tab-button'}
+              className={
+                activeTab === 'THINKING'
+                  ? 'tab-button tab-button--active'
+                  : thinkingTabDisabled
+                    ? 'tab-button tab-button--disabled'
+                    : 'tab-button'
+              }
               onClick={() => setActiveTab('THINKING')}
               aria-label="Denken"
-              title="Denken"
+              title={thinkingTabDisabled ? 'Denken (noch keine Gedanken vorhanden)' : 'Denken'}
+              disabled={thinkingTabDisabled}
             >
               <span className="tab-button__inner">
                 <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -2940,10 +3247,17 @@ function AppContent() {
             </button>
             <button
               type="button"
-              className={activeTab === 'TODO' ? 'tab-button tab-button--active' : 'tab-button'}
+              className={
+                activeTab === 'TODO'
+                  ? 'tab-button tab-button--active'
+                  : todoTabDisabled
+                    ? 'tab-button tab-button--disabled'
+                    : 'tab-button'
+              }
               onClick={() => setActiveTab('TODO')}
               aria-label="Machen"
-              title="Machen"
+              title={todoTabDisabled ? 'Machen (noch keine Handlungen vorhanden)' : 'Machen'}
+              disabled={todoTabDisabled}
             >
               <span className="tab-button__inner">
                 <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -3063,7 +3377,7 @@ function AppContent() {
                         <h3>Bereiche</h3>
                         <button
                           type="button"
-                          className={isContextEditMode ? 'review-btn review-btn--process' : 'review-btn review-btn--todo'}
+                          className="review-btn review-btn--cta"
                           onClick={() => setIsContextEditMode((prev) => !prev)}
                         >
                           {isContextEditMode ? 'Fertig' : 'Bearbeiten'}
@@ -3123,7 +3437,7 @@ function AppContent() {
                         ))}
                       </div>
 
-                      {isContextEditMode ? (
+                      {isContextEditMode && contextOptions.length < MAX_CONTEXT_OPTIONS ? (
                         <div className="context-editor-add-panel">
                           <h3>Neuer Bereich</h3>
                           <div className="context-editor-add">
@@ -3135,7 +3449,17 @@ function AppContent() {
                               placeholder="z. B. Weiterbildung"
                               aria-label="Neuer Bereich"
                             />
-                            <button type="button" className="review-btn review-btn--todo" onClick={handleAddContextOption}>
+                            <button
+                              type="button"
+                              className="review-btn review-btn--todo"
+                              onClick={handleAddContextOption}
+                              disabled={contextOptions.length >= MAX_CONTEXT_OPTIONS}
+                              title={
+                                contextOptions.length >= MAX_CONTEXT_OPTIONS
+                                  ? `Maximal ${MAX_CONTEXT_OPTIONS} Bereiche erlaubt`
+                                  : 'Bereich hinzufügen'
+                              }
+                            >
                               Hinzufügen
                             </button>
                           </div>
@@ -3167,6 +3491,7 @@ function AppContent() {
               endRef={braindumpEndRef}
               showInboxEmptyState={!hasAnyNotes}
               onSubmitEntries={handleBraindumpSubmitEntries}
+              contextOptions={contextOptions}
             />
           ) : null}
 
@@ -3241,10 +3566,10 @@ function AppContent() {
                     <p className="empty-text">Deine Inbox ist leer.</p>
                     <p className="hint">Du kannst direkt mit bestehenden Gedanken oder Handlungen weiterarbeiten.</p>
                     <div className="review-empty-cta-actions">
-                      <button type="button" className="review-btn review-btn--process" onClick={() => setActiveTab('THINKING')}>
+                      <button type="button" className="review-btn review-btn--cta" onClick={() => setActiveTab('THINKING')}>
                         Zu Gedanken
                       </button>
-                      <button type="button" className="review-btn review-btn--todo" onClick={() => setActiveTab('TODO')}>
+                      <button type="button" className="review-btn review-btn--cta" onClick={() => setActiveTab('TODO')}>
                         Zu Handlungen
                       </button>
                     </div>
@@ -3399,7 +3724,35 @@ function AppContent() {
                 </select>
               </label>
             </div>
-            {processCount === 0 ? <p className="empty-text">Keine offenen Gedanken.</p> : null}
+            {lastTodoAction && lastTodoAction.scope === 'THINKING' ? (
+              <div className="undo-snackbar undo-snackbar--subtle" role="status" aria-live="polite">
+                <span>{todoActionLabel(lastTodoAction.newStatus)}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleUndoLastTodoAction()}
+                  disabled={todoUndoBusy}
+                >
+                  Rückgängig
+                </button>
+              </div>
+            ) : null}
+            {processCount === 0 ? (
+              <section className="review-empty-cta" aria-label="Denken leer">
+                <p className="empty-text">Keine offenen Gedanken.</p>
+                <p className="hint">Starte mit einem neuen Gedanken in Sammeln.</p>
+                <div className="review-empty-cta-actions">
+                  <button
+                    type="button"
+                    className="review-btn review-btn--cta"
+                    onClick={() => setActiveTab('BRAINDUMP')}
+                    ref={thinkingCtaButtonRef}
+                    style={thinkingActionButtonWidth ? { width: `${thinkingActionButtonWidth}px` } : undefined}
+                  >
+                    Gedanken erfassen
+                  </button>
+                </div>
+              </section>
+            ) : null}
             {processCount > 0 && visibleProcessNotes.length === 0 ? (
               <p className="empty-text">
                 {thinkingContextFilter === '__none'
@@ -3428,6 +3781,8 @@ function AppContent() {
                 type="button"
                 className={showArchive ? 'archive-toggle archive-toggle--archive-action archive-toggle--active' : 'archive-toggle archive-toggle--archive-action'}
                 onClick={() => setShowArchive((prev) => !prev)}
+                ref={thinkingArchiveButtonRef}
+                style={thinkingActionButtonWidth ? { width: `${thinkingActionButtonWidth}px` } : undefined}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path
@@ -3439,7 +3794,7 @@ function AppContent() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>{showArchive ? `Archiv ausblenden (${thinkingArchiveCount})` : `Archiv anzeigen (${thinkingArchiveCount})`}</span>
+                <span>{showArchive ? 'Archiv ausblenden' : 'Archiv anzeigen'}</span>
               </button>
             </div>
             {showArchive ? (
@@ -3533,7 +3888,7 @@ function AppContent() {
                 </svg>
               </button>
             </div>
-            {lastTodoAction ? (
+            {lastTodoAction && lastTodoAction.scope === 'TODO' ? (
               <div className="undo-snackbar undo-snackbar--subtle" role="status" aria-live="polite">
                 <span>{todoActionLabel(lastTodoAction.newStatus)}</span>
                 <button
@@ -3545,7 +3900,23 @@ function AppContent() {
                 </button>
               </div>
             ) : null}
-            {todoNotes.length === 0 ? <p className="empty-text">Keine offenen Handlungen.</p> : null}
+            {todoNotes.length === 0 ? (
+              <section className="review-empty-cta" aria-label="Machen leer">
+                <p className="empty-text">Keine offenen Handlungen.</p>
+                <p className="hint">Erfasse zuerst einen Gedanken in Sammeln und ordne ihn dann zu Handlungen.</p>
+                <div className="review-empty-cta-actions">
+                  <button
+                    type="button"
+                    className="review-btn review-btn--cta"
+                    onClick={() => setActiveTab('BRAINDUMP')}
+                    ref={todoCtaButtonRef}
+                    style={todoActionButtonWidth ? { width: `${todoActionButtonWidth}px` } : undefined}
+                  >
+                    Gedanken erfassen
+                  </button>
+                </div>
+              </section>
+            ) : null}
             {todoNotes.length > 0 && visibleTodoNotes.length === 0 ? (
               <p className="empty-text">
                 {todoFiltersSummary}
@@ -3572,6 +3943,8 @@ function AppContent() {
                 type="button"
                 className={showTodoArchive ? 'archive-toggle archive-toggle--archive-action archive-toggle--active' : 'archive-toggle archive-toggle--archive-action'}
                 onClick={() => setShowTodoArchive((prev) => !prev)}
+                ref={todoArchiveButtonRef}
+                style={todoActionButtonWidth ? { width: `${todoActionButtonWidth}px` } : undefined}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path
@@ -3583,7 +3956,7 @@ function AppContent() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>{showTodoArchive ? `Archiv ausblenden (${todoArchiveCount})` : `Archiv anzeigen (${todoArchiveCount})`}</span>
+                <span>{showTodoArchive ? 'Archiv ausblenden' : 'Archiv anzeigen'}</span>
               </button>
             </div>
             {showTodoArchive ? (
@@ -3613,7 +3986,11 @@ function AppContent() {
             </>
           ) : null}
 
-              {info && activeTab !== 'DATA' ? <p className="hint">{info}</p> : null}
+            {info && activeTab !== 'DATA' ? (
+              <p className={isInfoFadingOut ? 'hint hint--transient hint--fade-out' : 'hint hint--transient'}>
+                {info}
+              </p>
+            ) : null}
               {error ? <p className="error-text">{error}</p> : null}
           </div>
         </section>

@@ -1266,6 +1266,12 @@ export async function deleteNote(id: string): Promise<void> {
   })
 }
 
+export async function restoreNote(id: string): Promise<void> {
+  await applyLocalEdit(id, (doc) => {
+    doc.deletedAt = null
+  })
+}
+
 export async function hardDeleteNotes(ids: string[]): Promise<void> {
   if (ids.length === 0) {
     return
