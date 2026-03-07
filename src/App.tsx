@@ -250,14 +250,14 @@ function noteTypeLabel(type: NoteType) {
 }
 
 const DEFAULT_CONTEXT_OPTIONS: ContextOption[] = [
-  { value: 'Arbeit', label: 'Arbeit' },
-  { value: 'Familie', label: 'Familie' },
-  { value: 'Finanzen', label: 'Finanzen' },
-  { value: 'Freunde', label: 'Freunde' },
-  { value: 'Gesundheit', label: 'Gesundheit' },
-  { value: 'Haushalt', label: 'Haushalt' },
-  { value: 'Privat', label: 'Privat' },
-  { value: 'Projekt', label: 'Projekt' },
+  { value: 'arbeit', label: 'Arbeit' },
+  { value: 'familie', label: 'Familie' },
+  { value: 'finanzen', label: 'Finanzen' },
+  { value: 'freunde', label: 'Freunde' },
+  { value: 'gesundheit', label: 'Gesundheit' },
+  { value: 'haushalt', label: 'Haushalt' },
+  { value: 'privat', label: 'Privat' },
+  { value: 'projekt', label: 'Projekt' },
 ]
 
 function fallbackContextLabel(context: ContextTag) {
@@ -290,7 +290,8 @@ function sanitizeContextOptions(raw: unknown): ContextOption[] {
     if (!value || deduped.has(value)) {
       continue
     }
-    deduped.set(value, value)
+    const label = normalizeContextLabel(candidate.label) ?? capitalizeFirstCharacter(value)
+    deduped.set(value, capitalizeFirstCharacter(label))
   }
   if (deduped.size === 0) {
     return [...DEFAULT_CONTEXT_OPTIONS]
@@ -325,15 +326,28 @@ function persistContextOptions(options: ContextOption[]) {
 }
 
 function contextLabel(context: ContextTag, options: ContextOption[]) {
-  const match = options.find((option) => option.value === context)
+  const contextKey = normalizeContextTag(context)
+  if (!contextKey) {
+    return fallbackContextLabel(context)
+  }
+  const match = options.find((option) => normalizeContextTag(option.value) === contextKey)
   return match?.label ?? fallbackContextLabel(context)
+}
+
+function capitalizeFirstCharacter(value: string) {
+  if (!value) {
+    return value
+  }
+  const characters = Array.from(value)
+  const [first, ...rest] = characters
+  return `${first.toLocaleUpperCase('de-DE')}${rest.join('')}`
 }
 
 function contextGroupLabel(context: '__none' | ContextTag, options: ContextOption[]) {
   if (context === '__none') {
     return 'Ohne Bereich'
   }
-  return contextLabel(context, options)
+  return capitalizeFirstCharacter(contextLabel(context, options))
 }
 
 function contextFilterPhrase(filter: ContextFilter, options: ContextOption[]) {
@@ -418,7 +432,7 @@ function matchesContextFilter(note: Note, filter: ContextFilter) {
   if (filter === '__none') {
     return !note.context
   }
-  return note.context === filter
+  return normalizeContextTag(note.context) === normalizeContextTag(filter)
 }
 
 function matchesTodoSearch(note: Note, searchQuery: string) {
@@ -436,7 +450,8 @@ function groupNotesByContext(
 ): ContextGroup[] {
   const grouped = new Map<'__none' | ContextTag, Note[]>()
   for (const note of notes) {
-    const key: '__none' | ContextTag = note.context ?? '__none'
+    const normalizedContext = normalizeContextTag(note.context)
+    const key: '__none' | ContextTag = normalizedContext ?? '__none'
     const existing = grouped.get(key)
     if (existing) {
       existing.push(note)
@@ -464,83 +479,11 @@ function NoteTypeBadge({ note }: { note: Note }) {
 }
 
 function ExpandableNoteText({ text }: { text: string }) {
-  const MOBILE_TEXT_LIMIT = 300
-  const [expanded, setExpanded] = useState(false)
-  const [canExpand, setCanExpand] = useState(false)
-  const [isMobileViewport, setIsMobileViewport] = useState(false)
-  const textRef = useRef<HTMLSpanElement | null>(null)
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return
-    }
-    const mediaQuery = window.matchMedia('(max-width: 640px)')
-    const update = () => setIsMobileViewport(mediaQuery.matches)
-    update()
-    mediaQuery.addEventListener('change', update)
-    return () => mediaQuery.removeEventListener('change', update)
-  }, [])
-
-  useEffect(() => {
-    if (expanded || isMobileViewport) {
-      return
-    }
-    const frameId = requestAnimationFrame(() => {
-      const element = textRef.current
-      if (!element) {
-        return
-      }
-      setCanExpand(element.scrollHeight - element.clientHeight > 2)
-    })
-    return () => cancelAnimationFrame(frameId)
-  }, [expanded, isMobileViewport, text])
-
-  if (isMobileViewport) {
-    const compactText = text.length > MOBILE_TEXT_LIMIT ? `${text.slice(0, MOBILE_TEXT_LIMIT).trimEnd()}…` : text
-    return (
-      <span className="note-text-wrap">
-        <span className="note-text">{compactText}</span>
-      </span>
-    )
-  }
-
+  const NOTE_TEXT_LIMIT = 200
+  const compactText = text.length > NOTE_TEXT_LIMIT ? `${text.slice(0, NOTE_TEXT_LIMIT).trimEnd()}…` : text
   return (
-    <span className={canExpand && !expanded ? 'note-text-wrap note-text-wrap--collapsed' : 'note-text-wrap'}>
-      <span ref={textRef} className={expanded ? 'note-text note-text--expanded' : 'note-text'}>
-        {text}
-      </span>
-      {canExpand ? (
-        <button
-          type="button"
-          className="note-text-toggle-btn"
-          onClick={() => setExpanded((prev) => !prev)}
-          aria-expanded={expanded}
-          aria-label={expanded ? 'Text einklappen' : 'Text ausklappen'}
-          title={expanded ? 'Weniger anzeigen' : 'Mehr anzeigen'}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            {expanded ? (
-              <path
-                d="m7 14 5-5 5 5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            ) : (
-              <path
-                d="m7 10 5 5 5-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-          </svg>
-        </button>
-      ) : null}
+    <span className="note-text-wrap note-text-wrap--plain">
+      <span className="note-text note-text--expanded">{compactText}</span>
     </span>
   )
 }
@@ -2539,21 +2482,26 @@ function AppContent() {
   const allContextOptions = useMemo(() => {
     const labels = new Map<ContextTag, string>()
     for (const option of contextOptions) {
-      labels.set(option.value, option.label)
-    }
-    for (const note of [...braindumpNotes, ...inboxNotes, ...processNotes, ...todoNotes, ...archivedNotes]) {
-      if (!note.context || labels.has(note.context)) {
+      const key = normalizeContextTag(option.value)
+      if (!key) {
         continue
       }
-      labels.set(note.context, fallbackContextLabel(note.context))
+      labels.set(key, option.label)
+    }
+    for (const note of [...braindumpNotes, ...inboxNotes, ...processNotes, ...todoNotes, ...archivedNotes]) {
+      const key = normalizeContextTag(note.context)
+      if (!key || labels.has(key)) {
+        continue
+      }
+      labels.set(key, capitalizeFirstCharacter(fallbackContextLabel(key)))
     }
     return Array.from(labels.entries())
       .map(([value, label]) => ({ value, label }))
       .sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
   }, [archivedNotes, braindumpNotes, contextOptions, inboxNotes, processNotes, todoNotes])
   const orphanedContextOptions = useMemo(() => {
-    const configured = new Set(contextOptions.map((option) => option.value))
-    return allContextOptions.filter((option) => !configured.has(option.value))
+    const configured = new Set(contextOptions.map((option) => normalizeContextTag(option.value)).filter(Boolean))
+    return allContextOptions.filter((option) => !configured.has(normalizeContextTag(option.value)))
   }, [allContextOptions, contextOptions])
   const visibleProcessNotes = useMemo(() => {
     return processNotes.filter((note) => matchesContextFilter(note, thinkingContextFilter))
@@ -2620,12 +2568,14 @@ function AppContent() {
   const thinkingContextOptions = useMemo(() => {
     const used = new Set<ContextTag>()
     for (const note of processNotes) {
-      if (note.context) used.add(note.context)
+      const key = normalizeContextTag(note.context)
+      if (key) used.add(key)
     }
     for (const note of thinkingArchivedNotes) {
-      if (note.context) used.add(note.context)
+      const key = normalizeContextTag(note.context)
+      if (key) used.add(key)
     }
-    return allContextOptions.filter((option) => used.has(option.value))
+    return allContextOptions.filter((option) => used.has(normalizeContextTag(option.value) ?? option.value))
   }, [allContextOptions, processNotes, thinkingArchivedNotes])
   const thinkingHasNoContextNotes = useMemo(() => {
     return [...processNotes, ...thinkingArchivedNotes].some((note) => !note.context)
@@ -2633,12 +2583,14 @@ function AppContent() {
   const todoContextOptions = useMemo(() => {
     const used = new Set<ContextTag>()
     for (const note of todoNotes) {
-      if (note.context) used.add(note.context)
+      const key = normalizeContextTag(note.context)
+      if (key) used.add(key)
     }
     for (const note of todoArchivedNotes) {
-      if (note.context) used.add(note.context)
+      const key = normalizeContextTag(note.context)
+      if (key) used.add(key)
     }
-    return allContextOptions.filter((option) => used.has(option.value))
+    return allContextOptions.filter((option) => used.has(normalizeContextTag(option.value) ?? option.value))
   }, [allContextOptions, todoNotes, todoArchivedNotes])
   const todoHasNoContextNotes = useMemo(() => {
     return [...todoNotes, ...todoArchivedNotes].some((note) => !note.context)
@@ -2654,7 +2606,7 @@ function AppContent() {
       }
       return
     }
-    if (!thinkingContextOptions.some((option) => option.value === thinkingContextFilter)) {
+    if (!thinkingContextOptions.some((option) => normalizeContextTag(option.value) === normalizeContextTag(thinkingContextFilter))) {
       setThinkingContextFilter('')
     }
   }, [thinkingContextFilter, thinkingContextOptions, thinkingHasNoContextNotes])
@@ -2669,7 +2621,7 @@ function AppContent() {
       }
       return
     }
-    if (!todoContextOptions.some((option) => option.value === todoContextFilter)) {
+    if (!todoContextOptions.some((option) => normalizeContextTag(option.value) === normalizeContextTag(todoContextFilter))) {
       setTodoContextFilter('')
     }
   }, [todoContextFilter, todoContextOptions, todoHasNoContextNotes])
@@ -2836,7 +2788,11 @@ function AppContent() {
       return
     }
 
-    const hasDuplicate = contextOptions.some((option) => option.value !== value && option.value === nextValue)
+    const currentValue = normalizeContextTag(value)
+    const hasDuplicate = contextOptions.some((option) => {
+      const optionValue = normalizeContextTag(option.value)
+      return optionValue !== currentValue && optionValue === nextValue
+    })
     if (hasDuplicate) {
       setError('Bereich existiert bereits.')
       return
@@ -2846,7 +2802,7 @@ function AppContent() {
       await replaceContextAcrossNotes(value, nextValue)
       setContextOptions((prev) =>
         prev
-          .map((option) => (option.value === value ? { value: nextValue, label: nextValue } : option))
+          .map((option) => (option.value === value ? { value: nextValue, label: capitalizeFirstCharacter(draft) } : option))
           .sort((a, b) => a.label.localeCompare(b.label, 'de-DE')),
       )
       showTransientInfo('Bereich aktualisiert.')
@@ -2857,10 +2813,13 @@ function AppContent() {
   }, [contextDraftLabels, contextOptions, refreshAll, showTransientInfo])
 
   const handleDeleteContextOption = useCallback(async (value: ContextTag) => {
+    const displayLabel =
+      contextOptions.find((option) => normalizeContextTag(option.value) === normalizeContextTag(value))?.label
+      ?? capitalizeFirstCharacter(value)
     const confirmed = typeof window === 'undefined'
       ? true
       : window.confirm(
-        `Bereich "${value}" wirklich entfernen?\n\nAlle zugeordneten Einträge werden auf "Ohne Bereich" gesetzt.`,
+        `Bereich "${displayLabel}" wirklich entfernen?\n\nAlle zugeordneten Einträge werden auf "Ohne Bereich" gesetzt.`,
       )
     if (!confirmed) {
       return
@@ -2878,7 +2837,7 @@ function AppContent() {
     } catch {
       setError('Bereich konnte nicht entfernt werden.')
     }
-  }, [refreshAll, showTransientInfo])
+  }, [contextOptions, refreshAll, showTransientInfo])
 
   const handleAddContextOption = useCallback(() => {
     const label = normalizeContextLabel(newContextLabel)
@@ -2896,11 +2855,11 @@ function AppContent() {
       return
     }
     setContextOptions((prev) => {
-      if (prev.some((option) => option.value === value)) {
+      if (prev.some((option) => normalizeContextTag(option.value) === value)) {
         setError('Bereich existiert bereits.')
         return prev
       }
-      return [...prev, { value, label: value }].sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
+      return [...prev, { value, label: capitalizeFirstCharacter(label) }].sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
     })
     setNewContextLabel('')
     showTransientInfo('Bereich hinzugefügt.')
@@ -3466,11 +3425,11 @@ function AppContent() {
                           {orphanedContextOptions.length > 0 ? (
                             <>
                               <p className="hint">
-                                Nicht konfigurierte Bereiche in bestehenden Einträgen:
+                                Diese Bereiche kommen in bestehenden Einträgen vor, sind aber noch nicht in deiner Bereichsliste:
                               </p>
                               <ul className="context-editor-orphan-list" aria-label="Verwendete, nicht konfigurierte Bereiche">
                                 {orphanedContextOptions.map((option) => (
-                                  <li key={option.value}>{option.label}</li>
+                                  <li key={option.value}>{capitalizeFirstCharacter(option.label)}</li>
                                 ))}
                               </ul>
                             </>
@@ -3848,7 +3807,7 @@ function AppContent() {
                   className="todo-search-input"
                   value={todoSearchQuery}
                   onChange={(event) => setTodoSearchQuery(event.target.value)}
-                  placeholder="Handlungen suchen"
+                  placeholder="Suchen"
                   aria-label="Handlungen durchsuchen"
                 />
               </label>

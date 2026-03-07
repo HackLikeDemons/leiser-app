@@ -24,7 +24,7 @@ export function normalizeContextTag(value: unknown): ContextTag | undefined {
   if (!compact) {
     return undefined
   }
-  return compact.slice(0, 28)
+  return compact.slice(0, 28).toLocaleLowerCase('de-DE')
 }
 
 export type Note = {
