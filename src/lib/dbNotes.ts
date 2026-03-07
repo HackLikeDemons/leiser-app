@@ -1485,7 +1485,7 @@ export async function setSyncEnabled(roomId: string, enabled: boolean): Promise<
 
 export async function getSyncPairCode(roomId = DEFAULT_ROOM_ID): Promise<string | null> {
   const state = await getSyncState(roomId)
-  if (!state.syncToken) {
+  if (!state.isEnabled || !state.syncToken) {
     return null
   }
   const syncKey =
