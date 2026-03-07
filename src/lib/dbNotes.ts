@@ -1601,9 +1601,12 @@ export async function getSyncPairCode(roomId = DEFAULT_ROOM_ID): Promise<string 
     return null
   }
   const wrappedContentKey = getWrappedContentKeyForPairing()
+  const syncKey =
+    typeof window !== 'undefined' ? localStorage.getItem('leiser-sync-key')?.trim() || null : null
   return JSON.stringify({
     roomId,
     token: state.syncToken,
+    ...(syncKey ? { key: syncKey } : {}),
     ...(wrappedContentKey ? { wrappedContentKey } : {}),
   })
 }
