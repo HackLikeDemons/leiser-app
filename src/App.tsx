@@ -624,8 +624,8 @@ function ThinkingNoteRow({
           type="button"
           className="review-btn review-btn--back review-btn--icon"
           onClick={() => onBack(note.id)}
-          aria-label="Zurück zu Sortieren"
-          title="Zurück zu Sortieren"
+          aria-label="Zurück zu Ordnen"
+          title="Zurück zu Ordnen"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -1182,7 +1182,7 @@ function AppContent() {
       if (todoReturnCandidates.length > 0) {
         await Promise.all(todoReturnCandidates.map((note) => updateNoteStatus(note.id, 'INBOX')))
         maintenanceMessages.push(
-          `Wiedervorlage: ${todoReturnCandidates.length} alte Handlung${todoReturnCandidates.length === 1 ? '' : 'en'} zurück nach Sortieren verschoben.`,
+          `Wiedervorlage: ${todoReturnCandidates.length} alte Handlung${todoReturnCandidates.length === 1 ? '' : 'en'} zurück nach Ordnen verschoben.`,
         )
       }
 
@@ -2675,8 +2675,8 @@ function AppContent() {
               type="button"
               className={activeTab === 'BRAINDUMP' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('BRAINDUMP')}
-              aria-label="Erfassen"
-              title="Erfassen"
+              aria-label="Sammeln"
+              title="Sammeln"
             >
               <span className="tab-button__inner">
                 <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -2689,15 +2689,15 @@ function AppContent() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>Erfassen</span>
+                <span>Sammeln</span>
               </span>
             </button>
             <button
               type="button"
               className={activeTab === 'REVIEW' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('REVIEW')}
-              aria-label="Sortieren"
-              title="Sortieren"
+              aria-label="Ordnen"
+              title="Ordnen"
             >
               <span className="tab-button__inner">
                 <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -2710,15 +2710,15 @@ function AppContent() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>Sortieren</span>
+                <span>Ordnen</span>
               </span>
             </button>
             <button
               type="button"
               className={activeTab === 'THINKING' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('THINKING')}
-              aria-label="Reflektieren"
-              title="Reflektieren"
+              aria-label="Denken"
+              title="Denken"
             >
               <span className="tab-button__inner">
                 <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -2736,15 +2736,15 @@ function AppContent() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>Reflektieren</span>
+                <span>Denken</span>
               </span>
             </button>
             <button
               type="button"
               className={activeTab === 'TODO' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('TODO')}
-              aria-label="Handeln"
-              title="Handeln"
+              aria-label="Machen"
+              title="Machen"
             >
               <span className="tab-button__inner">
                 <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -2757,7 +2757,7 @@ function AppContent() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>Handeln</span>
+                <span>Machen</span>
               </span>
             </button>
             </div>

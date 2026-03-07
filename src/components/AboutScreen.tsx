@@ -5,13 +5,15 @@ type AboutScreenProps = {
 const ABOUT_COPY = {
   title: 'Leiser',
   intro: 'hilft dir, deine Gedanken schnell festzuhalten und sie später in Ruhe zu sortieren.',
-  privacy: 'Deine Gedanken werden lokal auf deinem Gerät gespeichert. Wenn jemand Zugriff auf dein Gerät oder Browser-Profil hat, kann er sie einsehen.',
+  privacy:
+    'Notiztexte werden auf deinem Gerät verschlüsselt gespeichert und auch verschlüsselt synchronisiert. Metadaten für Sortierung und Sync bleiben technisch bedingt im Klartext.',
   steps: [
-    'Erfassen: Gedanken sofort in die Inbox schreiben.',
-    'Sortieren: Gedanken behalten, in eine Aufgabe überführen oder verwerfen.',
-    'Reflektieren und Handeln: weiterdenken und umsetzen.',
+    'Sammeln: Gedanken sofort in die Inbox schreiben.',
+    'Ordnen: Gedanken behalten, in eine Aufgabe überführen oder verwerfen.',
+    'Denken und Machen: weiterdenken und umsetzen.',
   ],
-  footer: 'Alles funktioniert lokal und offline. Sync ist optional.',
+  footer:
+    'Alles funktioniert lokal und offline. Sync ist optional. Wenn ein Gerät selbst kompromittiert ist, kann laufender Klartext trotzdem ausgelesen werden.',
   cta: 'Gedanken erfassen',
 } as const
 

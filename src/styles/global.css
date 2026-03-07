@@ -1763,11 +1763,9 @@ button:focus {
   }
 
   .mode-tabs {
-    justify-content: flex-start;
-    gap: 0.25rem;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    justify-content: space-between;
+    gap: 0.1rem;
+    overflow-x: hidden;
     padding-bottom: 0.16rem;
   }
 
@@ -1776,13 +1774,19 @@ button:focus {
   }
 
   .tab-button {
-    flex: 0 0 auto;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 42px;
-    padding: 0.4rem 0.18rem 0.46rem;
+    padding: 0.38rem 0.08rem 0.44rem;
+    font-size: 0.8rem;
   }
 
   .tab-button__inner {
-    gap: 0.4rem;
+    gap: 0;
+  }
+
+  .tab-button__icon {
+    display: none;
   }
 
   .header-actions {
@@ -1902,7 +1906,7 @@ button:focus {
   }
 
   .tab-button {
-    font-size: 0.84rem;
+    font-size: 0.75rem;
   }
 }
 
