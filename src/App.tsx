@@ -3162,7 +3162,7 @@ function AppContent() {
           {activeTab === 'TODO' ? (
             <>
             <FlowHero
-              title="Nächste Schritte"
+              title="Deine nächsten Schrite"
               subtitle=""
             />
             <div className="todo-filter-row">

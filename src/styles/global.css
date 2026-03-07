@@ -1782,11 +1782,13 @@ button:focus {
   }
 
   .tab-button__inner {
-    gap: 0;
+    gap: 0.26rem;
   }
 
   .tab-button__icon {
-    display: none;
+    display: inline-block;
+    width: 0.82rem;
+    height: 0.82rem;
   }
 
   .header-actions {
@@ -1906,7 +1908,7 @@ button:focus {
   }
 
   .tab-button {
-    font-size: 0.75rem;
+    font-size: 0.71rem;
   }
 }
 
