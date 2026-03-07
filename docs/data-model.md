@@ -8,7 +8,7 @@
 type NoteStatus = "INBOX" | "TODO" | "PROCESS" | "DISCARD" | "ARCHIVE";
 type NoteType = "NOTE" | "QUESTION" | "IDEA" | "TASK";
 type ArchiveBucket = "THINKING" | "TODO";
-type ContextTag = "arbeit" | "familie" | "finanzen" | "freunde" | "gesundheit" | "haushalt" | "privat" | "projekt";
+type ContextTag = string; // sichtbarer Bereichsname, z. B. "Arbeit", "Weiterbildung"
 
 type Note = {
   id: string;
@@ -26,6 +26,12 @@ type Note = {
   context?: ContextTag;
 };
 ```
+
+Hinweis zu `context`:
+- Bereiche sind über das Kontextmenü konfigurierbar (`Bereiche bearbeiten`).
+- Gespeichert wird derselbe Name, der auch in der UI angezeigt wird.
+- Beim Löschen eines Bereichs werden bestehende Zuordnungen auf `Ohne Bereich` gesetzt.
+- Nach Backup-Import werden unbekannte/nicht konfigurierte Bereiche auf `Ohne Bereich` gesetzt.
 
 ## IndexedDB
 

@@ -1,15 +1,7 @@
 export type NoteStatus = 'INBOX' | 'TODO' | 'PROCESS' | 'DISCARD' | 'ARCHIVE'
 export type NoteType = 'NOTE' | 'QUESTION' | 'IDEA' | 'TASK'
 export type ArchiveBucket = 'THINKING' | 'TODO'
-export type ContextTag =
-  | 'arbeit'
-  | 'familie'
-  | 'finanzen'
-  | 'freunde'
-  | 'gesundheit'
-  | 'haushalt'
-  | 'privat'
-  | 'projekt'
+export type ContextTag = string
 
 export const CONTEXT_TAGS: ContextTag[] = [
   'arbeit',
@@ -23,9 +15,16 @@ export const CONTEXT_TAGS: ContextTag[] = [
 ]
 
 export function normalizeContextTag(value: unknown): ContextTag | undefined {
-  return typeof value === 'string' && CONTEXT_TAGS.includes(value as ContextTag)
-    ? (value as ContextTag)
-    : undefined
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  const compact = value
+    .trim()
+    .replace(/\s+/g, ' ')
+  if (!compact) {
+    return undefined
+  }
+  return compact.slice(0, 28)
 }
 
 export type Note = {

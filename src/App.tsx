@@ -20,6 +20,8 @@ import {
   listRecentActiveNotes,
   listTodoReturnToInboxCandidates,
   listTodoNotes,
+  clearUnknownContexts,
+  replaceContextAcrossNotes,
   hardDeleteNotes,
   setSyncEnabled,
   updateSyncState,
@@ -30,6 +32,7 @@ import {
 } from './lib/dbNotes'
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO } from './lib/date'
+import { normalizeContextTag } from './lib/types'
 import type { ContextTag, Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FlowHero } from './app/FlowHero'
@@ -42,7 +45,7 @@ import type { DevSyncInfo } from './app/data/SyncPanel'
 import { getSupabaseRuntimeConfig } from './lib/runtimeConfig'
 import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } from './lib/syncEngine'
 
-type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA' | 'ABOUT'
+type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA' | 'ABOUT' | 'CONTEXTS'
 const SOFT_CHAR_LIMIT = 200
 const REVIEW_LIMIT = 50
 const FRESH_HOURS = 12
@@ -67,6 +70,7 @@ const FEEDBACK_VISIBILITY_MS = 3000
 const SW_UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
 const BACKUP_OVERDUE_DAYS = 7
 const HAS_VISITED_STORAGE_KEY = 'leiser_hasVisited'
+const CONTEXT_OPTIONS_STORAGE_KEY = 'leiser:context-options-v1'
 
 type PairingPayloadV1 = {
   v: 1
@@ -92,6 +96,10 @@ type ContextGroup = {
   contextKey: '__none' | ContextTag
   label: string
   notes: Note[]
+}
+type ContextOption = {
+  value: ContextTag
+  label: string
 }
 
 function encodeBase64Url(input: string) {
@@ -225,35 +233,99 @@ function noteTypeLabel(type: NoteType) {
   return null
 }
 
-const CONTEXT_OPTIONS: Array<{ value: ContextTag; label: string }> = [
-  { value: 'arbeit', label: 'Arbeit' },
-  { value: 'familie', label: 'Familie' },
-  { value: 'finanzen', label: 'Finanzen' },
-  { value: 'freunde', label: 'Freunde' },
-  { value: 'gesundheit', label: 'Gesundheit' },
-  { value: 'haushalt', label: 'Haushalt' },
-  { value: 'privat', label: 'Privat' },
-  { value: 'projekt', label: 'Projekt' },
+const DEFAULT_CONTEXT_OPTIONS: ContextOption[] = [
+  { value: 'Arbeit', label: 'Arbeit' },
+  { value: 'Familie', label: 'Familie' },
+  { value: 'Finanzen', label: 'Finanzen' },
+  { value: 'Freunde', label: 'Freunde' },
+  { value: 'Gesundheit', label: 'Gesundheit' },
+  { value: 'Haushalt', label: 'Haushalt' },
+  { value: 'Privat', label: 'Privat' },
+  { value: 'Projekt', label: 'Projekt' },
 ]
 
-function contextLabel(context: ContextTag) {
-  const match = CONTEXT_OPTIONS.find((option) => option.value === context)
-  return match?.label ?? context
+function fallbackContextLabel(context: ContextTag) {
+  return context
 }
 
-function contextGroupLabel(context: '__none' | ContextTag) {
+function normalizeContextLabel(value: unknown) {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  const compact = value.trim().replace(/\s+/g, ' ')
+  if (!compact) {
+    return undefined
+  }
+  return compact.slice(0, 28)
+}
+
+function sanitizeContextOptions(raw: unknown): ContextOption[] {
+  if (!Array.isArray(raw)) {
+    return [...DEFAULT_CONTEXT_OPTIONS]
+  }
+  const deduped = new Map<ContextTag, string>()
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') {
+      continue
+    }
+    const candidate = item as Partial<ContextOption>
+    const name = normalizeContextLabel(candidate.label ?? candidate.value)
+    const value = normalizeContextTag(name)
+    if (!value || deduped.has(value)) {
+      continue
+    }
+    deduped.set(value, value)
+  }
+  if (deduped.size === 0) {
+    return [...DEFAULT_CONTEXT_OPTIONS]
+  }
+  return Array.from(deduped.entries()).map(([value, label]) => ({ value, label }))
+}
+
+function readStoredContextOptions() {
+  if (typeof window === 'undefined') {
+    return [...DEFAULT_CONTEXT_OPTIONS]
+  }
+  try {
+    const raw = window.localStorage.getItem(CONTEXT_OPTIONS_STORAGE_KEY)
+    if (!raw) {
+      return [...DEFAULT_CONTEXT_OPTIONS]
+    }
+    return sanitizeContextOptions(JSON.parse(raw))
+  } catch {
+    return [...DEFAULT_CONTEXT_OPTIONS]
+  }
+}
+
+function persistContextOptions(options: ContextOption[]) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.localStorage.setItem(CONTEXT_OPTIONS_STORAGE_KEY, JSON.stringify(options))
+  } catch {
+    // Storage can fail in privacy-restricted environments.
+  }
+}
+
+function contextLabel(context: ContextTag, options: ContextOption[]) {
+  const match = options.find((option) => option.value === context)
+  return match?.label ?? fallbackContextLabel(context)
+}
+
+function contextGroupLabel(context: '__none' | ContextTag, options: ContextOption[]) {
   if (context === '__none') {
     return 'Ohne Bereich'
   }
-  return contextLabel(context)
+  return contextLabel(context, options)
 }
 
-function contextFilterPhrase(filter: ContextFilter) {
+function contextFilterPhrase(filter: ContextFilter, options: ContextOption[]) {
   if (filter === '__none') {
     return 'ohne Bereich'
   }
   if (filter) {
-    return contextLabel(filter)
+    return contextLabel(filter, options)
   }
   return 'alle Bereiche'
 }
@@ -299,7 +371,11 @@ function matchesTodoSearch(note: Note, searchQuery: string) {
   return searchQuery.split(/\s+/).every((token) => haystack.includes(token))
 }
 
-function groupNotesByContext(notes: Note[], noteSort: (a: Note, b: Note) => number): ContextGroup[] {
+function groupNotesByContext(
+  notes: Note[],
+  noteSort: (a: Note, b: Note) => number,
+  options: ContextOption[],
+): ContextGroup[] {
   const grouped = new Map<'__none' | ContextTag, Note[]>()
   for (const note of notes) {
     const key: '__none' | ContextTag = note.context ?? '__none'
@@ -313,7 +389,7 @@ function groupNotesByContext(notes: Note[], noteSort: (a: Note, b: Note) => numb
 
   const groups: ContextGroup[] = Array.from(grouped.entries()).map(([contextKey, groupedNotes]) => ({
     contextKey,
-    label: contextGroupLabel(contextKey),
+    label: contextGroupLabel(contextKey, options),
     notes: [...groupedNotes].sort(noteSort),
   }))
 
@@ -1097,6 +1173,10 @@ function AppContent() {
   const [scannerHint, setScannerHint] = useState<string | null>(null)
   const [staleReviewMode, setStaleReviewMode] = useState(false)
   const [showContextMenu, setShowContextMenu] = useState(false)
+  const [contextOptions, setContextOptions] = useState<ContextOption[]>(() => readStoredContextOptions())
+  const [contextDraftLabels, setContextDraftLabels] = useState<Record<string, string>>({})
+  const [newContextLabel, setNewContextLabel] = useState('')
+  const [isContextEditMode, setIsContextEditMode] = useState(false)
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
   const [staleReviewTotal, setStaleReviewTotal] = useState(0)
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
@@ -1125,6 +1205,20 @@ function AppContent() {
   const hiddenAtRef = useRef<number | null>(null)
   const swReloadedRef = useRef(false)
   const refreshRunSeqRef = useRef(0)
+
+  useEffect(() => {
+    persistContextOptions(contextOptions)
+  }, [contextOptions])
+
+  useEffect(() => {
+    setContextDraftLabels((prev) => {
+      const next: Record<string, string> = {}
+      for (const option of contextOptions) {
+        next[option.value] = prev[option.value] ?? option.label
+      }
+      return next
+    })
+  }, [contextOptions])
 
   const clearTransientInfoTimeout = () => {
     if (transientInfoTimeoutRef.current !== null) {
@@ -2199,7 +2293,14 @@ function AppContent() {
       const fileText = await importFile.text()
       const report = await importBackupJson(fileText, importMode)
       setImportReport(report)
-      showTransientInfo('Backup erfolgreich importiert.')
+      const clearedContextCount = await clearUnknownContexts(contextOptions.map((option) => option.value))
+      if (clearedContextCount > 0) {
+        showTransientInfo(
+          `Backup importiert. ${clearedContextCount} Eintrag${clearedContextCount === 1 ? '' : 'e'} mit entferntem Bereich auf "Ohne Bereich" gesetzt.`,
+        )
+      } else {
+        showTransientInfo('Backup erfolgreich importiert.')
+      }
       setImportFile(null)
       setShowImportPanel(false)
       await refreshAll()
@@ -2220,6 +2321,25 @@ function AppContent() {
     || processNotes.length > 0
     || todoNotes.length > 0
     || archivedNotes.length > 0
+  const allContextOptions = useMemo(() => {
+    const labels = new Map<ContextTag, string>()
+    for (const option of contextOptions) {
+      labels.set(option.value, option.label)
+    }
+    for (const note of [...braindumpNotes, ...inboxNotes, ...processNotes, ...todoNotes, ...archivedNotes]) {
+      if (!note.context || labels.has(note.context)) {
+        continue
+      }
+      labels.set(note.context, fallbackContextLabel(note.context))
+    }
+    return Array.from(labels.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
+  }, [archivedNotes, braindumpNotes, contextOptions, inboxNotes, processNotes, todoNotes])
+  const orphanedContextOptions = useMemo(() => {
+    const configured = new Set(contextOptions.map((option) => option.value))
+    return allContextOptions.filter((option) => !configured.has(option.value))
+  }, [allContextOptions, contextOptions])
   const visibleProcessNotes = useMemo(() => {
     return processNotes.filter((note) => matchesContextFilter(note, thinkingContextFilter))
   }, [processNotes, thinkingContextFilter])
@@ -2231,8 +2351,8 @@ function AppContent() {
         return byUpdated
       }
       return b.createdAt.localeCompare(a.createdAt)
-    })
-  }, [visibleProcessNotes])
+    }, allContextOptions)
+  }, [allContextOptions, visibleProcessNotes])
   const thinkingArchivedNotes = useMemo(
     () =>
       archivedNotes.filter(
@@ -2271,8 +2391,8 @@ function AppContent() {
         return byUpdated
       }
       return b.createdAt.localeCompare(a.createdAt)
-    })
-  }, [visibleThinkingArchivedNotes])
+    }, allContextOptions)
+  }, [allContextOptions, visibleThinkingArchivedNotes])
   const archivedTodoGroups = useMemo(() => {
     return groupNotesByContext(visibleTodoArchivedNotes, (a, b) => {
       const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
@@ -2280,8 +2400,8 @@ function AppContent() {
         return byUpdated
       }
       return b.createdAt.localeCompare(a.createdAt)
-    })
-  }, [visibleTodoArchivedNotes])
+    }, allContextOptions)
+  }, [allContextOptions, visibleTodoArchivedNotes])
   const thinkingContextOptions = useMemo(() => {
     const used = new Set<ContextTag>()
     for (const note of processNotes) {
@@ -2290,8 +2410,8 @@ function AppContent() {
     for (const note of thinkingArchivedNotes) {
       if (note.context) used.add(note.context)
     }
-    return CONTEXT_OPTIONS.filter((option) => used.has(option.value))
-  }, [processNotes, thinkingArchivedNotes])
+    return allContextOptions.filter((option) => used.has(option.value))
+  }, [allContextOptions, processNotes, thinkingArchivedNotes])
   const thinkingHasNoContextNotes = useMemo(() => {
     return [...processNotes, ...thinkingArchivedNotes].some((note) => !note.context)
   }, [processNotes, thinkingArchivedNotes])
@@ -2303,8 +2423,8 @@ function AppContent() {
     for (const note of todoArchivedNotes) {
       if (note.context) used.add(note.context)
     }
-    return CONTEXT_OPTIONS.filter((option) => used.has(option.value))
-  }, [todoNotes, todoArchivedNotes])
+    return allContextOptions.filter((option) => used.has(option.value))
+  }, [allContextOptions, todoNotes, todoArchivedNotes])
   const todoHasNoContextNotes = useMemo(() => {
     return [...todoNotes, ...todoArchivedNotes].some((note) => !note.context)
   }, [todoNotes, todoArchivedNotes])
@@ -2490,6 +2610,73 @@ function AppContent() {
     [refreshAll],
   )
 
+  const handleSaveContextOptionLabel = useCallback(async (value: ContextTag) => {
+    setError('')
+    const draft = normalizeContextLabel(contextDraftLabels[value])
+    const nextValue = normalizeContextTag(draft)
+    if (!draft || !nextValue) {
+      setError('Bereichsname darf nicht leer sein.')
+      return
+    }
+
+    const hasDuplicate = contextOptions.some((option) => option.value !== value && option.value === nextValue)
+    if (hasDuplicate) {
+      setError('Bereich existiert bereits.')
+      return
+    }
+
+    try {
+      await replaceContextAcrossNotes(value, nextValue)
+      setContextOptions((prev) =>
+        prev
+          .map((option) => (option.value === value ? { value: nextValue, label: nextValue } : option))
+          .sort((a, b) => a.label.localeCompare(b.label, 'de-DE')),
+      )
+      setInfo('Bereich aktualisiert.')
+      await refreshAll()
+    } catch {
+      setError('Bereich konnte nicht aktualisiert werden.')
+    }
+  }, [contextDraftLabels, contextOptions, refreshAll])
+
+  const handleDeleteContextOption = useCallback(async (value: ContextTag) => {
+    setError('')
+    try {
+      const changed = await replaceContextAcrossNotes(value, undefined)
+      setContextOptions((prev) => prev.filter((option) => option.value !== value))
+      setInfo(
+        changed > 0
+          ? `Bereich entfernt. ${changed} Eintrag${changed === 1 ? '' : 'e'} jetzt ohne Bereich.`
+          : 'Bereich entfernt.',
+      )
+      await refreshAll()
+    } catch {
+      setError('Bereich konnte nicht entfernt werden.')
+    }
+  }, [refreshAll])
+
+  const handleAddContextOption = useCallback(() => {
+    const label = normalizeContextLabel(newContextLabel)
+    if (!label) {
+      setError('Bitte Namen für den Bereich eingeben.')
+      return
+    }
+    const value = normalizeContextTag(label)
+    if (!value) {
+      setError('Bereich konnte nicht erstellt werden.')
+      return
+    }
+    setContextOptions((prev) => {
+      if (prev.some((option) => option.value === value)) {
+        setError('Bereich existiert bereits.')
+        return prev
+      }
+      return [...prev, { value, label: value }].sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
+    })
+    setNewContextLabel('')
+    setInfo('Bereich hinzugefügt.')
+  }, [newContextLabel])
+
   const handleUndoLastTodoAction = async () => {
     if (!lastTodoAction || todoUndoBusy) {
       return
@@ -2598,7 +2785,7 @@ function AppContent() {
       parts.push('mit Stern')
     }
     if (todoContextFilter) {
-      parts.push(`in ${contextFilterPhrase(todoContextFilter)}`)
+      parts.push(`in ${contextFilterPhrase(todoContextFilter, allContextOptions)}`)
     }
     if (normalizedTodoSearchQuery) {
       parts.push(`für "${todoSearchQuery.trim()}"`)
@@ -2607,7 +2794,7 @@ function AppContent() {
       return 'Keine passenden Handlungen.'
     }
     return `Keine Handlungen ${parts.join(' ')}.`
-  }, [normalizedTodoSearchQuery, todoContextFilter, todoSearchQuery, todoStarOnly])
+  }, [allContextOptions, normalizedTodoSearchQuery, todoContextFilter, todoSearchQuery, todoStarOnly])
 
   const todoGroups = useMemo(() => {
     return groupNotesByContext(visibleTodoNotes, (a, b) => {
@@ -2615,8 +2802,8 @@ function AppContent() {
         return a.starred ? -1 : 1
       }
       return b.createdAt.localeCompare(a.createdAt)
-    })
-  }, [visibleTodoNotes])
+    }, allContextOptions)
+  }, [allContextOptions, visibleTodoNotes])
 
   useEffect(() => {
     if (activeTab !== 'BRAINDUMP') {
@@ -2642,7 +2829,7 @@ function AppContent() {
     return () => cancelAnimationFrame(frame)
   }, [activeTab, braindumpNotes, scrollToBraindumpBottom])
 
-  const openContextScreen = useCallback((tab: Extract<TabKey, 'DATA' | 'ABOUT'>) => {
+  const openContextScreen = useCallback((tab: Extract<TabKey, 'DATA' | 'ABOUT' | 'CONTEXTS'>) => {
     setActiveTab(tab)
     setShowContextMenu(false)
   }, [])
@@ -2799,6 +2986,9 @@ function AppContent() {
             </button>
             {showContextMenu ? (
               <div ref={contextMenuRef} className="context-menu" role="menu" aria-label="Kontextmenü">
+                <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('CONTEXTS')}>
+                  Bereiche bearbeiten
+                </button>
                 <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('DATA')}>
                   Sync & Backup
                 </button>
@@ -2859,6 +3049,114 @@ function AppContent() {
                 onCancelScanner={handleScannerCancel}
                 scannerVideoRef={scannerVideoRef}
               />
+            ) : null}
+            {activeTab === 'CONTEXTS' ? (
+              <section className="data-section" aria-label="Bereiche verwalten">
+                <FlowHero
+                  title="Bereiche verwalten"
+                  subtitle=""
+                />
+                <div className="data-panel">
+                  <div className="data-layout">
+                    <article className="data-card">
+                      <div className="context-editor-head">
+                        <h3>Bereiche</h3>
+                        <button
+                          type="button"
+                          className={isContextEditMode ? 'review-btn review-btn--process' : 'review-btn review-btn--todo'}
+                          onClick={() => setIsContextEditMode((prev) => !prev)}
+                        >
+                          {isContextEditMode ? 'Fertig' : 'Bearbeiten'}
+                        </button>
+                      </div>
+                      <p className="context-editor-meta">
+                        {contextOptions.length} {contextOptions.length === 1 ? 'Bereich' : 'Bereiche'}
+                      </p>
+                      <p className="data-card__intro">
+                        {isContextEditMode
+                          ? 'Namen ändern, entfernen oder neue Bereiche hinzufügen.'
+                          : 'Diesen Bereichen kannst du Handlungen zuordnen.'}
+                      </p>
+                      {isContextEditMode ? (
+                        <div className="context-editor-help" role="note" aria-label="Hinweise zur Bearbeitung">
+                          <p>Beim Löschen eines Bereichs werden zugeordnete Einträge auf "Ohne Bereich" gesetzt.</p>
+                          <p>Beim Umbenennen wird der neue Name in bestehenden Einträgen übernommen.</p>
+                        </div>
+                      ) : null}
+                      <div className={isContextEditMode ? 'context-editor-list' : 'context-editor-list context-editor-list--readonly'}>
+                        {contextOptions.map((option) => (
+                          <div
+                            key={option.value}
+                            className={isContextEditMode ? 'context-editor-row' : 'context-editor-row context-editor-row--readonly'}
+                          >
+                            {isContextEditMode ? (
+                              <>
+                                <input
+                                  type="text"
+                                  className="context-editor-input"
+                                  value={contextDraftLabels[option.value] ?? option.label}
+                                  onChange={(event) =>
+                                    setContextDraftLabels((prev) => ({ ...prev, [option.value]: event.target.value }))
+                                  }
+                                  placeholder="Name"
+                                  aria-label={`Bereich ${option.value} umbenennen`}
+                                />
+                                <button
+                                  type="button"
+                                  className="review-btn review-btn--process"
+                                  onClick={() => void handleSaveContextOptionLabel(option.value)}
+                                >
+                                  Speichern
+                                </button>
+                                <button
+                                  type="button"
+                                  className="danger-btn danger-btn--critical"
+                                  onClick={() => void handleDeleteContextOption(option.value)}
+                                >
+                                  Entfernen
+                                </button>
+                              </>
+                            ) : (
+                              <span className="context-editor-label">{option.label}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {isContextEditMode ? (
+                        <div className="context-editor-add-panel">
+                          <h3>Neuer Bereich</h3>
+                          <div className="context-editor-add">
+                            <input
+                              type="text"
+                              className="context-editor-input"
+                              value={newContextLabel}
+                              onChange={(event) => setNewContextLabel(event.target.value)}
+                              placeholder="z. B. Weiterbildung"
+                              aria-label="Neuer Bereich"
+                            />
+                            <button type="button" className="review-btn review-btn--todo" onClick={handleAddContextOption}>
+                              Hinzufügen
+                            </button>
+                          </div>
+                          {orphanedContextOptions.length > 0 ? (
+                            <>
+                              <p className="hint">
+                                Nicht konfigurierte Bereiche in bestehenden Einträgen:
+                              </p>
+                              <ul className="context-editor-orphan-list" aria-label="Verwendete, nicht konfigurierte Bereiche">
+                                {orphanedContextOptions.map((option) => (
+                                  <li key={option.value}>{option.label}</li>
+                                ))}
+                              </ul>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </article>
+                  </div>
+                </div>
+              </section>
             ) : null}
             {activeTab === 'ABOUT' ? <AboutScreen onBackToCapture={() => setActiveTab('BRAINDUMP')} /> : null}
 
@@ -2976,13 +3274,13 @@ function AppContent() {
                                 value={note.context ?? ''}
                                 onChange={(event) => {
                                   const nextValue = event.target.value
-                                  void handleReviewContextChange(note.id, nextValue ? (nextValue as ContextTag) : undefined)
+                                  void handleReviewContextChange(note.id, nextValue ? normalizeContextTag(nextValue) : undefined)
                                 }}
                                 aria-label="Bereich"
                                 title="Bereich"
                               >
                                 <option value="">Kein Bereich</option>
-                                {CONTEXT_OPTIONS.map((option) => (
+                                {allContextOptions.map((option) => (
                                   <option key={option.value} value={option.value}>
                                     {option.label}
                                   </option>

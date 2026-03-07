@@ -63,3 +63,13 @@ Darstellung:
   - QR-Code anzeigen / QR scannen
   - Pair-Code ist in der UI aus Sicherheitsgründen ausgeblendet
   - Pair-Code kann kopiert und auf anderem Gerät importiert werden
+
+## Kontextmenü (`...` im Header)
+
+- `Bereiche bearbeiten`: Verwaltung für Bereiche mit Modus `Bearbeiten` / `Fertig`
+  - Standardansicht zeigt nur die aktuelle Bereichsliste
+  - im Bearbeiten-Modus: Bereiche umbenennen, entfernen, neu anlegen
+  - Beim Entfernen eines Bereichs werden vorhandene Einträge auf `Ohne Bereich` gesetzt
+  - Nach Backup-Import werden Einträge mit nicht mehr konfigurierten Bereichen ebenfalls auf `Ohne Bereich` gesetzt
+- `Sync & Backup`
+- `Über Leiser`

@@ -1345,6 +1345,82 @@ export async function updateNoteContext(id: string, context: ContextTag | undefi
   })
 }
 
+export async function replaceContextAcrossNotes(fromContext: ContextTag, toContext: ContextTag | undefined): Promise<number> {
+  const source = normalizeContextTag(fromContext)
+  const target = normalizeContextTag(toContext)
+  if (!source) {
+    return 0
+  }
+  if (source === target) {
+    return 0
+  }
+
+  const db = await openDb()
+  const noteIds = await new Promise<string[]>((resolve, reject) => {
+    const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_VIEW_STORE)
+    const request = store.openCursor()
+    const ids: string[] = []
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = async () => {
+      const cursor = request.result
+      if (!cursor) {
+        resolve(ids)
+        return
+      }
+      const note = await asStoredNote(cursor.value)
+      if (note && note.deletedAt == null && note.context === source) {
+        ids.push(note.id)
+      }
+      cursor.continue()
+    }
+  })
+
+  for (const noteId of noteIds) {
+    await updateNoteContext(noteId, target)
+  }
+  return noteIds.length
+}
+
+export async function clearUnknownContexts(allowedContexts: ContextTag[]): Promise<number> {
+  const allowed = new Set(
+    allowedContexts
+      .map((context) => normalizeContextTag(context))
+      .filter((context): context is ContextTag => Boolean(context)),
+  )
+  const db = await openDb()
+  const noteIds = await new Promise<string[]>((resolve, reject) => {
+    const transaction = db.transaction(NOTES_VIEW_STORE, 'readonly')
+    const store = transaction.objectStore(NOTES_VIEW_STORE)
+    const request = store.openCursor()
+    const ids: string[] = []
+
+    transaction.onerror = () => reject(transaction.error)
+    transaction.onabort = () => reject(transaction.error)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        resolve(ids)
+        return
+      }
+      const note = asStoredNoteRaw(cursor.value)
+      if (note && note.deletedAt == null && note.context && !allowed.has(note.context)) {
+        ids.push(note.id)
+      }
+      cursor.continue()
+    }
+  })
+
+  for (const noteId of noteIds) {
+    await updateNoteContext(noteId, undefined)
+  }
+  return noteIds.length
+}
+
 export type SyncDebugInfo = {
   deviceId: string
   roomId: string
