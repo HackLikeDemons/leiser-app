@@ -291,6 +291,14 @@ function matchesContextFilter(note: Note, filter: ContextFilter) {
   return note.context === filter
 }
 
+function matchesTodoSearch(note: Note, searchQuery: string) {
+  if (!searchQuery) {
+    return true
+  }
+  const haystack = `${note.text} ${note.context ?? ''}`.toLocaleLowerCase('de-DE')
+  return searchQuery.split(/\s+/).every((token) => haystack.includes(token))
+}
+
 function groupNotesByContext(notes: Note[], noteSort: (a: Note, b: Note) => number): ContextGroup[] {
   const grouped = new Map<'__none' | ContextTag, Note[]>()
   for (const note of notes) {
@@ -1062,6 +1070,7 @@ function AppContent() {
   const [todoNotes, setTodoNotes] = useState<Note[]>([])
   const [todoStarOnly, setTodoStarOnly] = useState(false)
   const [todoContextFilter, setTodoContextFilter] = useState<ContextFilter>('')
+  const [todoSearchQuery, setTodoSearchQuery] = useState('')
   const [archivedNotes, setArchivedNotes] = useState<Note[]>([])
   const [showArchive, setShowArchive] = useState(false)
   const [showTodoArchive, setShowTodoArchive] = useState(false)
@@ -2241,10 +2250,19 @@ function AppContent() {
       ),
     [archivedNotes],
   )
+  const normalizedTodoSearchQuery = useMemo(() => todoSearchQuery.trim().toLocaleLowerCase('de-DE'), [todoSearchQuery])
   const thinkingArchiveCount = visibleThinkingArchivedNotes.length
   const visibleTodoArchivedNotes = useMemo(() => {
-    return todoArchivedNotes.filter((note) => matchesContextFilter(note, todoContextFilter))
-  }, [todoArchivedNotes, todoContextFilter])
+    return todoArchivedNotes.filter((note) => {
+      if (!matchesContextFilter(note, todoContextFilter)) {
+        return false
+      }
+      if (!matchesTodoSearch(note, normalizedTodoSearchQuery)) {
+        return false
+      }
+      return true
+    })
+  }, [todoArchivedNotes, todoContextFilter, normalizedTodoSearchQuery])
   const todoArchiveCount = visibleTodoArchivedNotes.length
   const archivedThinkingGroups = useMemo(() => {
     return groupNotesByContext(visibleThinkingArchivedNotes, (a, b) => {
@@ -2567,9 +2585,29 @@ function AppContent() {
       if (!matchesContextFilter(note, todoContextFilter)) {
         return false
       }
+      if (!matchesTodoSearch(note, normalizedTodoSearchQuery)) {
+        return false
+      }
       return true
     })
-  }, [todoNotes, todoStarOnly, todoContextFilter])
+  }, [todoNotes, todoStarOnly, todoContextFilter, normalizedTodoSearchQuery])
+
+  const todoFiltersSummary = useMemo(() => {
+    const parts: string[] = []
+    if (todoStarOnly) {
+      parts.push('mit Stern')
+    }
+    if (todoContextFilter) {
+      parts.push(`in ${contextFilterPhrase(todoContextFilter)}`)
+    }
+    if (normalizedTodoSearchQuery) {
+      parts.push(`für "${todoSearchQuery.trim()}"`)
+    }
+    if (parts.length === 0) {
+      return 'Keine passenden Handlungen.'
+    }
+    return `Keine Handlungen ${parts.join(' ')}.`
+  }, [normalizedTodoSearchQuery, todoContextFilter, todoSearchQuery, todoStarOnly])
 
   const todoGroups = useMemo(() => {
     return groupNotesByContext(visibleTodoNotes, (a, b) => {
@@ -3140,23 +3178,27 @@ function AppContent() {
               subtitle=""
             />
             <div className="todo-filter-row">
-              <button
-                type="button"
-                className={todoStarOnly ? 'review-btn review-btn--star review-btn--star-active review-btn--icon' : 'review-btn review-btn--star review-btn--icon'}
-                onClick={() => setTodoStarOnly((prev) => !prev)}
-                aria-label={todoStarOnly ? 'Alle Handlungen anzeigen' : 'Nur wichtige Handlungen anzeigen'}
-                title={todoStarOnly ? 'Filter: Alle Handlungen' : 'Filter: Nur wichtige Handlungen'}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
+              <label className="todo-search-wrap">
+                <span className="sr-only">Handlungen durchsuchen</span>
+                <svg className="todo-search-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path
-                    d="m12 3.8 2.6 5.2 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z"
-                    fill={todoStarOnly ? 'currentColor' : 'none'}
+                    d="m20 20-3.6-3.6M10.8 18a7.2 7.2 0 1 1 0-14.4 7.2 7.2 0 0 1 0 14.4Z"
+                    fill="none"
                     stroke="currentColor"
                     strokeWidth="1.7"
+                    strokeLinecap="round"
                     strokeLinejoin="round"
                   />
                 </svg>
-              </button>
+                <input
+                  type="search"
+                  className="todo-search-input"
+                  value={todoSearchQuery}
+                  onChange={(event) => setTodoSearchQuery(event.target.value)}
+                  placeholder="Handlungen suchen"
+                  aria-label="Handlungen durchsuchen"
+                />
+              </label>
               <label className="context-select-wrap">
                 <span className="sr-only">Bereich filtern</span>
                 <select
@@ -3175,6 +3217,23 @@ function AppContent() {
                   ))}
                 </select>
               </label>
+              <button
+                type="button"
+                className={todoStarOnly ? 'review-btn review-btn--star review-btn--star-active review-btn--icon' : 'review-btn review-btn--star review-btn--icon'}
+                onClick={() => setTodoStarOnly((prev) => !prev)}
+                aria-label={todoStarOnly ? 'Alle Handlungen anzeigen' : 'Nur wichtige Handlungen anzeigen'}
+                title={todoStarOnly ? 'Filter: Alle Handlungen' : 'Filter: Nur wichtige Handlungen'}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="m12 3.8 2.6 5.2 5.8.8-4.2 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4.1 5.8-.8z"
+                    fill={todoStarOnly ? 'currentColor' : 'none'}
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
             </div>
             {lastTodoAction ? (
               <div className="undo-snackbar undo-snackbar--subtle" role="status" aria-live="polite">
@@ -3191,13 +3250,7 @@ function AppContent() {
             {todoNotes.length === 0 ? <p className="empty-text">Keine offenen Handlungen.</p> : null}
             {todoNotes.length > 0 && visibleTodoNotes.length === 0 ? (
               <p className="empty-text">
-                {todoStarOnly && todoContextFilter
-                  ? `Keine Handlungen in ${contextFilterPhrase(todoContextFilter)} mit Stern.`
-                  : todoStarOnly
-                    ? 'Keine Handlungen mit Stern.'
-                    : todoContextFilter
-                      ? `Keine Handlungen in ${contextFilterPhrase(todoContextFilter)}.`
-                      : 'Keine passenden Handlungen.'}
+                {todoFiltersSummary}
               </p>
             ) : null}
             {todoGroups.map((group) => (
