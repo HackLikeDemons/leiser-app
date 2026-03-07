@@ -30,7 +30,6 @@ type Note = {
 ## IndexedDB
 
 - DB Name: `leiser-db`
-- DB Version: `10`
 - zentrale Stores:
   - `notes`
   - `notes_view`
@@ -38,20 +37,6 @@ type Note = {
   - `sync_state`
   - `outbox`
   - `inbox_seen`
-
-## Verschlüsselung "at rest"
-
-- `Note.text` wird vor Persistenz verschlüsselt gespeichert (`enc:v1:<iv>:<ciphertext>`).
-- Laufzeitzugriffe (UI, Suche, Listenfunktionen) arbeiten weiterhin mit entschlüsseltem Text.
-- `notes`, `notes_view` und `crdt_docs` enthalten den verschlüsselten Text.
-- Metadaten bleiben unverschlüsselt, damit Sortierung, Konfliktauflösung und Retention deterministisch bleiben.
-
-Lokale E2EE-Parameter in `localStorage`:
-
-- `leiser-sync-key` (Passphrase / Sync-Key)
-- `leiser:e2ee:salt`
-- `leiser:e2ee:wrapped-content-key`
-- `leiser:e2ee:migrated-v1` (Migrationsmarker)
 
 ## Sync-relevante State-Infos
 
@@ -73,11 +58,6 @@ Lokale E2EE-Parameter in `localStorage`:
 - `createdAt`
 - `sentAt`
 - `attemptCount`
-
-Hinweis zum Sync-Envelope:
-
-- Snapshot-`text` ist verschlüsselt.
-- Pairing-Payload enthält optional zusätzlich `wrappedContentKey` (verschlüsselter Content-Key).
 
 Wichtige Indexe (notes/notes_view):
 

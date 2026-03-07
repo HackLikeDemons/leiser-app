@@ -7,15 +7,6 @@ Dieses Dokument definiert die verbindlichen Regeln fuer Sync, Konflikte, Deletes
 - Primare Entitaet: `Note` (identifiziert ueber `id`).
 - Sync-Transport: Envelope pro Aenderung mit optionalem Snapshot.
 - Zielzustand: Alle gekoppelten Clients konvergieren auf denselben Datensatz pro Raum.
-- Notiztext ist clientseitig verschluesselt (`AES-GCM`) und wird nur lokal entschluesselt.
-
-## 1.1 Kryptografie-Regeln
-
-- Schluesselableitung lokal via `PBKDF2-SHA256` aus Passphrase + Salt.
-- Pro Notiz wird eine zufaellige IV/Nonce verwendet.
-- Pairing uebertraegt neben `roomId`/`syncToken` optional den verschluesselten Content-Key (`wrappedContentKey`).
-- Metadaten koennen im Klartext verbleiben, um deterministische Merge-/Retention-Regeln zu erhalten.
-- Der Server verwaltet keine Klartext-Notizinhalte.
 
 ## 2. Konfliktregeln (deterministisch)
 
@@ -57,7 +48,6 @@ Beim ersten Lauf werden fehlende Bestandsdaten per Snapshot-Envelopes in die Out
 ## 6. Invarianten (muessen immer gelten)
 
 - Keine doppelten Notes pro `id`.
-- `note.text` ist in persistierten Stores und Sync-Snapshots verschluesselt.
 - Nach Maintenance-Lauf:
   - keine `TODO` aelter als 14 Tage
   - keine `ARCHIVE` aelter als 30 Tage

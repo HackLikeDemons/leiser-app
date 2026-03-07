@@ -30,12 +30,6 @@ import {
 } from './lib/dbNotes'
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO } from './lib/date'
-import {
-  clearE2eeLocalMaterial,
-  ensureLocalEncryptionReady,
-  getWrappedContentKeyForPairing,
-  setWrappedContentKeyFromPairing,
-} from './lib/e2ee'
 import type { ContextTag, Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FlowHero } from './app/FlowHero'
@@ -79,7 +73,6 @@ type PairingPayloadV1 = {
   roomId: string
   token: string
   key?: string
-  wrappedContentKey?: string
 }
 
 type ReviewAgeCategory = 'OVERDUE' | 'READY' | 'FRESH'
@@ -152,8 +145,6 @@ function parsePairingPayload(input: string): PairingPayloadV1 {
   const roomId = typeof parsed.roomId === 'string' ? parsed.roomId.trim() : ''
   const token = typeof parsed.token === 'string' ? parsed.token.trim() : ''
   const key = typeof parsed.key === 'string' ? parsed.key.trim() : ''
-  const wrappedContentKey =
-    typeof parsed.wrappedContentKey === 'string' ? parsed.wrappedContentKey.trim() : ''
   const version = parsed.v
   const isLegacy = version == null
   if ((!isLegacy && version !== 1) || roomId.length === 0 || token.length === 0) {
@@ -165,7 +156,6 @@ function parsePairingPayload(input: string): PairingPayloadV1 {
     roomId,
     token,
     ...(key ? { key } : {}),
-    ...(wrappedContentKey ? { wrappedContentKey } : {}),
   }
 }
 
@@ -1478,7 +1468,6 @@ function AppContent() {
       localStorage.removeItem(SYNC_ID_STORAGE_KEY)
       localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
       localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
-      clearE2eeLocalMaterial()
       setShowPairQr(false)
       setShowScanner(false)
       setSyncRoomId(DEFAULT_SYNC_ROOM_ID)
@@ -1680,7 +1669,6 @@ function AppContent() {
       localStorage.removeItem(SYNC_ID_STORAGE_KEY)
       localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
       localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
-      clearE2eeLocalMaterial()
       setSyncRoomId(DEFAULT_SYNC_ROOM_ID)
       setSyncEnabledState(false)
       setSyncPairCode(null)
@@ -1725,7 +1713,6 @@ function AppContent() {
         token: localStorage.getItem(SYNC_TOKEN_STORAGE_KEY),
         key: localStorage.getItem(SYNC_KEY_STORAGE_KEY),
       }
-      const previousWrappedContentKey = getWrappedContentKeyForPairing()
       const previousRoomState = await getSyncState(previousRoomId)
       const previousTargetState =
         payload.roomId === previousRoomId ? previousRoomState : await getSyncState(payload.roomId)
@@ -1737,10 +1724,6 @@ function AppContent() {
       } else {
         localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
       }
-      if (payload.wrappedContentKey) {
-        setWrappedContentKeyFromPairing(payload.wrappedContentKey)
-      }
-      await ensureLocalEncryptionReady()
 
       setSyncRoomId(payload.roomId)
       await updateSyncState(payload.roomId, {
@@ -1770,14 +1753,6 @@ function AppContent() {
           } else {
             localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
           }
-          if (payload.wrappedContentKey) {
-            if (previousWrappedContentKey) {
-              setWrappedContentKeyFromPairing(previousWrappedContentKey)
-            } else {
-              clearE2eeLocalMaterial()
-            }
-          }
-
           await updateSyncState(payload.roomId, {
             isEnabled: previousTargetState.isEnabled,
             syncToken: previousTargetState.syncToken,
@@ -1816,7 +1791,6 @@ function AppContent() {
         roomId: parsed.roomId.trim(),
         token: parsed.token.trim(),
         ...(syncKey ? { key: syncKey } : {}),
-        ...(typeof parsed.wrappedContentKey === 'string' ? { wrappedContentKey: parsed.wrappedContentKey } : {}),
       }
       const encoded = encodeBase64Url(JSON.stringify(payload))
       setPairQrValue(`leiser://pair?${encoded}`)

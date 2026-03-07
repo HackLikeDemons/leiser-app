@@ -5,7 +5,6 @@ Leiser ist eine lokale, offline-fähige Gedanken- und Handlungs-App.
 - Offline-first
 - keine Tracker
 - Notizen lokal in IndexedDB
-- Notiztext clientseitig verschlüsselt (at rest + Sync-Blob)
 - optionaler Geräte-Sync über Supabase
 
 ## Schnellstart

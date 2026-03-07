@@ -22,31 +22,15 @@ oder zur Laufzeit per `localStorage`.
 - in Supabase wird nur `token_hash` gespeichert
 - Pair-Code ist in der UI ausgeblendet und nur über Aktionen nutzbar (kopieren / QR)
 
-## E2E-Verschlüsselung (Notiztext)
-
-- Notiztext wird clientseitig mit `AES-GCM` verschlüsselt, bevor er in `IndexedDB` und in den Sync-Blob geschrieben wird.
-- Pro Notiz-Write wird eine neue zufällige `IV` (Nonce, 12 Byte) verwendet.
-- Schlüsselableitung erfolgt lokal aus Passphrase (`leiser-sync-key`) via `PBKDF2-SHA256` + lokalem Salt.
-- Der eigentliche Content-Key wird lokal als "wrapped key" gespeichert (`leiser:e2ee:wrapped-content-key`).
-- Beim Pairing wird zusätzlich zum `syncToken` der verschlüsselte Content-Key (`wrappedContentKey`) übertragen.
-- Metadaten (`status`, `type`, `updatedAt`, `revision`, ...) bleiben für Merge/Retention im Klartext.
-- Der Supabase-Server sieht nur verschlüsselte Inhalte.
-
 ## Ablauf (vereinfacht)
 
 1. Pull remote blob
-2. Snapshot-Text entschlüsseln und Remote-Änderungen lokal anwenden
+2. Remote-Änderungen lokal anwenden
 3. lokale Outbox in kombinierten Blob mergen
-4. Snapshot-Text vor Push verschlüsseln, dann Push mit optimistic concurrency (`version`)
+4. Push mit optimistic concurrency (`version`)
 5. bei Konflikt: re-pull/re-merge/retry
 
 Beim erstmaligen Abgleich eines Geräts werden fehlende Bestandsdaten per Snapshot-Envelopes nachgezogen.
-
-## Migration bestehender Clients
-
-- Beim ersten Start nach dem E2E-Update werden bestehende lokale Klartext-Notizen automatisch lokal nachverschlüsselt.
-- Die Migration läuft nur einmal pro Client und verändert keine fachlichen Note-Felder.
-- Falls bereits verschlüsselte Einträge vorhanden sind, werden sie unverändert übernommen.
 
 ## Wiederaufbau nach Sync-Problemen (empfohlene Reihenfolge)
 

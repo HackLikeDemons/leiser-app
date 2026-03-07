@@ -2,15 +2,6 @@ import * as Automerge from '@automerge/automerge/slim'
 import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64'
 import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
-import {
-  decryptNoteTextForRuntime,
-  encryptNoteTextForStorage,
-  ensureLocalEncryptionReady,
-  getWrappedContentKeyForPairing,
-  isE2eeMigrationDone,
-  isEncryptedNoteText,
-  markE2eeMigrationDone,
-} from './e2ee'
 import { generateSyncToken } from './syncToken'
 import { signEnvelope } from './syncSigning'
 import { normalizeContextTag } from './types'
@@ -48,7 +39,6 @@ const ALLOWED_ARCHIVE_BUCKETS: ArchiveBucket[] = ['THINKING', 'TODO']
 
 let dbPromise: Promise<IDBDatabase> | null = null
 let automergeInitPromise: Promise<void> | null = null
-let e2eeReadyPromise: Promise<void> | null = null
 
 function getActiveSyncRoomId() {
   if (typeof window === 'undefined') {
@@ -186,10 +176,7 @@ async function asStoredNote(value: unknown): Promise<Note | null> {
   if (!raw) {
     return null
   }
-  return {
-    ...raw,
-    text: await decryptNoteTextForRuntime(raw.text),
-  }
+  return raw
 }
 
 async function asActiveNote(value: unknown): Promise<Note | null> {
@@ -317,86 +304,24 @@ function loadCrdtDoc(binary: Uint8Array) {
   return Automerge.load<CrdtNoteDoc>(binary)
 }
 
-async function migrateLegacyPlaintextNotes(db: IDBDatabase): Promise<void> {
-  if (typeof window === 'undefined' || isE2eeMigrationDone()) {
-    return
+function toUint8Array(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return value
   }
-
-  const rawNotes = await new Promise<Note[]>((resolve, reject) => {
-    const notes: Note[] = []
-    const tx = db.transaction(NOTES_STORE, 'readonly')
-    const store = tx.objectStore(NOTES_STORE)
-    const cursorRequest = store.openCursor()
-
-    tx.onerror = () => reject(tx.error)
-    tx.onabort = () => reject(tx.error)
-    tx.oncomplete = () => resolve(notes)
-    cursorRequest.onerror = () => reject(cursorRequest.error)
-    cursorRequest.onsuccess = () => {
-      const cursor = cursorRequest.result
-      if (!cursor) {
-        return
-      }
-      const note = asStoredNoteRaw(cursor.value)
-      if (note) {
-        notes.push(note)
-      }
-      cursor.continue()
-    }
-  })
-
-  const changed = await Promise.all(
-    rawNotes.map(async (note) => {
-      if (isEncryptedNoteText(note.text)) {
-        return null
-      }
-      const encryptedText = await encryptNoteTextForStorage(note.text)
-      return {
-        note: { ...note, text: encryptedText },
-      }
-    }),
-  )
-
-  const toUpdate = changed.filter((item): item is { note: Note } => item !== null)
-  if (toUpdate.length === 0) {
-    markE2eeMigrationDone()
-    return
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value)
   }
-
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([NOTES_STORE, NOTES_VIEW_STORE, CRDT_DOCS_STORE], 'readwrite')
-    const notesStore = tx.objectStore(NOTES_STORE)
-    const notesViewStore = tx.objectStore(NOTES_VIEW_STORE)
-    const crdtStore = tx.objectStore(CRDT_DOCS_STORE)
-
-    tx.onerror = () => reject(tx.error)
-    tx.onabort = () => reject(tx.error)
-    tx.oncomplete = () => resolve()
-
-    for (const item of toUpdate) {
-      const note = item.note
-      const notePut = notesStore.put(note)
-      notePut.onerror = () => reject(notePut.error)
-      const viewPut = notesViewStore.put(note)
-      viewPut.onerror = () => reject(viewPut.error)
-
-      const { doc } = buildDocFromPayload(noteToCrdtDoc(note))
-      const crdtPut = crdtStore.put({
-        noteId: note.id,
-        docBinary: saveCrdtDoc(doc),
-        updatedAt: note.updatedAt,
-        schemaVersion: CRDT_SCHEMA_VERSION,
-      })
-      crdtPut.onerror = () => reject(crdtPut.error)
-    }
-  })
-
-  markE2eeMigrationDone()
+  return new Uint8Array(value as ArrayLike<number>)
 }
 
-async function ensureE2eeReadyAndMigrate(db: IDBDatabase): Promise<void> {
-  await ensureLocalEncryptionReady()
-  await migrateLegacyPlaintextNotes(db)
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+  return btoa(binary)
 }
 
 function openDb() {
@@ -410,7 +335,7 @@ function openDb() {
     }
     await automergeInitPromise
 
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
     request.onerror = () => reject(request.error)
@@ -514,12 +439,6 @@ function openDb() {
 
     request.onsuccess = () => resolve(request.result)
     })
-
-    if (!e2eeReadyPromise) {
-      e2eeReadyPromise = ensureE2eeReadyAndMigrate(db)
-    }
-    await e2eeReadyPromise
-    return db
   })()
 
   return dbPromise
@@ -546,12 +465,7 @@ function materializeFromDoc(noteId: string, doc: Automerge.Doc<CrdtNoteDoc>): No
 async function persistDocAndViews(noteId: string, doc: Automerge.Doc<CrdtNoteDoc>): Promise<Note> {
   const db = await openDb()
   const note = materializeFromDoc(noteId, doc)
-  const encryptedText = await encryptNoteTextForStorage(note.text)
-  const storedNote = { ...note, text: encryptedText }
-  const encryptedDoc = Automerge.change(doc, (draft: CrdtNoteDoc) => {
-    draft.text = encryptedText
-  })
-  const binary = saveCrdtDoc(encryptedDoc)
+  const binary = saveCrdtDoc(doc)
 
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction([NOTES_STORE, NOTES_VIEW_STORE, CRDT_DOCS_STORE], 'readwrite')
@@ -563,9 +477,9 @@ async function persistDocAndViews(noteId: string, doc: Automerge.Doc<CrdtNoteDoc
     transaction.onabort = () => reject(transaction.error)
     transaction.oncomplete = () => resolve()
 
-    const r1 = notesStore.put(storedNote)
+    const r1 = notesStore.put(note)
     r1.onerror = () => reject(r1.error)
-    const r2 = notesViewStore.put(storedNote)
+    const r2 = notesViewStore.put(note)
     r2.onerror = () => reject(r2.error)
     const r3 = crdtStore.put({
       noteId,
@@ -598,30 +512,7 @@ async function loadDocForNote(noteId: string): Promise<Automerge.Doc<CrdtNoteDoc
           : new Uint8Array(row.docBinary)
         : null
       if (bytes) {
-        const storedDoc = loadCrdtDoc(bytes)
-        void (async () => {
-          try {
-            const decryptedText = await decryptNoteTextForRuntime(storedDoc.text)
-            const { doc } = buildDocFromPayload({
-              text: decryptedText,
-              status: normalizeStatus(storedDoc.status),
-              type: normalizeType(storedDoc.type),
-              starred: Boolean(storedDoc.starred),
-              archiveBucket: normalizeArchiveBucket(storedDoc.archiveBucket),
-              context: normalizeContextTag(storedDoc.context) ?? null,
-              createdAt: storedDoc.createdAt,
-              updatedAt: storedDoc.updatedAt,
-              dayISO: storedDoc.dayISO,
-              deletedAt: storedDoc.deletedAt ?? null,
-              revision: Math.max(1, storedDoc.revision || 1),
-              originDeviceId: storedDoc.originDeviceId || getOrCreateDeviceId(),
-              lastModifiedDeviceId: storedDoc.lastModifiedDeviceId || getOrCreateDeviceId(),
-            })
-            resolve(doc)
-          } catch (error) {
-            reject(error)
-          }
-        })()
+        resolve(loadCrdtDoc(bytes))
         return
       }
 
@@ -648,18 +539,15 @@ async function loadDocForNote(noteId: string): Promise<Automerge.Doc<CrdtNoteDoc
 
 async function enqueueAutomergeChanges(
   noteId: string,
-  _changes: unknown[],
+  changes: unknown[],
   snapshot?: Note,
   roomId = getActiveSyncRoomId(),
 ): Promise<void> {
-  if (!snapshot) {
+  if (!changes.length && !snapshot) {
     return
   }
 
-  const encryptedSnapshot: Note = {
-    ...snapshot,
-    text: await encryptNoteTextForStorage(snapshot.text),
-  }
+  const payload = changes.map((change) => bytesToBase64(toUint8Array(change)))
   const ts = Date.now()
   const envelope: ChangeEnvelope = {
     changeId: crypto.randomUUID(),
@@ -668,8 +556,8 @@ async function enqueueAutomergeChanges(
     noteId,
     ts,
     kind: CHANGE_KIND,
-    payload: [],
-    snapshot: encryptedSnapshot,
+    payload,
+    snapshot,
   }
   const signedEnvelope = await signEnvelope(envelope)
 
@@ -1600,14 +1488,12 @@ export async function getSyncPairCode(roomId = DEFAULT_ROOM_ID): Promise<string 
   if (!state.syncToken) {
     return null
   }
-  const wrappedContentKey = getWrappedContentKeyForPairing()
   const syncKey =
     typeof window !== 'undefined' ? localStorage.getItem('leiser-sync-key')?.trim() || null : null
   return JSON.stringify({
     roomId,
     token: state.syncToken,
     ...(syncKey ? { key: syncKey } : {}),
-    ...(wrappedContentKey ? { wrappedContentKey } : {}),
   })
 }
 
