@@ -16,6 +16,7 @@ Die App ist bewusst minimal:
 - keine Telemetrie
 - optionaler Sync über Supabase (ohne klassisches Login)
 - Datenbereich für Backup/Sync/Pairing über `...` im Header
+- keine Demo-Daten-Seeding-Funktion im aktiven Produktpfad
 
 ## Navigationspunkte
 

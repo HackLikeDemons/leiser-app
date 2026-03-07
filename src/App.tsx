@@ -3300,14 +3300,14 @@ function AppContent() {
             </button>
             {showContextMenu ? (
               <div ref={contextMenuRef} className="context-menu" role="menu" aria-label="Kontextmenü">
-                <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('CONTEXTS')}>
-                  Bereiche bearbeiten
+                <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('ABOUT')}>
+                  Über Leiser
                 </button>
                 <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('DATA')}>
                   Sync & Backup
                 </button>
-                <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('ABOUT')}>
-                  Über Leiser
+                <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('CONTEXTS')}>
+                  Bereiche bearbeiten
                 </button>
               </div>
             ) : null}

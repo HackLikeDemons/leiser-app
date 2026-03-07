@@ -1161,6 +1161,8 @@ button[disabled]:hover {
 .about-screen__cta {
   margin-top: 0.16rem;
   min-height: 40px;
+  justify-self: end;
+  padding-inline: 1rem;
 }
 
 .braindump-context {

@@ -15,11 +15,9 @@
     "@automerge/automerge": "^3.2.4",
     "@supabase/supabase-js": "^2.98.0",
     "@zxing/browser": "^0.1.5",
-    "fuse.js": "^7.1.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-router-dom": "^7.9.4"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

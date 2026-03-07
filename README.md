@@ -48,3 +48,9 @@ npm run preview
 ## Hinweis
 
 Die alte Basis-Spezifikation der früheren Wochen-/Monatsfunktionen liegt in [SPEC.md](SPEC.md). Die aktive Anwendung ist das Notes-/Workflow-Modell.
+
+## Technischer Scope
+
+- Single-View React App ohne Router
+- kein Demo-Seed-Code im Produktpfad
+- Suche und Filter laufen ohne externe Fuzzy-Search-Abhängigkeit

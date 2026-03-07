@@ -6,14 +6,14 @@ const ABOUT_COPY = {
   title: 'Leiser',
   intro: 'hilft dir, deine Gedanken schnell festzuhalten und sie später in Ruhe zu sortieren.',
   privacy:
-    'Notiztexte werden auf deinem Gerät verschlüsselt gespeichert und auch verschlüsselt synchronisiert. Metadaten für Sortierung und Sync bleiben technisch bedingt im Klartext.',
+    'Notizinhalte werden auf deinem Gerät gespeichert. Wenn du den Sync aktivierst werden sie verschlüsselt in deinen Sync-Raum übertragen. Nur Geräte die mit deinem Sync-Raum verbunden sind, könen auf deine Notizinhalte zugreifen.',
   steps: [
     'Sammeln: Gedanken sofort in die Inbox schreiben.',
     'Ordnen: Gedanken behalten, in eine Aufgabe überführen oder verwerfen.',
     'Denken und Machen: weiterdenken und umsetzen.',
   ],
   footer:
-    'Alles funktioniert lokal und offline. Sync ist optional. Wenn ein Gerät selbst kompromittiert ist, kann laufender Klartext trotzdem ausgelesen werden.',
+    'Die App funktioniert lokal und deine Daten müssen nicht in die Cloud übertragen werden, denn der Sync mit deinen anderen Geräten ist optional.',
   cta: 'Gedanken erfassen',
 } as const
 
@@ -29,7 +29,7 @@ export function AboutScreen({ onBackToCapture }: AboutScreenProps) {
         ))}
       </ol>
       <p className="about-screen__footer">{ABOUT_COPY.footer}</p>
-      <button type="button" className="about-screen__cta" onClick={onBackToCapture}>
+      <button type="button" className="review-btn review-btn--cta about-screen__cta" onClick={onBackToCapture}>
         {ABOUT_COPY.cta}
       </button>
     </section>
