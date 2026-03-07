@@ -1937,16 +1937,26 @@ button:focus {
 }
 
   .todo-filter-row {
-    justify-content: stretch;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    align-items: center;
   }
 
   .todo-search-wrap {
-    order: 3;
-    flex: 1 1 100%;
+    order: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: min(48vw, 220px);
   }
 
   .todo-search-input {
     width: 100%;
+    font-size: 16px;
+  }
+
+  .context-select--filter {
+    min-width: 0;
+    width: min(44vw, 190px);
   }
 }
 

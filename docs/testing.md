@@ -56,6 +56,8 @@
 - Install ok: `offen`
 - Offline-Start ok: `offen`
 - Safe Area ok: `offen`
+- Suchfeld-Fokus ohne Safari-Zoom: `offen`
+- Handeln-Filter auf kleiner Breite nebeneinander (Bereich + Wichtig + Suche): `offen`
 
 Ablauf:
 
@@ -66,3 +68,4 @@ Ablauf:
 5. Flugmodus
 6. App schließen
 7. erneut starten
+8. Tab `Handeln` öffnen, Suchfeld fokussieren und Layout der Filterzeile prüfen

@@ -41,6 +41,7 @@ Darstellung:
 
 - Zeigt `TODO`
 - Tagesweise gruppiert
+- Filterleiste (Bereich, Wichtig-Filter, Suche) ist auch auf Mobile in einer Zeile nutzbar
 - optionaler Stern-Filter
 - Aktionen:
   - Erledigt (verschiebt ins Handeln-Archiv)
