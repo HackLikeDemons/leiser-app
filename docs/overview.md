@@ -2,7 +2,9 @@
 
 [Zurück zur README](../README.md)
 
-Leiser hilft dir, deine Gedanken schnell festzuhalten und sie später in Ruhe zu sortieren.
+Leiser hilft dir im Alltag einen freien Kopf zu behalten: Gedanken festhalten, später ordnen und in konkrete nächste Schritte übertragen.
+
+Offline-first, ohne Ballast, mit optionalem verschlüsseltem Sync über deine Geräte.
 
 Die App hat vier Arbeitsbereiche:
 
