@@ -8,7 +8,7 @@
 type NoteStatus = "INBOX" | "TODO" | "PROCESS" | "DISCARD" | "ARCHIVE";
 type NoteType = "NOTE" | "QUESTION" | "IDEA" | "TASK";
 type ArchiveBucket = "THINKING" | "TODO";
-type ContextTag = string; // sichtbarer Bereichsname, z. B. "Arbeit", "Weiterbildung"
+type ContextTag = string; // sichtbarer Kontextname, z. B. "Arbeit", "Weiterbildung"
 
 type Note = {
   id: string;
@@ -28,10 +28,10 @@ type Note = {
 ```
 
 Hinweis zu `context`:
-- Bereiche sind über das Kontextmenü konfigurierbar (`Bereiche bearbeiten`).
+- Kontexte sind über `Einstellungen` konfigurierbar (`Kontexte bearbeiten`).
 - Gespeichert wird derselbe Name, der auch in der UI angezeigt wird.
-- Beim Löschen eines Bereichs werden bestehende Zuordnungen auf `Ohne Bereich` gesetzt.
-- Nach Backup-Import werden unbekannte/nicht konfigurierte Bereiche auf `Ohne Bereich` gesetzt.
+- Beim Löschen eines Kontexts werden bestehende Zuordnungen auf `Ohne Kontext` gesetzt.
+- Nach Backup-Import werden unbekannte/nicht konfigurierte Kontexte auf `Ohne Kontext` gesetzt.
 
 ## IndexedDB
 
@@ -74,7 +74,7 @@ Wichtige Indexe (notes/notes_view):
 - `status_createdAt`
 - `status_updatedAt`
 
-## Prefix-Shortcuts beim Sammeln
+## Prefix-Shortcuts beim Erfassen
 
 - `- Aufgabe ...` -> `type=TASK`, `status=TODO`
 - ohne Präfix -> `type=NOTE`, `status=INBOX`

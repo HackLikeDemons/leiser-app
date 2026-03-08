@@ -8,8 +8,8 @@ Offline-first, ohne Ballast, mit optionalem verschlüsseltem Sync über deine Ge
 
 Die App hat vier Arbeitsbereiche:
 
-- Sammeln
-- Ordnen
+- Erfassen
+- Inbox
 - Memos
 - Machen
 
@@ -32,7 +32,7 @@ Die App ist bewusst minimal:
 
 ## Prinzip
 
-1. Memos schnell erfassen (`Sammeln`)
-2. Inbox entscheiden (`Ordnen`)
+1. Memos schnell erfassen (`Erfassen`)
+2. Inbox entscheiden (`Inbox`)
 3. Themen vertiefen (`Memos`)
 4. Nächste Schritte umsetzen (`Machen`)

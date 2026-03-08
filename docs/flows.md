@@ -2,27 +2,28 @@
 
 [Zurück zur README](../README.md) · [Produktüberblick](overview.md)
 
-## Sammeln
+## Erfassen
 
 - Eingabe im Composer (unten)
 - `Enter` speichert
 - `Shift+Enter` fügt Zeilenumbruch ein
 - Fokus bleibt im Feld
 - Mikrofon-Button für Diktat ist verfügbar
-- `#bereich` setzt den Bereich als Metadatum; der Tag wird beim Speichern aus dem Notiztext übernommen
+- `#kontext` setzt den Kontext als Metadatum; der Tag wird beim Speichern aus dem Notiztext übernommen
+- `-` am Anfang erstellt direkt eine Handlung (`TODO`) statt eines Inbox-Eintrags
 
 Darstellung:
 
 - Tagesdivider (`Heute`, `Gestern`, Datum)
 - Einträge im Flow (chronologisch)
 - ruhige Listenoptik, Aktionen pro Item
-- sehr alte Einträge werden automatisch in den Archiv-Status verschoben (ohne Löschung)
+- sehr alte Archiv-Einträge werden nach 30 Tagen dauerhaft gelöscht
 
-## Ordnen
+## Inbox
 
 - `INBOX`-Entscheidung als Liste mit Priorisierung nach Alter
 - Ziel des Tabs: aus losem Eingang klare nächste Schritte machen
-- pro Eintrag zusätzliches `...`-Aktionsmenü mit textuellen Aktionen (neben den Schnell-Icons)
+- pro Eintrag zusätzliches `...`-Aktionsmenü mit textuellen Aktionen
 - Entscheidungen:
   - Machen (`TODO`)
   - Memos (`PROCESS`)
@@ -36,10 +37,11 @@ Darstellung:
 - Ziel des Tabs: offene Memos vertiefen, bevor sie in konkrete Handlungen gehen
 - pro Eintrag zusätzliches `...`-Aktionsmenü mit textuellen Aktionen
 - Aktionen pro Note:
-  - Bearbeiten (Text + Bereich)
+  - Bearbeiten (Text + Kontext)
   - Archivieren (`ARCHIVE` mit Bucket `THINKING`)
   - Zu Machen (`TODO`)
   - endgültig löschen (im Archiv)
+- Kontext-Filter inkl. `Ohne Kontext`
 - eigenes Archiv kann eingeblendet werden
 - wenn der letzte Archiv-Eintrag gelöscht wird, klappt das Archiv automatisch zu
 
@@ -49,32 +51,38 @@ Darstellung:
 - Ziel des Tabs: nächste Schritte konsequent abarbeiten
 - pro Eintrag zusätzliches `...`-Aktionsmenü mit textuellen Aktionen
 - Tagesweise gruppiert
-- Filterleiste (Bereich, Wichtig-Filter, Suche) ist auch auf Mobile in einer Zeile nutzbar
+- Filterleiste (Kontext, Wichtig-Filter, Suche) ist auch auf Mobile in einer Zeile nutzbar
 - optionaler Stern-Filter
 - Aktionen:
-  - Bearbeiten (Text + Bereich)
-  - Erledigt (verschiebt ins Machen-Archiv)
+  - Bearbeiten (Text + Kontext)
+  - Erledigt (verschiebt ins Handlungs-Archiv)
   - In Memos (`PROCESS`)
+- Kontext-Filter inkl. `Ohne Kontext`
 - eigenes Archiv kann eingeblendet werden
 - wenn der letzte Archiv-Eintrag gelöscht wird, klappt das Archiv automatisch zu
 
-## Datenbereich (`...` im Header)
+## Einstellungen (`...` im Header)
 
-- Aufruf über `...` -> `Einstellungen` -> `Sync`
-- Hero: `Sichern, verbinden, verwalten`
-- Karte `Sync`:
-  - Sync aktivieren/deaktivieren
-  - `Sync now (Debug)`
-  - Debug-Infos ein-/ausblenden (standardmäßig aus)
-  - `Sync-Protokoll kopieren`
-- Karte `Geräte koppeln`:
+- Aufruf über `...` -> `Einstellungen`
+- Einstiege zu:
+  - `Kontexte bearbeiten`
+  - `Backup`
+  - `Geräte-Sync (optional)`
+- Option `Hilfetexte in Haupt-Tabs reduzieren`
+
+## Geräte-Sync (`Einstellungen` -> `Geräte-Sync`)
+
+- Sync aktivieren/deaktivieren
+- `Jetzt syncen`
+- Aktionen: `Neuen Sync-Raum erstellen`, `Client aus Verbund entfernen`, `Client bereinigen`
+- Pairing:
   - QR-Code anzeigen / QR scannen
-  - Pair-Code ist in der UI aus Sicherheitsgründen ausgeblendet
   - Pair-Code kann kopiert und auf anderem Gerät importiert werden
+- Debug-Infos ein-/ausblenden
+- `Sync-Protokoll kopieren`
 
-## Backup (`...` im Header)
+## Backup (`Einstellungen` -> `Backup`)
 
-- Aufruf über `...` -> `Einstellungen` -> `Backup`
 - Aktionen:
   - Backup exportieren
   - Backup importieren
@@ -83,15 +91,13 @@ Darstellung:
   - `Letztes Backup`
   - `Backup überfällig` + `Jetzt sichern`
 
+## Kontexte (`Einstellungen` -> `Kontexte bearbeiten`)
+
+- Kontextliste anzeigen, umbenennen, entfernen, neu anlegen
+- Beim Entfernen eines Kontexts werden vorhandene Einträge auf `Ohne Kontext` gesetzt
+- Nach Backup-Import werden Einträge mit unbekannten Kontexten auf `Ohne Kontext` gesetzt
+
 ## Kontextmenü (`...` im Header)
 
 - `Einstellungen`
-  - Einstieg zu `Sync`
-  - Einstieg zu `Backup`
-  - Einstieg zu `Bereiche bearbeiten`
-- `Bereiche bearbeiten` (über `Einstellungen`): Verwaltung für Bereiche mit Modus `Bearbeiten` / `Fertig`
-  - Standardansicht zeigt nur die aktuelle Bereichsliste
-  - im Bearbeiten-Modus: Bereiche umbenennen, entfernen, neu anlegen
-  - Beim Entfernen eines Bereichs werden vorhandene Einträge auf `Ohne Bereich` gesetzt
-  - Nach Backup-Import werden Einträge mit nicht mehr konfigurierten Bereichen ebenfalls auf `Ohne Bereich` gesetzt
 - `Über Leiser`

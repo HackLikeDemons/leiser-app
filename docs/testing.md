@@ -4,21 +4,21 @@
 
 ## Basis-Check
 
-1. `Sammeln`: Eintrag speichern, Reload -> bleibt erhalten
-2. `Ordnen`: Entscheidungen nach `Machen`, `Denken`, `Verwerfen` funktionieren
-3. `Denken`: Archivieren/Löschen/Zu Machen -> korrekt umgesetzt
-4. `Machen`: Tagesgruppierung, Stern-Filter, Zurück in Inbox, Erledigt -> korrekt umgesetzt
+1. `Erfassen`: Eintrag speichern, Reload -> bleibt erhalten
+2. `Inbox`: Entscheidungen nach `Machen`, `Memos`, `Verwerfen` funktionieren
+3. `Memos`: Archivieren/Löschen/Zu Machen -> korrekt umgesetzt
+4. `Machen`: Tagesgruppierung, Stern-Filter, Kontext-Filter, Erledigt -> korrekt umgesetzt
 5. Archiv-Autoclose: letzten Archiv-Eintrag löschen -> Archiv klappt automatisch zu
 6. Globale Shortcuts: `1/2/3/4` wechseln Tabs; in Eingabefeldern inaktiv
 
 ## Kontext (kontrolliert)
 
 1. Altdaten ohne `context` laden ohne Fehler
-2. In `Ordnen` pro Item `Bereich` setzen, ändern und auf `Ohne Bereich` zurücksetzen
-3. Kontextmenü `Bereiche bearbeiten`: Standardansicht zeigt Liste; Änderungen erst nach `Bearbeiten`
-4. Bereich umbenennen: Name wird in bestehenden Einträgen übernommen
-5. Bereich löschen: vorhandene Einträge werden auf `Ohne Bereich` gesetzt
-6. Unbekannte `context`-Werte nach Backup-Import werden auf `Ohne Bereich` gesetzt
+2. In `Inbox` pro Item `Kontext` setzen, ändern und auf `Ohne Kontext` zurücksetzen
+3. `Einstellungen` -> `Kontexte bearbeiten`: Liste anzeigen, umbenennen, entfernen, neu anlegen
+4. Kontext umbenennen: Name wird in bestehenden Einträgen übernommen
+5. Kontext löschen: vorhandene Einträge werden auf `Ohne Kontext` gesetzt
+6. Unbekannte `context`-Werte nach Backup-Import werden auf `Ohne Kontext` gesetzt
 7. Statuswechsel (`INBOX/PROCESS/TODO/ARCHIVE/DISCARD`), Archivieren, Löschen und Stern-Filter funktionieren unverändert mit und ohne `context`
 8. Sync zweier Geräte mit Item `mit` und `ohne` `context` (inkl. Änderung/Entfernung) bleibt konsistent
 
@@ -40,7 +40,7 @@
 
 1. Pair-Code ist nicht sichtbar, aber `Pair Code kopieren` funktioniert
 2. QR-Flow funktioniert (anzeigen/scannen)
-3. `Sync now (Debug)` auf zwei Geräten: neue und historische Einträge erscheinen auf beiden Seiten
+3. `Jetzt syncen` auf zwei Geräten: neue und historische Einträge erscheinen auf beiden Seiten
 4. `Sync-Protokoll kopieren` liefert JSON mit Diagnosefeldern
 
 ## Automatisierte Sync-E2E (Playwright)
@@ -59,7 +59,7 @@
 - Offline-Start ok: `offen`
 - Safe Area ok: `offen`
 - Suchfeld-Fokus ohne Safari-Zoom: `offen`
-- Machen-Filter auf kleiner Breite nebeneinander (Bereich + Wichtig + Suche): `ok`
+- Machen-Filter auf kleiner Breite nebeneinander (Kontext + Wichtig + Suche): `ok`
 
 Ablauf:
 

@@ -16,7 +16,7 @@
 2. Quell-Client bereinigen.
 3. Neuen Sync-Raum anlegen.
 4. Backup importieren.
-5. Sync auf dem Quell-Client aktivieren und mindestens einen manuellen Lauf (`Sync now (Debug)`) abschließen.
+5. Sync auf dem Quell-Client aktivieren und mindestens einen manuellen Lauf (`Jetzt syncen`) abschließen.
 6. Erst danach weitere Clients bereinigen und per Pair-Code beitreten lassen.
 
 ## Import-Modi
@@ -28,7 +28,7 @@
 
 ## Backup-Status in der UI
 
-Im Datenbereich (`...` -> `Backup und Sync`) zeigt Leiser:
+Im Datenbereich (`...` -> `Einstellungen` -> `Backup`) zeigt Leiser:
 
 - `Letztes Backup: <Zeitpunkt>`
 - `Backup überfällig` nach 7 Tagen ohne Export

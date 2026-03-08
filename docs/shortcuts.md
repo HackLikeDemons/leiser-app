@@ -4,14 +4,14 @@
 
 ## Global (keine Eingabe fokussiert)
 
-- `1` -> `Sammeln`
-- `2` -> `Ordnen`
-- `3` -> `Denken`
+- `1` -> `Erfassen`
+- `2` -> `Inbox`
+- `3` -> `Memos`
 - `4` -> `Machen`
 
 Hinweis: Diese Shortcuts sind deaktiviert, sobald ein `input`, `textarea`, `select` oder `contenteditable` fokussiert ist.
 
-## Sammeln (Textarea)
+## Erfassen (Textarea)
 
 - `Enter`
   - Speichert den aktuellen Gedanken.

@@ -19,4 +19,4 @@
 
 ## Änderungshinweis
 
-Diese Dokumentation beschreibt den aktuellen Stand der Notes-App mit den Tabs `Sammeln`, `Ordnen`, `Memos`, `Machen` sowie dem Datenbereich über das Header-Menü.
+Diese Dokumentation beschreibt den aktuellen Stand der App mit den Tabs `Erfassen`, `Inbox`, `Memos`, `Machen` sowie dem Datenbereich über das Header-Menü.

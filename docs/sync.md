@@ -40,9 +40,9 @@ Wenn ein bestehender Verbund driftet, diese Reihenfolge einhalten:
 2. Auf Client A `Client bereinigen`.
 3. Auf Client A `Neuen Sync-Raum erstellen`.
 4. Auf Client A Backup importieren.
-5. Auf Client A `Sync aktivieren` und einmal `Sync now (Debug)` laufen lassen, bis keine weiteren Bestandsdaten mehr gesendet werden.
+5. Auf Client A `Sync aktivieren` und einmal `Jetzt syncen` laufen lassen, bis keine weiteren Bestandsdaten mehr gesendet werden.
 6. Erst danach Client B/C/... bereinigen und per Pair-Code mit Client A koppeln.
-7. Auf jedem neuen Client optional einmal `Sync now (Debug)` ausführen.
+7. Auf jedem neuen Client optional einmal `Jetzt syncen` ausführen.
 
 Wichtig: Wenn Schritt 5 übersprungen wird, können frisch importierte Bestandsdaten auf weiteren Clients zunächst unvollständig erscheinen.
 
@@ -62,7 +62,7 @@ Ergebnis: Dieser Client synchronisiert nur mit Geräten, die exakt denselben Pai
 1. Auf einem bereits gekoppelten Gerät im Datenbereich den Pair-Code öffnen (`Pair Code kopieren`, `QR anzeigen`).
 2. Auf dem neuen Client den Pair-Code importieren (`Pair Code einfügen` oder QR-Scan).
 3. Die App übernimmt `roomId` und `syncToken` vom bestehenden Gerät und startet den Abgleich.
-4. Mit `Sync now (Debug)` optional sofort einen manuellen Lauf auslösen.
+4. Mit `Jetzt syncen` optional sofort einen manuellen Lauf auslösen.
 
 Ergebnis: Der neue Client hängt im selben Vault wie die bestehenden Geräte.
 

@@ -746,7 +746,7 @@ function ReviewNoteRow({
             </select>
           </label>
           {editError ? <p className="error-text">{editError}</p> : null}
-          <p className="hint">Enter: speichern, Shift+Enter: Zeilenumbruch, Esc: abbrechen</p>
+          <p className="hint edit-shortcut-hint">Enter: speichern, Shift+Enter: Zeilenumbruch, Esc: abbrechen</p>
         </div>
       ) : (
         <span className="note-content">
@@ -919,7 +919,7 @@ function TodoNoteRow({
             </select>
           </label>
           {editError ? <p className="error-text">{editError}</p> : null}
-          <p className="hint">Enter: speichern, Shift+Enter: Zeilenumbruch, Esc: abbrechen</p>
+          <p className="hint edit-shortcut-hint">Enter: speichern, Shift+Enter: Zeilenumbruch, Esc: abbrechen</p>
         </div>
       ) : (
         <span className="note-content">
@@ -1088,7 +1088,7 @@ function ThinkingNoteRow({
             </select>
           </label>
           {editError ? <p className="error-text">{editError}</p> : null}
-          <p className="hint">Enter: speichern, Shift+Enter: Zeilenumbruch, Esc: abbrechen</p>
+          <p className="hint edit-shortcut-hint">Enter: speichern, Shift+Enter: Zeilenumbruch, Esc: abbrechen</p>
         </div>
       ) : (
         <span className="note-content">
@@ -1824,7 +1824,7 @@ function AppContent() {
       if (todoReturnCandidates.length > 0) {
         await Promise.all(todoReturnCandidates.map((note) => updateNoteStatus(note.id, 'INBOX')))
         maintenanceMessages.push(
-          `Wiedervorlage: ${todoReturnCandidates.length} alte Handlung${todoReturnCandidates.length === 1 ? '' : 'en'} zurück nach Ordnen verschoben.`,
+          `Wiedervorlage: ${todoReturnCandidates.length} alte Handlung${todoReturnCandidates.length === 1 ? '' : 'en'} zurück in die Inbox verschoben.`,
         )
       }
 
@@ -1908,8 +1908,8 @@ function AppContent() {
       }
       const hasReviewEntries =
         inboxNotes.length > 0 || todoNotes.some((todo) => daysBetween(new Date(), new Date(todo.createdAt)) > 14)
-      const hasThinkingEntries = processNotes.length > 0 || thinkingArchivedNotes.length > 0
-      const hasTodoEntries = todoNotes.length > 0 || todoArchivedNotes.length > 0
+      const hasThinkingEntries = processNotes.length > 0
+      const hasTodoEntries = todoNotes.length > 0
       if (event.key === '1') {
         setActiveTab('BRAINDUMP')
         event.preventDefault()
@@ -3862,7 +3862,7 @@ function AppContent() {
                     <article className="data-card">
                       <h3>Allgemein</h3>
                       <p className="data-card__intro">
-                        Öffne die gewünschten Einstellungen über die Schaltflächern.
+                        Öffne die gewünschten Einstellungen über die Schaltflächen.
                       </p>
                       <div className="data-actions settings-actions">
                         <div className="settings-action-item">
@@ -3902,7 +3902,7 @@ function AppContent() {
                         <span>Hilfetexte in Haupt-Tabs reduzieren</span>
                       </label>
                       <p className="hint">
-                        Blendet die erklärenden Untertitel in Ordnen, Memos und Machen aus.
+                        Blendet die erklärenden Untertitel in Inbox, Memos und Machen aus.
                       </p>
                     </article>
                     <article className="data-card">
@@ -3921,7 +3921,7 @@ function AppContent() {
                           Mit den Tasten <code>1</code> bis <code>4</code> wechselst du schnell zwischen den Hauptbereichen.
                         </li>
                         <li>
-                          In den <code>...</code>-Menues kannst du Eintraege schnell verschieben, bearbeiten oder archivieren.
+                          In den <code>...</code>-Menüs kannst du Einträge schnell verschieben, bearbeiten oder archivieren.
                         </li>
                       </ul>
                     </article>
@@ -4030,7 +4030,7 @@ function AppContent() {
                         {!isContextEditMode ? (
                           <>
                             <p>
-                              Bei der Eingabe in <strong>Sammeln</strong> kannst du einen Kontext direkt mit `#kontext` setzen,
+                              Bei der Eingabe in <strong>Erfassen</strong> kannst du einen Kontext direkt mit `#kontext` setzen,
                               zum Beispiel: `Anruf mit Team #arbeit`.
                             </p>
                             <p>
@@ -4308,7 +4308,7 @@ function AppContent() {
             {processCount === 0 ? (
               <section className="review-empty-cta" aria-label="Memos leer">
                 <p className="empty-text">Keine offenen Memos.</p>
-                <p className="hint">Starte mit einem neuen Memo in Sammeln.</p>
+                <p className="hint">Starte mit einem neuen Memo in Erfassen.</p>
                 <div className="review-empty-cta-actions">
                   <button
                     type="button"
@@ -4508,7 +4508,7 @@ function AppContent() {
             {todoNotes.length === 0 ? (
               <section className="review-empty-cta" aria-label="Machen leer">
                 <p className="empty-text">Keine offenen Handlungen.</p>
-                <p className="hint">Erfasse zuerst ein Memo in Sammeln und ordne es dann zu Handlungen.</p>
+                <p className="hint">Erfasse zuerst ein Memo in Erfassen und ordne es dann zu Handlungen.</p>
                 <div className="review-empty-cta-actions">
                   <button
                     type="button"

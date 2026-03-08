@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react'
 import type { SyncUiStatus } from '../../lib/syncEngine'
 
 export type DevSyncInfo = {
@@ -35,55 +34,8 @@ export function SyncPanel({
   syncStatus,
   syncError,
 }: SyncPanelProps) {
-  const SYNC_HINT_VISIBLE_MS = 2000
-  const SYNC_HINT_COOLDOWN_MS = 12000
-  const [showSyncHint, setShowSyncHint] = useState(false)
-  const hideSyncHintTimeoutRef = useRef<number | null>(null)
-  const lastSyncHintShownAtRef = useRef<number>(0)
-
   const canShowSyncRuntimeStatus = hasConfiguredSyncRoom && syncEnabled
-
-  useEffect(() => {
-    if (!canShowSyncRuntimeStatus || syncStatus !== 'syncing') {
-      return
-    }
-
-    const now = Date.now()
-    if (now - lastSyncHintShownAtRef.current < SYNC_HINT_COOLDOWN_MS) {
-      return
-    }
-
-    lastSyncHintShownAtRef.current = now
-    setShowSyncHint(true)
-
-    if (hideSyncHintTimeoutRef.current !== null) {
-      window.clearTimeout(hideSyncHintTimeoutRef.current)
-    }
-    hideSyncHintTimeoutRef.current = window.setTimeout(() => {
-      setShowSyncHint(false)
-      hideSyncHintTimeoutRef.current = null
-    }, SYNC_HINT_VISIBLE_MS)
-  }, [canShowSyncRuntimeStatus, syncStatus])
-
-  useEffect(() => {
-    if (canShowSyncRuntimeStatus) {
-      return
-    }
-    setShowSyncHint(false)
-    if (hideSyncHintTimeoutRef.current !== null) {
-      window.clearTimeout(hideSyncHintTimeoutRef.current)
-      hideSyncHintTimeoutRef.current = null
-    }
-  }, [canShowSyncRuntimeStatus])
-
-  useEffect(
-    () => () => {
-      if (hideSyncHintTimeoutRef.current !== null) {
-        window.clearTimeout(hideSyncHintTimeoutRef.current)
-      }
-    },
-    [],
-  )
+  const showSyncHint = canShowSyncRuntimeStatus && syncStatus === 'syncing'
 
   return (
     <section className="data-card" aria-label="Sync">

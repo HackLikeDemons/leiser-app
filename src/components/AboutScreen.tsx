@@ -4,12 +4,12 @@ type AboutScreenProps = {
 
 const ABOUT_COPY = {
   title: 'Leiser',
-  intro: 'Leiser hilft dir im Alltag einen freien Kopf zu behalten: Memos festhalten, später ordnen und in konkrete nächste Schritte übertragen.',
+  intro: 'Leiser hilft dir im Alltag einen freien Kopf zu behalten: Memos festhalten, später in der Inbox entscheiden und in konkrete nächste Schritte übertragen.',
   privacy:
     'Notizinhalte werden auf deinem Gerät gespeichert. Wenn du den Sync aktivierst, werden sie verschlüsselt in deinen Sync-Raum übertragen. Nur Geräte, die mit deinem Sync-Raum verbunden sind, können auf deine Notizinhalte zugreifen.',
   steps: [
-    'Sammeln: Memos sofort in die Inbox schreiben.',
-    'Ordnen: Memos behalten, in eine Aufgabe überführen oder verwerfen.',
+    'Erfassen: Memos sofort in die Inbox schreiben.',
+    'Inbox: Memos behalten, in eine Handlung überführen oder verwerfen.',
     'Memos und Machen: weiterentwickeln und umsetzen.',
   ],
   footer:

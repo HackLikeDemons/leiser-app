@@ -28,11 +28,11 @@ npm run preview
 
 ## Aktueller Produktfluss
 
-- `Sammeln`: Memos schnell notieren
-- `Ordnen`: Inbox entscheiden (weiterdenken, umsetzen, verwerfen)
+- `Erfassen`: Memos schnell notieren
+- `Inbox`: Einträge entscheiden (Memos, Machen, Verwerfen)
 - `Memos`: offene Memos vertiefen
 - `Machen`: nächste Schritte abarbeiten
-- Datenbereich über `...` im Header öffnen
+- Datenbereich über `...` im Header öffnen (`Einstellungen`, `Backup`, `Geräte-Sync`, `Kontexte`, `Über Leiser`)
 
 ## Dokumentation
 
