@@ -2089,8 +2089,7 @@ button:focus {
   }
 
   .tab-button__icon {
-    width: 0.8rem;
-    height: 0.8rem;
+    display: none;
   }
 
   .header-actions {

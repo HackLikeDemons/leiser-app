@@ -8,10 +8,10 @@ Offline-first, ohne Ballast, mit optionalem verschlüsseltem Sync über deine Ge
 
 Die App hat vier Arbeitsbereiche:
 
-- Erfassen
-- Sortieren
-- Reflektieren
-- Handeln
+- Sammeln
+- Ordnen
+- Denken
+- Machen
 
 Die App ist bewusst minimal:
 
@@ -32,7 +32,7 @@ Die App ist bewusst minimal:
 
 ## Prinzip
 
-1. Gedanken schnell erfassen (`Erfassen`)
-2. Inbox entscheiden (`Sortieren`)
-3. Themen vertiefen (`Reflektieren`)
-4. Nächste Schritte umsetzen (`Handeln`)
+1. Gedanken schnell erfassen (`Sammeln`)
+2. Inbox entscheiden (`Ordnen`)
+3. Themen vertiefen (`Denken`)
+4. Nächste Schritte umsetzen (`Machen`)

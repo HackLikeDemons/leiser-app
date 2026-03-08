@@ -18,4 +18,4 @@
 
 ## Änderungshinweis
 
-Diese Dokumentation beschreibt den aktuellen Stand der Notes-App mit den Tabs `Erfassen`, `Sortieren`, `Reflektieren`, `Handeln` sowie dem Datenbereich über das Header-Menü.
+Diese Dokumentation beschreibt den aktuellen Stand der Notes-App mit den Tabs `Sammeln`, `Ordnen`, `Denken`, `Machen` sowie dem Datenbereich über das Header-Menü.

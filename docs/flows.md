@@ -2,7 +2,7 @@
 
 [Zurück zur README](../README.md) · [Produktüberblick](overview.md)
 
-## Erfassen
+## Sammeln
 
 - Eingabe im Composer (unten)
 - `Enter` speichert
@@ -17,34 +17,34 @@ Darstellung:
 - ruhige Listenoptik, Aktionen pro Item
 - sehr alte Einträge werden automatisch in den Archiv-Status verschoben (ohne Löschung)
 
-## Sortieren
+## Ordnen
 
 - `INBOX`-Entscheidung als Liste mit Priorisierung nach Alter
 - Entscheidungen:
-  - Handeln (`TODO`)
-  - Reflektieren (`PROCESS`)
+  - Machen (`TODO`)
+  - Denken (`PROCESS`)
   - Verwerfen (`DISCARD`)
-- Leere Inbox zeigt direkte Weiterleitungen zu `Reflektieren` und `Handeln`
+- Leere Inbox zeigt direkte Weiterleitungen zu `Denken` und `Machen`
 - zusätzlicher Stale-Review-Bereich für alte Handlungen (>14 Tage)
 
-## Reflektieren
+## Denken
 
 - Zeigt `PROCESS`
 - Aktionen pro Note:
   - Archivieren (`ARCHIVE` mit Bucket `THINKING`)
-  - Zu Handeln (`TODO`)
+  - Zu Machen (`TODO`)
   - endgültig löschen
 - eigenes Archiv kann eingeblendet werden
 - wenn der letzte Archiv-Eintrag gelöscht wird, klappt das Archiv automatisch zu
 
-## Handeln
+## Machen
 
 - Zeigt `TODO`
 - Tagesweise gruppiert
 - Filterleiste (Bereich, Wichtig-Filter, Suche) ist auch auf Mobile in einer Zeile nutzbar
 - optionaler Stern-Filter
 - Aktionen:
-  - Erledigt (verschiebt ins Handeln-Archiv)
+  - Erledigt (verschiebt ins Machen-Archiv)
   - Zurück in Inbox
 - eigenes Archiv kann eingeblendet werden
 - wenn der letzte Archiv-Eintrag gelöscht wird, klappt das Archiv automatisch zu

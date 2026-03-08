@@ -28,10 +28,10 @@ npm run preview
 
 ## Aktueller Produktfluss
 
-- `Erfassen`: Gedanken schnell notieren
-- `Sortieren`: Inbox entscheiden (weiterdenken, umsetzen, verwerfen)
-- `Reflektieren`: offene Gedanken vertiefen
-- `Handeln`: nächste Schritte abarbeiten
+- `Sammeln`: Gedanken schnell notieren
+- `Ordnen`: Inbox entscheiden (weiterdenken, umsetzen, verwerfen)
+- `Denken`: offene Gedanken vertiefen
+- `Machen`: nächste Schritte abarbeiten
 - Datenbereich über `...` im Header öffnen
 
 ## Dokumentation

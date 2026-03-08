@@ -4,17 +4,17 @@
 
 ## Basis-Check
 
-1. `Erfassen`: Eintrag speichern, Reload -> bleibt erhalten
-2. `Sortieren`: Entscheidungen nach `Handeln`, `Reflektieren`, `Verwerfen` funktionieren
-3. `Reflektieren`: Archivieren/Löschen/Zu Handeln -> korrekt umgesetzt
-4. `Handeln`: Tagesgruppierung, Stern-Filter, Zurück in Inbox, Erledigt -> korrekt umgesetzt
+1. `Sammeln`: Eintrag speichern, Reload -> bleibt erhalten
+2. `Ordnen`: Entscheidungen nach `Machen`, `Denken`, `Verwerfen` funktionieren
+3. `Denken`: Archivieren/Löschen/Zu Machen -> korrekt umgesetzt
+4. `Machen`: Tagesgruppierung, Stern-Filter, Zurück in Inbox, Erledigt -> korrekt umgesetzt
 5. Archiv-Autoclose: letzten Archiv-Eintrag löschen -> Archiv klappt automatisch zu
 6. Globale Shortcuts: `1/2/3/4` wechseln Tabs; in Eingabefeldern inaktiv
 
 ## Kontext (kontrolliert)
 
 1. Altdaten ohne `context` laden ohne Fehler
-2. In `Sortieren` pro Item `Bereich` setzen, ändern und auf `Kein Bereich` zurücksetzen
+2. In `Ordnen` pro Item `Bereich` setzen, ändern und auf `Ohne Bereich` zurücksetzen
 3. Kontextmenü `Bereiche bearbeiten`: Standardansicht zeigt Liste; Änderungen erst nach `Bearbeiten`
 4. Bereich umbenennen: Name wird in bestehenden Einträgen übernommen
 5. Bereich löschen: vorhandene Einträge werden auf `Ohne Bereich` gesetzt
@@ -59,7 +59,7 @@
 - Offline-Start ok: `offen`
 - Safe Area ok: `offen`
 - Suchfeld-Fokus ohne Safari-Zoom: `offen`
-- Handeln-Filter auf kleiner Breite nebeneinander (Bereich + Wichtig + Suche): `offen`
+- Machen-Filter auf kleiner Breite nebeneinander (Bereich + Wichtig + Suche): `ok`
 
 Ablauf:
 
@@ -70,4 +70,4 @@ Ablauf:
 5. Flugmodus
 6. App schließen
 7. erneut starten
-8. Tab `Handeln` öffnen, Suchfeld fokussieren und Layout der Filterzeile prüfen
+8. Tab `Machen` öffnen, Suchfeld fokussieren und Layout der Filterzeile prüfen

@@ -74,7 +74,7 @@ Wichtige Indexe (notes/notes_view):
 - `status_createdAt`
 - `status_updatedAt`
 
-## Prefix-Shortcuts beim Erfassen
+## Prefix-Shortcuts beim Sammeln
 
 - `- Aufgabe ...` -> `type=TASK`, `status=TODO`
 - ohne Präfix -> `type=NOTE`, `status=INBOX`
