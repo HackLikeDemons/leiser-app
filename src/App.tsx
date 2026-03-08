@@ -2688,15 +2688,26 @@ function AppContent() {
             }
             return deduped
           })
+          const taskCount = created.filter((note) => note.type === 'TASK' || note.status === 'TODO').length
+          const baseFeedback =
+            created.length === 1
+              ? taskCount === 1
+                ? 'Aufgabe angelegt.'
+                : 'Gedanke erfasst.'
+              : taskCount === 0
+                ? `${created.length} Gedanken erfasst.`
+                : taskCount === created.length
+                  ? `${created.length} Aufgaben angelegt.`
+                  : `${created.length} Einträge erfasst.`
           const assignedContexts = Array.from(
             new Set(parsedEntries.map((entry) => entry.context).filter((context): context is ContextTag => Boolean(context))),
           )
           const hashtagFeedback =
             assignedContexts.length === 0
-              ? 'Memo gespeichert.'
+              ? baseFeedback
               : assignedContexts.length === 1
-                ? `Memo gespeichert. #${assignedContexts[0]} als Kontext gesetzt und aus dem Text übernommen.`
-                : `Memos gespeichert. ${assignedContexts.length} Kontexte aus #Tags gesetzt und aus dem Text übernommen.`
+                ? `${baseFeedback} #${assignedContexts[0]} als Kontext gesetzt und aus dem Text übernommen.`
+                : `${baseFeedback} ${assignedContexts.length} Kontexte aus #Tags gesetzt und aus dem Text übernommen.`
           const nextFeedback: CaptureFeedback = {
             id: braindumpCaptureFeedbackSeqRef.current + 1,
             text: hashtagFeedback,
