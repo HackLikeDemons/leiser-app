@@ -71,7 +71,7 @@ const FEEDBACK_VISIBILITY_MS = 3000
 const TRANSIENT_INFO_FADE_OUT_MS = 260
 const SW_UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
 const BACKUP_OVERDUE_DAYS = 7
-const HAS_VISITED_STORAGE_KEY = 'leiser_hasVisited'
+const ONBOARDING_COMPLETED_STORAGE_KEY = 'leiser:onboarding:completed:v1'
 const CONTEXT_OPTIONS_STORAGE_KEY = 'leiser:context-options-v1'
 const MAX_CONTEXT_OPTIONS = 8
 
@@ -407,8 +407,7 @@ function readHasVisitedFlag() {
     return false
   }
   try {
-    const value = window.localStorage.getItem(HAS_VISITED_STORAGE_KEY)
-    return value === '1' || value === 'true'
+    return window.localStorage.getItem(ONBOARDING_COMPLETED_STORAGE_KEY) === '1'
   } catch {
     return false
   }
@@ -419,7 +418,7 @@ function persistHasVisitedFlag() {
     return
   }
   try {
-    window.localStorage.setItem(HAS_VISITED_STORAGE_KEY, '1')
+    window.localStorage.setItem(ONBOARDING_COMPLETED_STORAGE_KEY, '1')
   } catch {
     // Storage can fail in privacy-restricted environments.
   }
@@ -1307,6 +1306,7 @@ function AppContent() {
   const thinkingArchiveButtonRef = useRef<HTMLButtonElement | null>(null)
   const todoCtaButtonRef = useRef<HTMLButtonElement | null>(null)
   const todoArchiveButtonRef = useRef<HTMLButtonElement | null>(null)
+  const todoSearchInputRef = useRef<HTMLInputElement | null>(null)
   const scannerVideoRef = useRef<HTMLVideoElement | null>(null)
   const scannerReaderRef = useRef<BrowserMultiFormatReader | null>(null)
   const scannerControlsRef = useRef<IScannerControls | null>(null)
@@ -1704,7 +1704,7 @@ function AppContent() {
       setSyncDiagnostics(null)
       setSyncError(null)
       setInfo('')
-      localStorage.removeItem(HAS_VISITED_STORAGE_KEY)
+      localStorage.removeItem(ONBOARDING_COMPLETED_STORAGE_KEY)
       window.location.reload()
       return
     } catch {
@@ -2523,6 +2523,7 @@ function AppContent() {
       ),
     [archivedNotes],
   )
+  const hasThinkingArchive = thinkingArchivedNotes.length > 0
   const visibleThinkingArchivedNotes = useMemo(() => {
     return thinkingArchivedNotes.filter((note) => matchesContextFilter(note, thinkingContextFilter))
   }, [thinkingArchivedNotes, thinkingContextFilter])
@@ -2533,6 +2534,7 @@ function AppContent() {
       ),
     [archivedNotes],
   )
+  const hasTodoArchive = todoArchivedNotes.length > 0
   const normalizedTodoSearchQuery = useMemo(() => todoSearchQuery.trim().toLocaleLowerCase('de-DE'), [todoSearchQuery])
   const thinkingArchiveCount = visibleThinkingArchivedNotes.length
   const visibleTodoArchivedNotes = useMemo(() => {
@@ -3068,7 +3070,7 @@ function AppContent() {
     }
     const nextWidth = Math.ceil(Math.max(ctaButton.scrollWidth, archiveButton.scrollWidth))
     setThinkingActionButtonWidth((current) => (current === nextWidth ? current : nextWidth))
-  }, [processCount, showArchive, thinkingArchiveCount])
+  }, [hasThinkingArchive, processCount, showArchive, thinkingArchiveCount])
 
   useLayoutEffect(() => {
     const ctaButton = todoCtaButtonRef.current
@@ -3079,7 +3081,19 @@ function AppContent() {
     }
     const nextWidth = Math.ceil(Math.max(ctaButton.scrollWidth, archiveButton.scrollWidth))
     setTodoActionButtonWidth((current) => (current === nextWidth ? current : nextWidth))
-  }, [showTodoArchive, todoArchiveCount, todoNotes.length])
+  }, [hasTodoArchive, showTodoArchive, todoArchiveCount, todoNotes.length])
+
+  useEffect(() => {
+    if (!hasThinkingArchive && showArchive) {
+      setShowArchive(false)
+    }
+  }, [hasThinkingArchive, showArchive])
+
+  useEffect(() => {
+    if (!hasTodoArchive && showTodoArchive) {
+      setShowTodoArchive(false)
+    }
+  }, [hasTodoArchive, showTodoArchive])
 
   const openContextScreen = useCallback((tab: Extract<TabKey, 'DATA' | 'ABOUT' | 'CONTEXTS'>) => {
     setActiveTab(tab)
@@ -3735,27 +3749,29 @@ function AppContent() {
                 </ul>
               </section>
             ))}
-            <div className="archive-toggle-row">
-              <button
-                type="button"
-                className={showArchive ? 'archive-toggle archive-toggle--archive-action archive-toggle--active' : 'archive-toggle archive-toggle--archive-action'}
-                onClick={() => setShowArchive((prev) => !prev)}
-                ref={thinkingArchiveButtonRef}
-                style={thinkingActionButtonWidth ? { width: `${thinkingActionButtonWidth}px` } : undefined}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M3 7h18v4H3V7Zm3 4h12v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8Zm4 3h4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span>{showArchive ? 'Archiv ausblenden' : 'Archiv anzeigen'}</span>
-              </button>
-            </div>
+            {hasThinkingArchive ? (
+              <div className="archive-toggle-row">
+                <button
+                  type="button"
+                  className={showArchive ? 'archive-toggle archive-toggle--archive-action archive-toggle--active' : 'archive-toggle archive-toggle--archive-action'}
+                  onClick={() => setShowArchive((prev) => !prev)}
+                  ref={thinkingArchiveButtonRef}
+                  style={thinkingActionButtonWidth ? { width: `${thinkingActionButtonWidth}px` } : undefined}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M3 7h18v4H3V7Zm3 4h12v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8Zm4 3h4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span>{showArchive ? 'Archiv ausblenden' : 'Archiv anzeigen'}</span>
+                </button>
+              </div>
+            ) : null}
             {showArchive ? (
               <>
                 <h3 className="archive-title">Archiv</h3>
@@ -3805,11 +3821,35 @@ function AppContent() {
                 <input
                   type="search"
                   className="todo-search-input"
+                  ref={todoSearchInputRef}
                   value={todoSearchQuery}
                   onChange={(event) => setTodoSearchQuery(event.target.value)}
                   placeholder="Suchen"
                   aria-label="Handlungen durchsuchen"
                 />
+                {todoSearchQuery.length > 0 ? (
+                  <button
+                    type="button"
+                    className="todo-search-clear"
+                    onClick={() => {
+                      setTodoSearchQuery('')
+                      todoSearchInputRef.current?.focus()
+                    }}
+                    aria-label="Suche löschen"
+                    title="Suche löschen"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M7 7 17 17M17 7 7 17"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.9"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                ) : null}
               </label>
               <label className="context-select-wrap">
                 <span className="sr-only">Bereich filtern</span>
@@ -3897,27 +3937,29 @@ function AppContent() {
                 </ul>
               </section>
             ))}
-            <div className="archive-toggle-row">
-              <button
-                type="button"
-                className={showTodoArchive ? 'archive-toggle archive-toggle--archive-action archive-toggle--active' : 'archive-toggle archive-toggle--archive-action'}
-                onClick={() => setShowTodoArchive((prev) => !prev)}
-                ref={todoArchiveButtonRef}
-                style={todoActionButtonWidth ? { width: `${todoActionButtonWidth}px` } : undefined}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M3 7h18v4H3V7Zm3 4h12v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8Zm4 3h4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span>{showTodoArchive ? 'Archiv ausblenden' : 'Archiv anzeigen'}</span>
-              </button>
-            </div>
+            {hasTodoArchive ? (
+              <div className="archive-toggle-row">
+                <button
+                  type="button"
+                  className={showTodoArchive ? 'archive-toggle archive-toggle--archive-action archive-toggle--active' : 'archive-toggle archive-toggle--archive-action'}
+                  onClick={() => setShowTodoArchive((prev) => !prev)}
+                  ref={todoArchiveButtonRef}
+                  style={todoActionButtonWidth ? { width: `${todoActionButtonWidth}px` } : undefined}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M3 7h18v4H3V7Zm3 4h12v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8Zm4 3h4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span>{showTodoArchive ? 'Archiv ausblenden' : 'Archiv anzeigen'}</span>
+                </button>
+              </div>
+            ) : null}
             {showTodoArchive ? (
               <>
                 <h3 className="archive-title">Archiv</h3>

@@ -1,6 +1,8 @@
 # Leiser
 
-Leiser ist eine lokale, offline-fähige Gedanken- und Handlungs-App.
+Leiser hilft dir, deine Gedanken schnell festzuhalten und sie später in Ruhe zu sortieren.
+
+App ausprobieren: [leiser.app](https://leiser.app)
 
 - Offline-first
 - keine Tracker
@@ -44,10 +46,6 @@ npm run preview
 - [Entwicklung](docs/development.md)
 - [Deploy auf Netlify](docs/deploy-netlify.md)
 - [Test-Checklisten](docs/testing.md)
-
-## Hinweis
-
-Die alte Basis-Spezifikation der früheren Wochen-/Monatsfunktionen liegt in [SPEC.md](SPEC.md). Die aktive Anwendung ist das Notes-/Workflow-Modell.
 
 ## Technischer Scope
 

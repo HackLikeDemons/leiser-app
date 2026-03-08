@@ -2,7 +2,9 @@
 
 [Zurück zur README](../README.md)
 
-Leiser ist eine lokale Gedanken-App mit vier Arbeitsbereichen:
+Leiser hilft dir, deine Gedanken schnell festzuhalten und sie später in Ruhe zu sortieren.
+
+Die App hat vier Arbeitsbereiche:
 
 - Erfassen
 - Sortieren

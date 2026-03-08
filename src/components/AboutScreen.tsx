@@ -4,9 +4,9 @@ type AboutScreenProps = {
 
 const ABOUT_COPY = {
   title: 'Leiser',
-  intro: 'hilft dir, deine Gedanken schnell festzuhalten und sie später in Ruhe zu sortieren.',
+  intro: 'Hilft dir, deine Gedanken schnell festzuhalten und sie später in Ruhe zu sortieren.',
   privacy:
-    'Notizinhalte werden auf deinem Gerät gespeichert. Wenn du den Sync aktivierst werden sie verschlüsselt in deinen Sync-Raum übertragen. Nur Geräte die mit deinem Sync-Raum verbunden sind, könen auf deine Notizinhalte zugreifen.',
+    'Notizinhalte werden auf deinem Gerät gespeichert. Wenn du den Sync aktivierst, werden sie verschlüsselt in deinen Sync-Raum übertragen. Nur Geräte, die mit deinem Sync-Raum verbunden sind, können auf deine Notizinhalte zugreifen.',
   steps: [
     'Sammeln: Gedanken sofort in die Inbox schreiben.',
     'Ordnen: Gedanken behalten, in eine Aufgabe überführen oder verwerfen.',
@@ -14,6 +14,10 @@ const ABOUT_COPY = {
   ],
   footer:
     'Die App funktioniert lokal und deine Daten müssen nicht in die Cloud übertragen werden, denn der Sync mit deinen anderen Geräten ist optional.',
+  tech:
+    'Mehr über die technischen Hintergründe findest du auf GitHub:',
+  techLinkLabel: 'github.com/HackLikeDemons/leiser-app',
+  techLinkHref: 'https://github.com/HackLikeDemons/leiser-app',
   cta: 'Gedanken erfassen',
 } as const
 
@@ -29,6 +33,17 @@ export function AboutScreen({ onBackToCapture }: AboutScreenProps) {
         ))}
       </ol>
       <p className="about-screen__footer">{ABOUT_COPY.footer}</p>
+      <p className="about-screen__footer">
+        {ABOUT_COPY.tech}{' '}
+        <a
+          className="about-screen__link"
+          href={ABOUT_COPY.techLinkHref}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {ABOUT_COPY.techLinkLabel}
+        </a>
+      </p>
       <button type="button" className="review-btn review-btn--cta about-screen__cta" onClick={onBackToCapture}>
         {ABOUT_COPY.cta}
       </button>
