@@ -1,6 +1,6 @@
 # Leiser
 
-Leiser hilft dir im Alltag einen freien Kopf zu behalten: Gedanken festhalten, später ordnen und in konkrete nächste Schritte übertragen.
+Leiser hilft dir im Alltag einen freien Kopf zu behalten: Memos festhalten, später ordnen und in konkrete nächste Schritte übertragen.
 
 Offline-first, ohne Ballast, mit optionalem verschlüsseltem Sync über deine Geräte.
 
@@ -28,9 +28,9 @@ npm run preview
 
 ## Aktueller Produktfluss
 
-- `Sammeln`: Gedanken schnell notieren
+- `Sammeln`: Memos schnell notieren
 - `Ordnen`: Inbox entscheiden (weiterdenken, umsetzen, verwerfen)
-- `Denken`: offene Gedanken vertiefen
+- `Memos`: offene Memos vertiefen
 - `Machen`: nächste Schritte abarbeiten
 - Datenbereich über `...` im Header öffnen
 
@@ -48,6 +48,7 @@ npm run preview
 - [Entwicklung](docs/development.md)
 - [Deploy auf Netlify](docs/deploy-netlify.md)
 - [Test-Checklisten](docs/testing.md)
+- [UX Backlog aus Nutzerfeedback (März 2026)](docs/ux-feedback-backlog-2026-03.md)
 
 ## Technischer Scope
 

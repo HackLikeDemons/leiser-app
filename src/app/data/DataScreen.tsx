@@ -1,8 +1,6 @@
 import type { RefObject } from 'react'
-import type { ImportMode, ImportReport } from '../../lib/backup'
 import type { SyncDiagnostics, SyncUiStatus } from '../../lib/syncEngine'
 import { FlowHero } from '../FlowHero'
-import { BackupPanel } from './BackupPanel'
 import { DebugPanel } from './DebugPanel'
 import { PairingPanel } from './PairingPanel'
 import { SyncPanel, type DevSyncInfo } from './SyncPanel'
@@ -13,13 +11,7 @@ type SupabaseConfigStatus = {
 }
 
 type DataScreenProps = {
-  onExport: () => void
-  showImportPanel: boolean
-  onToggleImportPanel: () => void
-  onImportFileChange: (file: File | null) => void
-  importMode: ImportMode
-  onImportModeChange: (mode: ImportMode) => void
-  onImport: () => void
+  onBackToSettings: () => void
   onToggleSyncEnabled: () => void
   onCreateSyncRoom: () => void
   onRekeySyncCluster: () => void
@@ -31,11 +23,6 @@ type DataScreenProps = {
   onSyncNow: () => void
   onCopySyncProtocol: () => void
   syncNowBusy: boolean
-  lastBackupAtLabel: string
-  backupOverdue: boolean
-  importReport: ImportReport | null
-  info: string
-  offlineReady: boolean
   syncStatus: SyncUiStatus
   syncError: string | null
   supabaseConfigStatus: SupabaseConfigStatus
@@ -60,13 +47,7 @@ type DataScreenProps = {
 }
 
 export function DataScreen({
-  onExport,
-  showImportPanel,
-  onToggleImportPanel,
-  onImportFileChange,
-  importMode,
-  onImportModeChange,
-  onImport,
+  onBackToSettings,
   onToggleSyncEnabled,
   onCreateSyncRoom,
   onRekeySyncCluster,
@@ -78,11 +59,6 @@ export function DataScreen({
   onSyncNow,
   onCopySyncProtocol,
   syncNowBusy,
-  lastBackupAtLabel,
-  backupOverdue,
-  importReport,
-  info,
-  offlineReady,
   syncStatus,
   syncError,
   supabaseConfigStatus,
@@ -108,10 +84,19 @@ export function DataScreen({
   return (
     <section className="data-section" aria-label="Daten">
       <FlowHero
-        title="Daten syncen und sichern"
-        subtitle="Sichere zuerst deine Daten, aktiviere bei Bedarf den Sync und verbinde dann weitere Geräte über den QR Code"
+        title="Sync und Geräte koppeln"
+        subtitle="Aktiviere bei Bedarf den Sync und verbinde weitere Geräte über den QR-Code."
       />
       <div className="data-panel">
+        <div className="settings-subnav">
+          <button
+            type="button"
+            className="settings-subnav__back-btn"
+            onClick={onBackToSettings}
+          >
+            Zurück zu Einstellungen
+          </button>
+        </div>
         <div className="data-layout">
           <SyncPanel
             onToggleSyncEnabled={onToggleSyncEnabled}
@@ -135,20 +120,6 @@ export function DataScreen({
             onPairCodeDraftChange={onPairCodeDraftChange}
             onPasteFromClipboard={onPasteFromClipboard}
             onImportPairCode={onImportPairCode}
-          />
-          <BackupPanel
-            onExport={onExport}
-            onToggleImportPanel={onToggleImportPanel}
-            showImportPanel={showImportPanel}
-            onImportFileChange={onImportFileChange}
-            importMode={importMode}
-            onImportModeChange={onImportModeChange}
-            onImport={onImport}
-            lastBackupAtLabel={lastBackupAtLabel}
-            backupOverdue={backupOverdue}
-            importReport={importReport}
-            info={info}
-            offlineReady={offlineReady}
           />
           <DebugPanel
             onToggleDebugInfo={onToggleDebugInfo}

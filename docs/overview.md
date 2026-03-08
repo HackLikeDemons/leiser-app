@@ -2,7 +2,7 @@
 
 [Zurück zur README](../README.md)
 
-Leiser hilft dir im Alltag einen freien Kopf zu behalten: Gedanken festhalten, später ordnen und in konkrete nächste Schritte übertragen.
+Leiser hilft dir im Alltag einen freien Kopf zu behalten: Memos festhalten, später ordnen und in konkrete nächste Schritte übertragen.
 
 Offline-first, ohne Ballast, mit optionalem verschlüsseltem Sync über deine Geräte.
 
@@ -10,7 +10,7 @@ Die App hat vier Arbeitsbereiche:
 
 - Sammeln
 - Ordnen
-- Denken
+- Memos
 - Machen
 
 Die App ist bewusst minimal:
@@ -32,7 +32,7 @@ Die App ist bewusst minimal:
 
 ## Prinzip
 
-1. Gedanken schnell erfassen (`Sammeln`)
+1. Memos schnell erfassen (`Sammeln`)
 2. Inbox entscheiden (`Ordnen`)
-3. Themen vertiefen (`Denken`)
+3. Themen vertiefen (`Memos`)
 4. Nächste Schritte umsetzen (`Machen`)

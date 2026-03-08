@@ -28,6 +28,7 @@ import {
   updateSyncState,
   updateNoteArchiveBucket,
   updateNoteContext,
+  updateNoteText,
   updateNoteStarred,
   updateNoteStatus,
 } from './lib/dbNotes'
@@ -38,6 +39,7 @@ import type { ContextTag, Note, NoteStatus, NoteType } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FlowHero } from './app/FlowHero'
 import { FooterProvider } from './app/FooterContext'
+import { BackupScreen } from './app/data/BackupScreen'
 import { DataScreen } from './app/data/DataScreen'
 import { AboutScreen } from './components/AboutScreen'
 import { InboxEmptyState } from './components/InboxEmptyState'
@@ -46,7 +48,7 @@ import type { DevSyncInfo } from './app/data/SyncPanel'
 import { getSupabaseRuntimeConfig } from './lib/runtimeConfig'
 import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } from './lib/syncEngine'
 
-type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'DATA' | 'ABOUT' | 'CONTEXTS'
+type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'SETTINGS' | 'DATA' | 'BACKUP' | 'ABOUT' | 'CONTEXTS'
 const SOFT_CHAR_LIMIT = 200
 const REVIEW_LIMIT = 50
 const FRESH_HOURS = 12
@@ -58,6 +60,7 @@ const AUTOSCROLL_NEAR_BOTTOM_PX = 80
 const BRAINDUMP_FETCH_LIMIT = 300
 const ARCHIVE_HARD_DELETE_DAYS = 30
 const ARCHIVE_HARD_DELETE_BATCH_LIMIT = 200
+const ARCHIVE_CLEAR_FETCH_LIMIT = 5000
 const ARCHIVE_HARD_DELETE_LAST_RUN_KEY = 'leiser:archive-hard-delete-last-run-day'
 const MS_PER_HOUR = 60 * 60 * 1000
 const MS_PER_DAY = 24 * MS_PER_HOUR
@@ -73,6 +76,7 @@ const SW_UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
 const BACKUP_OVERDUE_DAYS = 7
 const ONBOARDING_COMPLETED_STORAGE_KEY = 'leiser:onboarding:completed:v1'
 const CONTEXT_OPTIONS_STORAGE_KEY = 'leiser:context-options-v1'
+const REDUCE_MAIN_TAB_HELPERS_STORAGE_KEY = 'leiser:reduce-main-tab-helpers:v1'
 const MAX_CONTEXT_OPTIONS = 8
 
 type PairingPayloadV1 = {
@@ -345,19 +349,19 @@ function capitalizeFirstCharacter(value: string) {
 
 function contextGroupLabel(context: '__none' | ContextTag, options: ContextOption[]) {
   if (context === '__none') {
-    return 'Ohne Bereich'
+    return 'Ohne Kontext'
   }
   return capitalizeFirstCharacter(contextLabel(context, options))
 }
 
 function contextFilterPhrase(filter: ContextFilter, options: ContextOption[]) {
   if (filter === '__none') {
-    return 'ohne Bereich'
+    return 'ohne Kontext'
   }
   if (filter) {
     return contextLabel(filter, options)
   }
-  return 'alle Bereiche'
+  return 'alle Kontexte'
 }
 
 function findValidContextHashtags(entry: string, options: ContextOption[]): ContextHashtagMatch[] {
@@ -424,6 +428,17 @@ function persistHasVisitedFlag() {
   }
 }
 
+function readReduceMainTabHelpersFlag() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  try {
+    return window.localStorage.getItem(REDUCE_MAIN_TAB_HELPERS_STORAGE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 function matchesContextFilter(note: Note, filter: ContextFilter) {
   if (!filter) {
     return true
@@ -440,6 +455,14 @@ function matchesTodoSearch(note: Note, searchQuery: string) {
   }
   const haystack = `${note.text} ${note.context ?? ''}`.toLocaleLowerCase('de-DE')
   return searchQuery.split(/\s+/).every((token) => haystack.includes(token))
+}
+
+function isThinkingArchiveNote(note: Note) {
+  return note.archiveBucket === 'THINKING' || (note.archiveBucket == null && note.type !== 'TASK')
+}
+
+function isTodoArchiveNote(note: Note) {
+  return note.archiveBucket === 'TODO' || (note.archiveBucket == null && note.type === 'TASK')
 }
 
 function groupNotesByContext(
@@ -556,35 +579,366 @@ const BraindumpList = memo(function BraindumpList({
         <h2>Lass es raus</h2>
       </section>
       {showInboxEmptyState ? <InboxEmptyState /> : null}
-      {captureFeedback ? (
-        <p key={captureFeedback.id} className="braindump-capture-feedback" role="status" aria-live="polite">
-          {captureFeedback.text}
-        </p>
-      ) : null}
+      <div className="braindump-capture-feedback-slot">
+        {captureFeedback ? (
+          <p key={captureFeedback.id} className="braindump-capture-feedback" role="status" aria-live="polite">
+            {captureFeedback.text}
+          </p>
+        ) : (
+          <p className="braindump-capture-feedback braindump-capture-feedback--placeholder" aria-hidden="true">
+            &nbsp;
+          </p>
+        )}
+      </div>
       <BraindumpComposer onSubmitEntries={onSubmitEntries} contextOptions={contextOptions} />
     </>
   )
 })
 
-function TodoNoteRow({
+type NoteMenuAction = {
+  label: string
+  onSelect: () => void
+  variant?: 'todo' | 'process' | 'done' | 'archive' | 'back' | 'discard' | 'star' | 'edit'
+}
+
+function NoteActionMenu({
+  ariaLabel,
+  actions,
+}: {
+  ariaLabel: string
+  actions: NoteMenuAction[]
+}) {
+  return (
+    <details className="note-action-menu">
+      <summary
+        className="review-btn review-btn--icon review-btn--more"
+        aria-label={ariaLabel}
+        title={ariaLabel}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M5 12a1.6 1.6 0 1 0 0 .01M12 12a1.6 1.6 0 1 0 0 .01M19 12a1.6 1.6 0 1 0 0 .01"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      </summary>
+      <div className="note-action-menu__list" role="menu" aria-label={ariaLabel}>
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            className={`note-action-menu__item${action.variant ? ` note-action-menu__item--${action.variant}` : ''}`}
+            role="menuitem"
+            onClick={(event) => {
+              action.onSelect()
+              const detailsElement = event.currentTarget.closest('details')
+              if (detailsElement instanceof HTMLDetailsElement) {
+                detailsElement.open = false
+              }
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+function ReviewNoteRow({
   note,
-  onToggleStar,
-  onDone,
-  onBack,
+  contextOptions,
+  onContextChange,
+  onToTodo,
+  onToMemos,
+  onDiscard,
+  onSaveEdit,
 }: {
   note: Note
+  contextOptions: ContextOption[]
+  onContextChange: (id: string, context: ContextTag | undefined) => void
+  onToTodo: (id: string) => void
+  onToMemos: (id: string) => void
+  onDiscard: (id: string) => void
+  onSaveEdit: (id: string, text: string, context: ContextTag | undefined) => Promise<boolean>
+}) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [draftText, setDraftText] = useState(note.text)
+  const [draftContext, setDraftContext] = useState<ContextTag | ''>(note.context ?? '')
+  const [editError, setEditError] = useState('')
+
+  const handleCancelEdit = () => {
+    if (isSaving) {
+      return
+    }
+    setIsEditing(false)
+    setEditError('')
+    setDraftText(note.text)
+    setDraftContext(note.context ?? '')
+  }
+
+  const handleSaveEdit = useCallback(async () => {
+    if (isSaving) {
+      return
+    }
+    const nextText = draftText.trim()
+    if (!nextText) {
+      setEditError('Text darf nicht leer sein.')
+      return
+    }
+    setEditError('')
+    setIsSaving(true)
+    const saved = await onSaveEdit(note.id, nextText, draftContext || undefined)
+    setIsSaving(false)
+    if (saved) {
+      setIsEditing(false)
+    } else {
+      setEditError('Änderungen konnten nicht gespeichert werden.')
+    }
+  }, [draftContext, draftText, isSaving, note.id, onSaveEdit])
+
+  const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      handleCancelEdit()
+      return
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void handleSaveEdit()
+    }
+  }
+
+  const ageCategory = getReviewAgeCategory(note)
+  const ageText = reviewAgeLabel(ageCategory)
+
+  return (
+    <li className={isEditing ? 'note-item note-item--todo note-item--review-row note-item--editing' : 'note-item note-item--todo note-item--review-row'}>
+      {isEditing ? (
+        <div className="note-edit-panel">
+          <textarea
+            rows={3}
+            className="note-edit-textarea"
+            value={draftText}
+            onChange={(event) => setDraftText(event.target.value)}
+            onKeyDown={handleEditorKeyDown}
+            aria-label="Inbox-Eintrag bearbeiten"
+          />
+          <label className="context-select-wrap">
+            <span className="sr-only">Kontext im Inbox-Eintrag bearbeiten</span>
+            <select
+              className="context-select"
+              value={draftContext}
+              onChange={(event) => setDraftContext((event.target.value ? normalizeContextTag(event.target.value) : '') ?? '')}
+              aria-label="Kontext"
+              title="Kontext"
+            >
+              <option value="">Kein Kontext</option>
+              {contextOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {editError ? <p className="error-text">{editError}</p> : null}
+          <p className="hint">Enter: speichern, Shift+Enter: Zeilenumbruch, Esc: abbrechen</p>
+        </div>
+      ) : (
+        <span className="note-content">
+          <ExpandableNoteText text={note.text} />
+          {ageText ? (
+            <span className={`age-badge age-badge--${ageCategory.toLowerCase()}`}>
+              {ageText}
+            </span>
+          ) : null}
+          <NoteTypeBadge note={note} />
+        </span>
+      )}
+      <div className="todo-actions">
+        {isEditing ? (
+          <>
+            <button type="button" className="review-btn review-btn--todo" onClick={() => void handleSaveEdit()} disabled={isSaving}>
+              Speichern
+            </button>
+            <button type="button" className="review-btn review-btn--back" onClick={handleCancelEdit} disabled={isSaving}>
+              Abbrechen
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="context-select-wrap">
+              <span className="sr-only">Kontext setzen</span>
+              <select
+                className="context-select"
+                value={note.context ?? ''}
+                onChange={(event) => {
+                  const nextValue = event.target.value
+                  onContextChange(note.id, nextValue ? normalizeContextTag(nextValue) : undefined)
+                }}
+                aria-label="Kontext"
+                title="Kontext"
+              >
+                <option value="">Kein Kontext</option>
+                {contextOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="review-action-row" role="group" aria-label="Aktionen">
+                <NoteActionMenu
+                  ariaLabel="Weitere Aktionen für Inbox-Eintrag"
+                  actions={[
+                    { label: 'In Machen verschieben', onSelect: () => onToTodo(note.id), variant: 'todo' },
+                    { label: 'In Memos verschieben', onSelect: () => onToMemos(note.id), variant: 'process' },
+                    {
+                      label: 'Bearbeiten',
+                      onSelect: () => {
+                        setDraftText(note.text)
+                        setDraftContext(note.context ?? '')
+                        setEditError('')
+                        setIsEditing(true)
+                      },
+                      variant: 'edit',
+                    },
+                    { label: 'Verwerfen', onSelect: () => onDiscard(note.id), variant: 'discard' },
+                  ]}
+                />
+            </div>
+          </>
+        )}
+      </div>
+    </li>
+  )
+}
+
+function TodoNoteRow({
+  note,
+  contextOptions,
+  onSaveEdit,
+  onToggleStar,
+  onDone,
+  onThinking,
+}: {
+  note: Note
+  contextOptions: ContextOption[]
+  onSaveEdit: (id: string, text: string, context: ContextTag | undefined) => Promise<boolean>
   onToggleStar: (id: string, starred: boolean) => void
   onDone: (id: string) => void
-  onBack: (id: string) => void
+  onThinking: (id: string) => void
 }) {
   const stale = isTodoStale(note)
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [draftText, setDraftText] = useState(note.text)
+  const [draftContext, setDraftContext] = useState<ContextTag | ''>(note.context ?? '')
+  const [editError, setEditError] = useState('')
+
+  const handleCancelEdit = () => {
+    if (isSaving) {
+      return
+    }
+    setIsEditing(false)
+    setEditError('')
+    setDraftText(note.text)
+    setDraftContext(note.context ?? '')
+  }
+
+  const handleSaveEdit = useCallback(async () => {
+    if (isSaving) {
+      return
+    }
+    const nextText = draftText.trim()
+    if (!nextText) {
+      setEditError('Text darf nicht leer sein.')
+      return
+    }
+    setEditError('')
+    setIsSaving(true)
+    const saved = await onSaveEdit(note.id, nextText, draftContext || undefined)
+    setIsSaving(false)
+    if (saved) {
+      setIsEditing(false)
+    } else {
+      setEditError('Änderungen konnten nicht gespeichert werden.')
+    }
+  }, [draftContext, draftText, isSaving, note.id, onSaveEdit])
+
+  const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      handleCancelEdit()
+      return
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void handleSaveEdit()
+    }
+  }
+
+  const itemClassName = [
+    'note-item',
+    'note-item--todo',
+    stale ? 'note-item--todo-stale' : '',
+    isEditing ? 'note-item--editing' : '',
+  ].filter(Boolean).join(' ')
+
   return (
-    <li key={note.id} className={stale ? 'note-item note-item--todo note-item--todo-stale' : 'note-item note-item--todo'}>
-      <span className="note-content">
-        <ExpandableNoteText text={note.text} />
-        <NoteTypeBadge note={note} />
-      </span>
+    <li key={note.id} className={itemClassName}>
+      {isEditing ? (
+        <div className="note-edit-panel">
+          <textarea
+            rows={3}
+            className="note-edit-textarea"
+            value={draftText}
+            onChange={(event) => setDraftText(event.target.value)}
+            onKeyDown={handleEditorKeyDown}
+            aria-label="Task bearbeiten"
+          />
+          <label className="context-select-wrap">
+            <span className="sr-only">Kontext im Task bearbeiten</span>
+            <select
+              className="context-select"
+              value={draftContext}
+              onChange={(event) => setDraftContext((event.target.value ? normalizeContextTag(event.target.value) : '') ?? '')}
+              aria-label="Kontext"
+              title="Kontext"
+            >
+              <option value="">Kein Kontext</option>
+              {contextOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {editError ? <p className="error-text">{editError}</p> : null}
+          <p className="hint">Enter: speichern, Shift+Enter: Zeilenumbruch, Esc: abbrechen</p>
+        </div>
+      ) : (
+        <span className="note-content">
+          <ExpandableNoteText text={note.text} />
+          <NoteTypeBadge note={note} />
+        </span>
+      )}
       <div className="todo-actions">
+        {isEditing ? (
+          <>
+            <button type="button" className="review-btn review-btn--todo" onClick={() => void handleSaveEdit()} disabled={isSaving}>
+              Speichern
+            </button>
+            <button type="button" className="review-btn review-btn--back" onClick={handleCancelEdit} disabled={isSaving}>
+              Abbrechen
+            </button>
+          </>
+        ) : (
+          <>
         <button
           type="button"
           className={note.starred ? 'review-btn review-btn--star review-btn--star-active review-btn--icon' : 'review-btn review-btn--star review-btn--icon'}
@@ -620,24 +974,24 @@ function TodoNoteRow({
             />
           </svg>
         </button>
-        <button
-          type="button"
-          className="review-btn review-btn--back review-btn--icon"
-          onClick={() => onBack(note.id)}
-          aria-label="Zurück in Inbox"
-          title="Zurück"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M10 7 5 12l5 5M6 12h13"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.9"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
+        <NoteActionMenu
+          ariaLabel="Weitere Aktionen für Handlung"
+          actions={[
+            {
+              label: 'Bearbeiten',
+              onSelect: () => {
+                setDraftText(note.text)
+                setDraftContext(note.context ?? '')
+                setEditError('')
+                setIsEditing(true)
+              },
+              variant: 'edit',
+            },
+            { label: 'In Memos verschieben', onSelect: () => onThinking(note.id), variant: 'process' },
+          ]}
+        />
+          </>
+        )}
       </div>
     </li>
   )
@@ -645,76 +999,134 @@ function TodoNoteRow({
 
 function ThinkingNoteRow({
   note,
+  contextOptions,
+  onSaveEdit,
   onArchive,
   onTodo,
-  onBack,
 }: {
   note: Note
+  contextOptions: ContextOption[]
+  onSaveEdit: (id: string, text: string, context: ContextTag | undefined) => Promise<boolean>
   onArchive: (id: string) => void
   onTodo: (id: string) => void
-  onBack: (id: string) => void
 }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [draftText, setDraftText] = useState(note.text)
+  const [draftContext, setDraftContext] = useState<ContextTag | ''>(note.context ?? '')
+  const [editError, setEditError] = useState('')
+
+  const handleCancelEdit = () => {
+    if (isSaving) {
+      return
+    }
+    setIsEditing(false)
+    setEditError('')
+    setDraftText(note.text)
+    setDraftContext(note.context ?? '')
+  }
+
+  const handleSaveEdit = useCallback(async () => {
+    if (isSaving) {
+      return
+    }
+    const nextText = draftText.trim()
+    if (!nextText) {
+      setEditError('Text darf nicht leer sein.')
+      return
+    }
+    setEditError('')
+    setIsSaving(true)
+    const saved = await onSaveEdit(note.id, nextText, draftContext || undefined)
+    setIsSaving(false)
+    if (saved) {
+      setIsEditing(false)
+    } else {
+      setEditError('Änderungen konnten nicht gespeichert werden.')
+    }
+  }, [draftContext, draftText, isSaving, note.id, onSaveEdit])
+
+  const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      handleCancelEdit()
+      return
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void handleSaveEdit()
+    }
+  }
+
   return (
-    <li className="note-item note-item--todo">
-      <span className="note-content">
-        <ExpandableNoteText text={note.text} />
-        <NoteTypeBadge note={note} />
-      </span>
+    <li className={isEditing ? 'note-item note-item--todo note-item--editing' : 'note-item note-item--todo'}>
+      {isEditing ? (
+        <div className="note-edit-panel">
+          <textarea
+            rows={3}
+            className="note-edit-textarea"
+            value={draftText}
+            onChange={(event) => setDraftText(event.target.value)}
+            onKeyDown={handleEditorKeyDown}
+            aria-label="Memo bearbeiten"
+          />
+          <label className="context-select-wrap">
+            <span className="sr-only">Kontext im Memo bearbeiten</span>
+            <select
+              className="context-select"
+              value={draftContext}
+              onChange={(event) => setDraftContext((event.target.value ? normalizeContextTag(event.target.value) : '') ?? '')}
+              aria-label="Kontext"
+              title="Kontext"
+            >
+              <option value="">Kein Kontext</option>
+              {contextOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {editError ? <p className="error-text">{editError}</p> : null}
+          <p className="hint">Enter: speichern, Shift+Enter: Zeilenumbruch, Esc: abbrechen</p>
+        </div>
+      ) : (
+        <span className="note-content">
+          <ExpandableNoteText text={note.text} />
+          <NoteTypeBadge note={note} />
+        </span>
+      )}
       <div className="todo-actions">
-        <button
-          type="button"
-          className="review-btn review-btn--archive review-btn--icon"
-          onClick={() => onArchive(note.id)}
-          aria-label="Archivieren"
-          title="Archivieren"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M3 7h18v4H3V7Zm3 4h12v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-8Zm4 3h4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className="review-btn review-btn--todo review-btn--icon"
-          onClick={() => onTodo(note.id)}
-          aria-label="Zu Handlungen verschieben"
-          title="Zu Handlungen"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M9 7h10M9 12h10M9 17h10M4 7l1.2 1.2L7 6M4 12l1.2 1.2L7 11M4 17l1.2 1.2L7 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className="review-btn review-btn--back review-btn--icon"
-          onClick={() => onBack(note.id)}
-          aria-label="Zurück zu Ordnen"
-          title="Zurück zu Ordnen"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M10 7 5 12l5 5M6 12h13"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.9"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
+        {isEditing ? (
+          <>
+            <button type="button" className="review-btn review-btn--todo" onClick={() => void handleSaveEdit()} disabled={isSaving}>
+              Speichern
+            </button>
+            <button type="button" className="review-btn review-btn--back" onClick={handleCancelEdit} disabled={isSaving}>
+              Abbrechen
+            </button>
+          </>
+        ) : (
+          <>
+        <NoteActionMenu
+          ariaLabel="Weitere Aktionen für Memos"
+          actions={[
+            { label: 'In Machen verschieben', onSelect: () => onTodo(note.id), variant: 'todo' },
+            {
+              label: 'Bearbeiten',
+              onSelect: () => {
+                setDraftText(note.text)
+                setDraftContext(note.context ?? '')
+                setEditError('')
+                setIsEditing(true)
+              },
+              variant: 'edit',
+            },
+            { label: 'Archivieren', onSelect: () => onArchive(note.id), variant: 'archive' },
+          ]}
+        />
+          </>
+        )}
       </div>
     </li>
   )
@@ -740,8 +1152,8 @@ function ArchivedThinkingNoteRow({
           type="button"
           className="review-btn review-btn--back review-btn--icon"
           onClick={() => onBackToThinking(note.id)}
-          aria-label="Weiterdenken"
-          title="Weiterdenken"
+          aria-label="In Memos"
+          title="In Memos"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -763,10 +1175,10 @@ function ArchivedThinkingNoteRow({
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
-              d="M6 6l12 12M18 6 6 18"
+              d="M4 7h16M9 7l1-2h4l1 2M8 7l1 12h6l1-12M10 11v6M14 11v6"
               fill="none"
               stroke="currentColor"
-              strokeWidth="1.9"
+              strokeWidth="1.8"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -795,17 +1207,17 @@ function ArchivedTodoNoteRow({
       <div className="todo-actions">
         <button
           type="button"
-          className="review-btn review-btn--todo review-btn--icon"
+          className="review-btn review-btn--back review-btn--icon"
           onClick={() => onBackToTodo(note.id)}
           aria-label="Zurück zu Handlungen"
           title="Zurück zu Handlungen"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
-              d="M9 7h10M9 12h10M9 17h10M4 7l1.2 1.2L7 6M4 12l1.2 1.2L7 11M4 17l1.2 1.2L7 16"
+              d="M10 7 5 12l5 5M6 12h13"
               fill="none"
               stroke="currentColor"
-              strokeWidth="1.7"
+              strokeWidth="1.9"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -820,10 +1232,10 @@ function ArchivedTodoNoteRow({
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
-              d="M6 6l12 12M18 6 6 18"
+              d="M4 7h16M9 7l1-2h4l1 2M8 7l1 12h6l1-12M10 11v6M14 11v6"
               fill="none"
               stroke="currentColor"
-              strokeWidth="1.9"
+              strokeWidth="1.8"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -1148,7 +1560,7 @@ function BraindumpComposer({
           onKeyDown={handleTextKeyDown}
         />
         {activeHashtagToken !== null && contextSuggestions.length > 0 ? (
-          <div className="capture-context-suggest" role="listbox" aria-label="Bestehende Bereiche">
+          <div className="capture-context-suggest" role="listbox" aria-label="Bestehende Kontexte">
             {contextSuggestions.map((option) => (
               <button
                 key={option.value}
@@ -1156,7 +1568,7 @@ function BraindumpComposer({
                 className="capture-context-suggest__item"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => applyContextSuggestion(option.value)}
-                aria-label={`Bereich ${option.label} einsetzen`}
+                aria-label={`Kontext ${option.label} einsetzen`}
               >
                 #{option.label}
               </button>
@@ -1168,10 +1580,14 @@ function BraindumpComposer({
             <small className={text.length > SOFT_CHAR_LIMIT ? 'counter counter--warning' : 'counter'}>
               {text.length} / {SOFT_CHAR_LIMIT}
             </small>
-            <small className="capture-hint">
-              {selectedContextHint
-                ? `Enter: speichern, #${selectedContextHint}: zugeordnet`
-                : 'Enter: speichern, #Bereich: zuordnen'}
+            <small className="capture-hint capture-hint--stack">
+              <span>Enter: speichern</span>
+              <span>mit - als Präfix direkt in 'Machen' anlegen</span>
+              <span>
+                {selectedContextHint
+                  ? `#${selectedContextHint}: als Kontext (Tag wird aus dem Text übernommen)`
+                  : '#Kontext: als Kontext übernehmen'}
+              </span>
             </small>
           </div>
           <button
@@ -1195,7 +1611,7 @@ function BraindumpComposer({
         </div>
         {dictationError ? <small className="soft-limit-hint">{dictationError}</small> : null}
         {text.length > SOFT_CHAR_LIMIT ? (
-          <small className="soft-limit-hint">Vielleicht sind das mehrere Gedanken.</small>
+          <small className="soft-limit-hint">Vielleicht sind das mehrere Memos.</small>
         ) : null}
       </form>
     </div>
@@ -1280,6 +1696,7 @@ function AppContent() {
   const [isContextEditMode, setIsContextEditMode] = useState(false)
   const [thinkingActionButtonWidth, setThinkingActionButtonWidth] = useState<number | null>(null)
   const [todoActionButtonWidth, setTodoActionButtonWidth] = useState<number | null>(null)
+  const [reduceMainTabHelpers, setReduceMainTabHelpers] = useState(readReduceMainTabHelpersFlag)
   const [staleQueueIds, setStaleQueueIds] = useState<string[]>([])
   const [staleReviewTotal, setStaleReviewTotal] = useState(0)
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
@@ -1319,6 +1736,17 @@ function AppContent() {
   useEffect(() => {
     persistContextOptions(contextOptions)
   }, [contextOptions])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    try {
+      window.localStorage.setItem(REDUCE_MAIN_TAB_HELPERS_STORAGE_KEY, reduceMainTabHelpers ? '1' : '0')
+    } catch {
+      // Storage can fail in privacy-restricted environments.
+    }
+  }, [reduceMainTabHelpers])
 
   useEffect(() => {
     setContextDraftLabels((prev) => {
@@ -1531,6 +1959,41 @@ function AppContent() {
   useEffect(() => {
     setShowContextMenu(false)
   }, [activeTab])
+
+  useEffect(() => {
+    const closeOpenNoteActionMenus = () => {
+      const openMenus = document.querySelectorAll<HTMLDetailsElement>('details.note-action-menu[open]')
+      openMenus.forEach((menu) => {
+        menu.open = false
+      })
+    }
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) {
+        closeOpenNoteActionMenus()
+        return
+      }
+      const clickedInsideNoteActionMenu = target instanceof Element && target.closest('details.note-action-menu')
+      if (clickedInsideNoteActionMenu) {
+        return
+      }
+      closeOpenNoteActionMenus()
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeOpenNoteActionMenus()
+      }
+    }
+
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) {
@@ -2201,7 +2664,7 @@ function AppContent() {
         const parsedEntries = entries.map((entry) => parseBraindumpEntryForContext(entry, contextOptions))
         const hasEmptyContextOnlyEntry = parsedEntries.some((entry) => entry.context && entry.text.trim().length === 0)
         if (hasEmptyContextOnlyEntry) {
-          setError('Ein Gedanke darf nicht nur aus einem Bereich bestehen.')
+          setError('Ein Memo darf nicht nur aus einem Kontext bestehen.')
           return false
         }
 
@@ -2225,9 +2688,18 @@ function AppContent() {
             }
             return deduped
           })
+          const assignedContexts = Array.from(
+            new Set(parsedEntries.map((entry) => entry.context).filter((context): context is ContextTag => Boolean(context))),
+          )
+          const hashtagFeedback =
+            assignedContexts.length === 0
+              ? 'Memo gespeichert.'
+              : assignedContexts.length === 1
+                ? `Memo gespeichert. #${assignedContexts[0]} als Kontext gesetzt und aus dem Text übernommen.`
+                : `Memos gespeichert. ${assignedContexts.length} Kontexte aus #Tags gesetzt und aus dem Text übernommen.`
           const nextFeedback: CaptureFeedback = {
             id: braindumpCaptureFeedbackSeqRef.current + 1,
-            text: 'Gedanke gespeichert.',
+            text: hashtagFeedback,
           }
           braindumpCaptureFeedbackSeqRef.current = nextFeedback.id
           setBraindumpCaptureFeedback(nextFeedback)
@@ -2454,7 +2926,7 @@ function AppContent() {
       const clearedContextCount = await clearUnknownContexts(contextOptions.map((option) => option.value))
       if (clearedContextCount > 0) {
         showTransientInfo(
-          `Backup importiert. ${clearedContextCount} Eintrag${clearedContextCount === 1 ? '' : 'e'} mit entferntem Bereich auf "Ohne Bereich" gesetzt.`,
+          `Backup importiert. ${clearedContextCount} Eintrag${clearedContextCount === 1 ? '' : 'e'} mit entferntem Kontext auf "Ohne Kontext" gesetzt.`,
         )
       } else {
         showTransientInfo('Backup erfolgreich importiert.')
@@ -2517,21 +2989,16 @@ function AppContent() {
     }, allContextOptions)
   }, [allContextOptions, visibleProcessNotes])
   const thinkingArchivedNotes = useMemo(
-    () =>
-      archivedNotes.filter(
-        (note) => note.archiveBucket === 'THINKING' || (note.archiveBucket == null && note.type !== 'TASK'),
-      ),
+    () => archivedNotes.filter((note) => isThinkingArchiveNote(note)),
     [archivedNotes],
   )
   const hasThinkingArchive = thinkingArchivedNotes.length > 0
   const visibleThinkingArchivedNotes = useMemo(() => {
     return thinkingArchivedNotes.filter((note) => matchesContextFilter(note, thinkingContextFilter))
   }, [thinkingArchivedNotes, thinkingContextFilter])
+  const hasVisibleThinkingArchive = visibleThinkingArchivedNotes.length > 0
   const todoArchivedNotes = useMemo(
-    () =>
-      archivedNotes.filter(
-        (note) => note.archiveBucket === 'TODO' || (note.archiveBucket == null && note.type === 'TASK'),
-      ),
+    () => archivedNotes.filter((note) => isTodoArchiveNote(note)),
     [archivedNotes],
   )
   const hasTodoArchive = todoArchivedNotes.length > 0
@@ -2549,6 +3016,7 @@ function AppContent() {
     })
   }, [todoArchivedNotes, todoContextFilter, normalizedTodoSearchQuery])
   const todoArchiveCount = visibleTodoArchivedNotes.length
+  const hasVisibleTodoArchive = visibleTodoArchivedNotes.length > 0
   const archivedThinkingGroups = useMemo(() => {
     return groupNotesByContext(visibleThinkingArchivedNotes, (a, b) => {
       const byUpdated = b.updatedAt.localeCompare(a.updatedAt)
@@ -2599,6 +3067,9 @@ function AppContent() {
   }, [todoNotes, todoArchivedNotes])
 
   useEffect(() => {
+    if (activeTab !== 'THINKING') {
+      return
+    }
     if (!thinkingContextFilter) {
       return
     }
@@ -2611,9 +3082,12 @@ function AppContent() {
     if (!thinkingContextOptions.some((option) => normalizeContextTag(option.value) === normalizeContextTag(thinkingContextFilter))) {
       setThinkingContextFilter('')
     }
-  }, [thinkingContextFilter, thinkingContextOptions, thinkingHasNoContextNotes])
+  }, [activeTab, thinkingContextFilter, thinkingContextOptions, thinkingHasNoContextNotes])
 
   useEffect(() => {
+    if (activeTab !== 'TODO') {
+      return
+    }
     if (!todoContextFilter) {
       return
     }
@@ -2626,7 +3100,7 @@ function AppContent() {
     if (!todoContextOptions.some((option) => normalizeContextTag(option.value) === normalizeContextTag(todoContextFilter))) {
       setTodoContextFilter('')
     }
-  }, [todoContextFilter, todoContextOptions, todoHasNoContextNotes])
+  }, [activeTab, todoContextFilter, todoContextOptions, todoHasNoContextNotes])
 
   const staleTodos = useMemo(() => {
     const today = new Date()
@@ -2748,9 +3222,9 @@ function AppContent() {
     [todoNotes, refreshAll, showTransientInfo, startTodoUndoWindow],
   )
 
-  const handleTodoBack = useCallback(
+  const handleTodoToThinking = useCallback(
     (id: string) => {
-      void handleTodoStatusChange(id, 'INBOX')
+      void handleTodoStatusChange(id, 'PROCESS')
     },
     [handleTodoStatusChange],
   )
@@ -2767,6 +3241,21 @@ function AppContent() {
     },
     [refreshAll],
   )
+  const handleTodoSaveEdit = useCallback(
+    async (id: string, text: string, context: ContextTag | undefined) => {
+      setError('')
+      try {
+        await updateNoteText(id, text)
+        await updateNoteContext(id, context)
+        await refreshAll()
+        return true
+      } catch {
+        setError('Handlung konnte nicht bearbeitet werden.')
+        return false
+      }
+    },
+    [refreshAll],
+  )
 
   const handleReviewContextChange = useCallback(
     async (id: string, context: ContextTag | undefined) => {
@@ -2775,7 +3264,22 @@ function AppContent() {
         await updateNoteContext(id, context)
         await refreshAll()
       } catch {
-        setError('Bereich konnte nicht aktualisiert werden.')
+        setError('Kontext konnte nicht aktualisiert werden.')
+      }
+    },
+    [refreshAll],
+  )
+  const handleReviewSaveEdit = useCallback(
+    async (id: string, text: string, context: ContextTag | undefined) => {
+      setError('')
+      try {
+        await updateNoteText(id, text)
+        await updateNoteContext(id, context)
+        await refreshAll()
+        return true
+      } catch {
+        setError('Eintrag konnte nicht bearbeitet werden.')
+        return false
       }
     },
     [refreshAll],
@@ -2786,7 +3290,7 @@ function AppContent() {
     const draft = normalizeContextLabel(contextDraftLabels[value])
     const nextValue = normalizeContextTag(draft)
     if (!draft || !nextValue) {
-      setError('Bereichsname darf nicht leer sein.')
+      setError('Kontextname darf nicht leer sein.')
       return
     }
 
@@ -2796,7 +3300,7 @@ function AppContent() {
       return optionValue !== currentValue && optionValue === nextValue
     })
     if (hasDuplicate) {
-      setError('Bereich existiert bereits.')
+      setError('Kontext existiert bereits.')
       return
     }
 
@@ -2807,10 +3311,10 @@ function AppContent() {
           .map((option) => (option.value === value ? { value: nextValue, label: capitalizeFirstCharacter(draft) } : option))
           .sort((a, b) => a.label.localeCompare(b.label, 'de-DE')),
       )
-      showTransientInfo('Bereich aktualisiert.')
+      showTransientInfo('Kontext aktualisiert.')
       await refreshAll()
     } catch {
-      setError('Bereich konnte nicht aktualisiert werden.')
+      setError('Kontext konnte nicht aktualisiert werden.')
     }
   }, [contextDraftLabels, contextOptions, refreshAll, showTransientInfo])
 
@@ -2821,7 +3325,7 @@ function AppContent() {
     const confirmed = typeof window === 'undefined'
       ? true
       : window.confirm(
-        `Bereich "${displayLabel}" wirklich entfernen?\n\nAlle zugeordneten Einträge werden auf "Ohne Bereich" gesetzt.`,
+        `Kontext "${displayLabel}" wirklich entfernen?\n\nAlle zugeordneten Einträge werden auf "Ohne Kontext" gesetzt.`,
       )
     if (!confirmed) {
       return
@@ -2832,39 +3336,39 @@ function AppContent() {
       setContextOptions((prev) => prev.filter((option) => option.value !== value))
       showTransientInfo(
         changed > 0
-          ? `Bereich entfernt. ${changed} Eintrag${changed === 1 ? '' : 'e'} jetzt ohne Bereich.`
-          : 'Bereich entfernt.',
+          ? `Kontext entfernt. ${changed} Eintrag${changed === 1 ? '' : 'e'} jetzt ohne Kontext.`
+          : 'Kontext entfernt.',
       )
       await refreshAll()
     } catch {
-      setError('Bereich konnte nicht entfernt werden.')
+      setError('Kontext konnte nicht entfernt werden.')
     }
   }, [contextOptions, refreshAll, showTransientInfo])
 
   const handleAddContextOption = useCallback(() => {
     const label = normalizeContextLabel(newContextLabel)
     if (!label) {
-      setError('Bitte Namen für den Bereich eingeben.')
+      setError('Bitte Namen für den Kontext eingeben.')
       return
     }
     if (contextOptions.length >= MAX_CONTEXT_OPTIONS) {
-      setError(`Maximal ${MAX_CONTEXT_OPTIONS} Bereiche erlaubt.`)
+      setError(`Maximal ${MAX_CONTEXT_OPTIONS} Kontexte erlaubt.`)
       return
     }
     const value = normalizeContextTag(label)
     if (!value) {
-      setError('Bereich konnte nicht erstellt werden.')
+      setError('Kontext konnte nicht erstellt werden.')
       return
     }
     setContextOptions((prev) => {
       if (prev.some((option) => normalizeContextTag(option.value) === value)) {
-        setError('Bereich existiert bereits.')
+        setError('Kontext existiert bereits.')
         return prev
       }
       return [...prev, { value, label: capitalizeFirstCharacter(label) }].sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
     })
     setNewContextLabel('')
-    showTransientInfo('Bereich hinzugefügt.')
+    showTransientInfo('Kontext hinzugefügt.')
   }, [contextOptions.length, newContextLabel, showTransientInfo])
 
   const handleUndoLastTodoAction = async () => {
@@ -2896,7 +3400,7 @@ function AppContent() {
         await updateNoteArchiveBucket(id, 'THINKING')
         await refreshAll()
       } catch {
-        setError('Gedanke konnte nicht archiviert werden.')
+        setError('Memo konnte nicht archiviert werden.')
       }
     },
     [refreshAll],
@@ -2907,11 +3411,20 @@ function AppContent() {
     },
     [handleReviewDecision],
   )
-  const handleThinkingBackToReview = useCallback(
-    (id: string) => {
-      void handleReviewDecision(id, 'INBOX')
+  const handleThinkingSaveEdit = useCallback(
+    async (id: string, text: string, context: ContextTag | undefined) => {
+      setError('')
+      try {
+        await updateNoteText(id, text)
+        await updateNoteContext(id, context)
+        await refreshAll()
+        return true
+      } catch {
+        setError('Memo konnte nicht bearbeitet werden.')
+        return false
+      }
     },
-    [handleReviewDecision],
+    [refreshAll],
   )
   const handleArchivedBackToThinking = useCallback(
     (id: string) => {
@@ -2939,10 +3452,10 @@ function AppContent() {
         if (thinkingArchiveCount <= 1) {
           setShowArchive(false)
         }
-        showTransientInfo('Gedanke aus Archiv gelöscht.')
+        showTransientInfo('Memo aus Archiv gelöscht.')
         await refreshAll()
       } catch {
-        setError('Gedanke konnte nicht gelöscht werden.')
+        setError('Memo konnte nicht gelöscht werden.')
       }
     },
     [refreshAll, showTransientInfo, startTodoUndoWindow, thinkingArchiveCount, thinkingArchivedNotes],
@@ -2981,6 +3494,58 @@ function AppContent() {
     },
     [refreshAll, showTransientInfo, startTodoUndoWindow, todoArchiveCount, todoArchivedNotes],
   )
+  const handleClearThinkingArchive = useCallback(async () => {
+    setError('')
+    try {
+      const archived = await listNotesByStatus('ARCHIVE', ARCHIVE_CLEAR_FETCH_LIMIT)
+      const targetIds = archived.filter((note) => isThinkingArchiveNote(note)).map((note) => note.id)
+      if (targetIds.length === 0) {
+        showTransientInfo('Memos-Archiv ist bereits leer.')
+        await refreshAll()
+        return
+      }
+      const confirmed = window.confirm(
+        `Wirklich ${targetIds.length} Memo${targetIds.length === 1 ? '' : 's'} endgültig aus dem Archiv löschen? Dieser Schritt kann nicht rückgängig gemacht werden.`,
+      )
+      if (!confirmed) {
+        return
+      }
+      for (const id of targetIds) {
+        await deleteNote(id)
+      }
+      setShowArchive(false)
+      showTransientInfo(`${targetIds.length} Memo${targetIds.length === 1 ? '' : 's'} gelöscht.`)
+      await refreshAll()
+    } catch {
+      setError('Memos-Archiv konnte nicht geleert werden.')
+    }
+  }, [refreshAll, showTransientInfo])
+  const handleClearTodoArchive = useCallback(async () => {
+    setError('')
+    try {
+      const archived = await listNotesByStatus('ARCHIVE', ARCHIVE_CLEAR_FETCH_LIMIT)
+      const targetIds = archived.filter((note) => isTodoArchiveNote(note)).map((note) => note.id)
+      if (targetIds.length === 0) {
+        showTransientInfo('Handlungen-Archiv ist bereits leer.')
+        await refreshAll()
+        return
+      }
+      const confirmed = window.confirm(
+        `Wirklich ${targetIds.length} Handlung${targetIds.length === 1 ? '' : 'en'} endgültig aus dem Archiv löschen? Dieser Schritt kann nicht rückgängig gemacht werden.`,
+      )
+      if (!confirmed) {
+        return
+      }
+      for (const id of targetIds) {
+        await deleteNote(id)
+      }
+      setShowTodoArchive(false)
+      showTransientInfo(`${targetIds.length} Handlung${targetIds.length === 1 ? '' : 'en'} gelöscht.`)
+      await refreshAll()
+    } catch {
+      setError('Handlungen-Archiv konnte nicht geleert werden.')
+    }
+  }, [refreshAll, showTransientInfo])
 
   const visibleTodoNotes = useMemo(() => {
     return todoNotes.filter((note) => {
@@ -3095,7 +3660,7 @@ function AppContent() {
     }
   }, [hasTodoArchive, showTodoArchive])
 
-  const openContextScreen = useCallback((tab: Extract<TabKey, 'DATA' | 'ABOUT' | 'CONTEXTS'>) => {
+  const openContextScreen = useCallback((tab: Extract<TabKey, 'SETTINGS' | 'DATA' | 'BACKUP' | 'ABOUT' | 'CONTEXTS'>) => {
     setActiveTab(tab)
     setShowContextMenu(false)
   }, [])
@@ -3135,13 +3700,13 @@ function AppContent() {
       }}
       header={
         <div className="app-content app-header-inner">
-            <div className="mode-tabs" role="tablist" aria-label="Bereiche">
+            <div className="mode-tabs" role="tablist" aria-label="Kontexte">
             <button
               type="button"
               className={activeTab === 'BRAINDUMP' ? 'tab-button tab-button--active' : 'tab-button'}
               onClick={() => setActiveTab('BRAINDUMP')}
-              aria-label="Sammeln"
-              title="Sammeln"
+              aria-label="Erfassen"
+              title="Erfassen"
             >
               <span className="tab-button__inner">
                 <svg className="tab-button__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -3154,7 +3719,7 @@ function AppContent() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>Sammeln</span>
+                <span>Erfassen</span>
               </span>
             </button>
             <button
@@ -3167,8 +3732,8 @@ function AppContent() {
                     : 'tab-button'
               }
               onClick={() => setActiveTab('REVIEW')}
-              aria-label="Ordnen"
-              title={reviewTabDisabled ? 'Ordnen (noch nichts zu ordnen)' : 'Ordnen'}
+              aria-label="Inbox"
+              title={reviewTabDisabled ? 'Inbox (noch nichts zu ordnen)' : 'Inbox'}
               disabled={reviewTabDisabled}
             >
               <span className="tab-button__inner">
@@ -3182,7 +3747,7 @@ function AppContent() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>Ordnen</span>
+                <span>Inbox</span>
               </span>
             </button>
             <button
@@ -3195,8 +3760,8 @@ function AppContent() {
                     : 'tab-button'
               }
               onClick={() => setActiveTab('THINKING')}
-              aria-label="Denken"
-              title={thinkingTabDisabled ? 'Denken (noch keine Gedanken vorhanden)' : 'Denken'}
+              aria-label="Memos"
+              title={thinkingTabDisabled ? 'Memos (noch keine Memos vorhanden)' : 'Memos'}
               disabled={thinkingTabDisabled}
             >
               <span className="tab-button__inner">
@@ -3215,7 +3780,7 @@ function AppContent() {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>Denken</span>
+                <span>Memos</span>
               </span>
             </button>
             <button
@@ -3273,14 +3838,11 @@ function AppContent() {
             </button>
             {showContextMenu ? (
               <div ref={contextMenuRef} className="context-menu" role="menu" aria-label="Kontextmenü">
+                <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('SETTINGS')}>
+                  Einstellungen
+                </button>
                 <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('ABOUT')}>
                   Über Leiser
-                </button>
-                <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('DATA')}>
-                  Sync & Backup
-                </button>
-                <button type="button" className="context-menu__item" role="menuitem" onClick={() => openContextScreen('CONTEXTS')}>
-                  Bereiche bearbeiten
                 </button>
               </div>
             ) : null}
@@ -3289,15 +3851,87 @@ function AppContent() {
       }
     >
       <section className="app-content">
+            {activeTab === 'SETTINGS' ? (
+              <section className="data-section" aria-label="Einstellungen">
+                <FlowHero
+                  title="Einstellungen"
+                  subtitle="Hier verwaltest du Daten, Sync und Kontexte."
+                />
+                <div className="data-panel">
+                  <div className="data-layout">
+                    <article className="data-card">
+                      <h3>Allgemein</h3>
+                      <p className="data-card__intro">
+                        Öffne die gewünschten Einstellungen über die Schaltflächern.
+                      </p>
+                      <div className="data-actions settings-actions">
+                        <div className="settings-action-item">
+                          <button
+                            type="button"
+                            className="review-btn review-btn--cta"
+                            onClick={() => setActiveTab('CONTEXTS')}
+                          >
+                            Kontexte bearbeiten
+                          </button>
+                        </div>
+                        <div className="settings-action-item">
+                          <button
+                            type="button"
+                            className="review-btn review-btn--cta"
+                            onClick={() => setActiveTab('BACKUP')}
+                          >
+                            Backup
+                          </button>
+                        </div>
+                        <div className="settings-action-item">
+                          <button
+                            type="button"
+                            className="review-btn review-btn--process"
+                            onClick={() => setActiveTab('DATA')}
+                          >
+                            Geräte-Sync (optional)
+                          </button>
+                        </div>
+                      </div>
+                      <label className="settings-option">
+                        <input
+                          type="checkbox"
+                          checked={reduceMainTabHelpers}
+                          onChange={(event) => setReduceMainTabHelpers(event.target.checked)}
+                        />
+                        <span>Hilfetexte in Haupt-Tabs reduzieren</span>
+                      </label>
+                      <p className="hint">
+                        Blendet die erklärenden Untertitel in Ordnen, Memos und Machen aus.
+                      </p>
+                    </article>
+                    <article className="data-card">
+                      <h3>Übrigens</h3>
+                      <p className="data-card__intro">
+                        Ein paar kurze Tipps, die Leiser im Alltag schneller machen:
+                      </p>
+                      <ul className="settings-tips-list">
+                        <li>
+                          Mit <code>-</code> am Anfang landet ein Eintrag direkt in <strong>Machen</strong>.
+                        </li>
+                        <li>
+                          Mit <code>#kontext</code> ordnest du beim Schreiben sofort einen Kontext zu.
+                        </li>
+                        <li>
+                          Mit den Tasten <code>1</code> bis <code>4</code> wechselst du schnell zwischen den Hauptbereichen.
+                        </li>
+                        <li>
+                          In den <code>...</code>-Menues kannst du Eintraege schnell verschieben, bearbeiten oder archivieren.
+                        </li>
+                      </ul>
+                    </article>
+                  </div>
+                </div>
+              </section>
+            ) : null}
             {activeTab === 'DATA' ? (
               <DataScreen
-                onExport={() => void handleExport()}
-                showImportPanel={showImportPanel}
-                onToggleImportPanel={() => setShowImportPanel((prev) => !prev)}
-                onImportFileChange={setImportFile}
-                importMode={importMode}
-                onImportModeChange={setImportMode}
-                onImport={() => void handleImport()}
+                onBackToSettings={() => setActiveTab('SETTINGS')}
                 onToggleSyncEnabled={() => void handleToggleSyncEnabled()}
                 onCreateSyncRoom={() => void handleCreateSyncRoom()}
                 onRekeySyncCluster={() => void handleRekeySyncCluster()}
@@ -3309,11 +3943,6 @@ function AppContent() {
                 onSyncNow={() => void handleSyncNow()}
                 onCopySyncProtocol={() => void handleCopySyncProtocol()}
                 syncNowBusy={syncNowBusy}
-                lastBackupAtLabel={toBackupTimeLabel(lastBackupAt)}
-                backupOverdue={backupOverdue}
-                importReport={importReport}
-                info={info}
-                offlineReady={offlineReady}
                 syncStatus={syncStatus}
                 syncError={syncError}
                 supabaseConfigStatus={supabaseConfigStatus}
@@ -3337,17 +3966,46 @@ function AppContent() {
                 scannerVideoRef={scannerVideoRef}
               />
             ) : null}
+            {activeTab === 'BACKUP' ? (
+              <BackupScreen
+                onBackToSettings={() => setActiveTab('SETTINGS')}
+                onExport={() => void handleExport()}
+                showImportPanel={showImportPanel}
+                onToggleImportPanel={() => setShowImportPanel((prev) => !prev)}
+                onImportFileChange={setImportFile}
+                importMode={importMode}
+                onImportModeChange={setImportMode}
+                onImport={() => void handleImport()}
+                lastBackupAtLabel={toBackupTimeLabel(lastBackupAt)}
+                backupOverdue={backupOverdue}
+                importReport={importReport}
+                info={info}
+                offlineReady={offlineReady}
+              />
+            ) : null}
             {activeTab === 'CONTEXTS' ? (
-              <section className="data-section" aria-label="Bereiche verwalten">
+              <section className="data-section" aria-label="Kontexte verwalten">
                 <FlowHero
-                  title="Bereiche verwalten"
+                  title="Kontexte verwalten"
                   subtitle=""
                 />
                 <div className="data-panel">
+                  <div className="settings-subnav">
+                    <button
+                      type="button"
+                      className="settings-subnav__back-btn"
+                      onClick={() => {
+                        setIsContextEditMode(false)
+                        setActiveTab('SETTINGS')
+                      }}
+                    >
+                      Zurück zu Einstellungen
+                    </button>
+                  </div>
                   <div className="data-layout">
                     <article className="data-card">
                       <div className="context-editor-head">
-                        <h3>Bereiche</h3>
+                        <h3>Kontexte</h3>
                         <button
                           type="button"
                           className="review-btn review-btn--cta"
@@ -3357,19 +4015,36 @@ function AppContent() {
                         </button>
                       </div>
                       <p className="context-editor-meta">
-                        {contextOptions.length} {contextOptions.length === 1 ? 'Bereich' : 'Bereiche'}
+                        {contextOptions.length} {contextOptions.length === 1 ? 'Kontext' : 'Kontexte'}
                       </p>
                       <p className="data-card__intro">
                         {isContextEditMode
-                          ? 'Namen ändern, entfernen oder neue Bereiche hinzufügen.'
-                          : 'Diesen Bereichen kannst du Handlungen zuordnen.'}
+                          ? 'Namen ändern, entfernen oder neue Kontexte hinzufügen.'
+                          : 'Diesen Kontexten kannst du Handlungen zuordnen.'}
                       </p>
-                      {isContextEditMode ? (
-                        <div className="context-editor-help" role="note" aria-label="Hinweise zur Bearbeitung">
-                          <p>Beim Löschen eines Bereichs werden zugeordnete Einträge auf "Ohne Bereich" gesetzt.</p>
-                          <p>Beim Umbenennen wird der neue Name in bestehenden Einträgen übernommen.</p>
-                        </div>
-                      ) : null}
+                      <div
+                        className={isContextEditMode ? 'context-editor-help context-editor-help--warning' : 'context-editor-help'}
+                        role="note"
+                        aria-label="Hinweise zu Kontexten"
+                      >
+                        {!isContextEditMode ? (
+                          <>
+                            <p>
+                              Bei der Eingabe in <strong>Sammeln</strong> kannst du einen Kontext direkt mit `#kontext` setzen,
+                              zum Beispiel: `Anruf mit Team #arbeit`.
+                            </p>
+                            <p>
+                              Beim Speichern wird der `#kontext`-Tag als Kontext übernommen und aus dem Notiztext entfernt.
+                            </p>
+                          </>
+                        ) : null}
+                        {isContextEditMode ? (
+                          <>
+                            <p>Beim Löschen eines Kontexts werden zugeordnete Einträge auf "Ohne Kontext" gesetzt.</p>
+                            <p>Beim Umbenennen wird der neue Name in bestehenden Einträgen übernommen.</p>
+                          </>
+                        ) : null}
+                      </div>
                       <div className={isContextEditMode ? 'context-editor-list' : 'context-editor-list context-editor-list--readonly'}>
                         {contextOptions.map((option) => (
                           <div
@@ -3386,7 +4061,7 @@ function AppContent() {
                                     setContextDraftLabels((prev) => ({ ...prev, [option.value]: event.target.value }))
                                   }
                                   placeholder="Name"
-                                  aria-label={`Bereich ${option.value} umbenennen`}
+                                  aria-label={`Kontext ${option.value} umbenennen`}
                                 />
                                 <button
                                   type="button"
@@ -3412,7 +4087,7 @@ function AppContent() {
 
                       {isContextEditMode && contextOptions.length < MAX_CONTEXT_OPTIONS ? (
                         <div className="context-editor-add-panel">
-                          <h3>Neuer Bereich</h3>
+                          <h3>Neuer Kontext</h3>
                           <div className="context-editor-add">
                             <input
                               type="text"
@@ -3420,7 +4095,7 @@ function AppContent() {
                               value={newContextLabel}
                               onChange={(event) => setNewContextLabel(event.target.value)}
                               placeholder="z. B. Weiterbildung"
-                              aria-label="Neuer Bereich"
+                              aria-label="Neuer Kontext"
                             />
                             <button
                               type="button"
@@ -3429,8 +4104,8 @@ function AppContent() {
                               disabled={contextOptions.length >= MAX_CONTEXT_OPTIONS}
                               title={
                                 contextOptions.length >= MAX_CONTEXT_OPTIONS
-                                  ? `Maximal ${MAX_CONTEXT_OPTIONS} Bereiche erlaubt`
-                                  : 'Bereich hinzufügen'
+                                  ? `Maximal ${MAX_CONTEXT_OPTIONS} Kontexte erlaubt`
+                                  : 'Kontext hinzufügen'
                               }
                             >
                               Hinzufügen
@@ -3439,9 +4114,9 @@ function AppContent() {
                           {orphanedContextOptions.length > 0 ? (
                             <>
                               <p className="hint">
-                                Diese Bereiche kommen in bestehenden Einträgen vor, sind aber noch nicht in deiner Bereichsliste:
+                                Diese Kontexte kommen in bestehenden Einträgen vor, sind aber noch nicht in deiner Kontextliste:
                               </p>
-                              <ul className="context-editor-orphan-list" aria-label="Verwendete, nicht konfigurierte Bereiche">
+                              <ul className="context-editor-orphan-list" aria-label="Verwendete, nicht konfigurierte Kontexte">
                                 {orphanedContextOptions.map((option) => (
                                   <li key={option.value}>{capitalizeFirstCharacter(option.label)}</li>
                                 ))}
@@ -3471,8 +4146,8 @@ function AppContent() {
           {activeTab === 'REVIEW' ? (
             <>
               <FlowHero
-                title="Weiter denken, umsetzen oder verwerfen"
-                subtitle=""
+                title="Dein Eingang"
+                subtitle={reduceMainTabHelpers ? '' : 'Hier entscheidest du pro Eintrag: als Memo speichern, in Handlung überführen oder verwerfen.'}
               />
               {!staleReviewMode && staleTodos.length > 0 ? (
                 <section className="stale-review-banner">
@@ -3506,7 +4181,7 @@ function AppContent() {
                         className="review-btn review-btn--process"
                         onClick={() => void handleStaleDecision('PROCESS')}
                       >
-                        In Denken
+                        Zu Memos
                       </button>
                       <button
                         type="button"
@@ -3537,10 +4212,10 @@ function AppContent() {
                 orderedInbox.length === 0 ? (
                   <section className="review-empty-cta" aria-label="Review leer">
                     <p className="empty-text">Deine Inbox ist leer.</p>
-                    <p className="hint">Du kannst direkt mit bestehenden Gedanken oder Handlungen weiterarbeiten.</p>
+                    <p className="hint">Du kannst direkt mit bestehenden Memos oder Handlungen weiterarbeiten.</p>
                     <div className="review-empty-cta-actions">
                       <button type="button" className="review-btn review-btn--cta" onClick={() => setActiveTab('THINKING')}>
-                        Zu Gedanken
+                        Zu Memos
                       </button>
                       <button type="button" className="review-btn review-btn--cta" onClick={() => setActiveTab('TODO')}>
                         Zu Handlungen
@@ -3554,106 +4229,16 @@ function AppContent() {
                     ) : null}
                     <ul className="notes-list" aria-label="Review Liste">
                       {orderedInbox.map((note) => (
-                        <li key={note.id} className="note-item note-item--todo note-item--review-row">
-                          <span className="note-content">
-                            <ExpandableNoteText text={note.text} />
-                            {reviewAgeLabel(getReviewAgeCategory(note)) ? (
-                              <span className={`age-badge age-badge--${getReviewAgeCategory(note).toLowerCase()}`}>
-                                {reviewAgeLabel(getReviewAgeCategory(note))}
-                              </span>
-                            ) : null}
-                            <NoteTypeBadge note={note} />
-                          </span>
-                          <div className="todo-actions">
-                            <label className="context-select-wrap">
-                              <span className="sr-only">Bereich setzen</span>
-                              <select
-                                className="context-select"
-                                value={note.context ?? ''}
-                                onChange={(event) => {
-                                  const nextValue = event.target.value
-                                  void handleReviewContextChange(note.id, nextValue ? normalizeContextTag(nextValue) : undefined)
-                                }}
-                                aria-label="Bereich"
-                                title="Bereich"
-                              >
-                                <option value="">Kein Bereich</option>
-                                {allContextOptions.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <div className="review-action-row" role="group" aria-label="Aktionen">
-                              <button
-                                type="button"
-                                className="review-btn review-btn--todo review-btn--icon"
-                                onClick={() =>
-                                  void handleReviewDecision(note.id, 'TODO', { enableUndo: true, sourceNote: note })
-                                }
-                                aria-label="Als Handlung markieren"
-                                title="Als Handlung markieren"
-                              >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                  <path
-                                    d="M9 7h10M9 12h10M9 17h10M4 7l1.2 1.2L7 6M4 12l1.2 1.2L7 11M4 17l1.2 1.2L7 16"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.8"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </svg>
-                              </button>
-                              <button
-                                type="button"
-                                className="review-btn review-btn--process review-btn--icon"
-                                onClick={() =>
-                                  void handleReviewDecision(note.id, 'PROCESS', { enableUndo: true, sourceNote: note })
-                                }
-                                aria-label="In Denken verschieben"
-                                title="Denken"
-                              >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                  <path
-                                    d="M12 4a8 8 0 1 0 8 8 8 8 0 0 0-8-8Z"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.8"
-                                  />
-                                  <path
-                                    d="m14.8 9.2-2 5.6-5.6 2 2-5.6 5.6-2Z"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.8"
-                                    strokeLinejoin="round"
-                                  />
-                                </svg>
-                              </button>
-                              <button
-                                type="button"
-                                className="review-btn review-btn--discard review-btn--icon"
-                                onClick={() =>
-                                  void handleReviewDecision(note.id, 'DISCARD', { enableUndo: true, sourceNote: note })
-                                }
-                                aria-label="Verwerfen"
-                                title="Verwerfen"
-                              >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                  <path
-                                    d="M6 6l12 12M18 6 6 18"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.9"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </svg>
-                              </button>
-                            </div>
-                          </div>
-                        </li>
+                        <ReviewNoteRow
+                          key={note.id}
+                          note={note}
+                          contextOptions={allContextOptions}
+                          onContextChange={(id, context) => void handleReviewContextChange(id, context)}
+                          onToTodo={(id) => void handleReviewDecision(id, 'TODO', { enableUndo: true, sourceNote: note })}
+                          onToMemos={(id) => void handleReviewDecision(id, 'PROCESS', { enableUndo: true, sourceNote: note })}
+                          onDiscard={(id) => void handleReviewDecision(id, 'DISCARD', { enableUndo: true, sourceNote: note })}
+                          onSaveEdit={handleReviewSaveEdit}
+                        />
                       ))}
                     </ul>
                   </>
@@ -3668,27 +4253,38 @@ function AppContent() {
                   </button>
                 </div>
               ) : null}
+              <p className="review-footer-hint">
+                Kontexte kannst du jederzeit in den Einstellungen anpassen.
+                {' '}
+                <button
+                  type="button"
+                  className="text-link-btn"
+                  onClick={() => setActiveTab('SETTINGS')}
+                >
+                  Einstellungen öffnen
+                </button>
+              </p>
             </>
           ) : null}
 
           {activeTab === 'THINKING' ? (
             <>
             <FlowHero
-              title="Gedanken vertiefen"
-              subtitle=""
+              title="Deine Memos"
+              subtitle={reduceMainTabHelpers ? '' : 'Hier sammelst du offene Gedanken, bevor sie zu konkreten Handlungen werden.'}
             />
             <div className="todo-filter-row">
               <label className="context-select-wrap">
-                <span className="sr-only">Bereich filtern</span>
+                <span className="sr-only">Kontext filtern</span>
                 <select
                   className="context-select context-select--filter"
-                  value={thinkingContextFilter === '__none' ? '' : thinkingContextFilter}
+                  value={thinkingContextFilter}
                   onChange={(event) => setThinkingContextFilter(event.target.value as ContextFilter)}
-                  aria-label="Bereich filtern"
-                  title="Bereich filtern"
+                  aria-label="Kontext filtern"
+                  title="Kontext filtern"
                 >
-                  <option value="">Alle Bereiche</option>
-                  {thinkingHasNoContextNotes ? <option value="__none">Ohne Bereich</option> : null}
+                  <option value="">Alle Kontexte</option>
+                  <option value="__none">Ohne Kontext</option>
                   {thinkingContextOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -3710,9 +4306,9 @@ function AppContent() {
               </div>
             ) : null}
             {processCount === 0 ? (
-              <section className="review-empty-cta" aria-label="Denken leer">
-                <p className="empty-text">Keine offenen Gedanken.</p>
-                <p className="hint">Starte mit einem neuen Gedanken in Sammeln.</p>
+              <section className="review-empty-cta" aria-label="Memos leer">
+                <p className="empty-text">Keine offenen Memos.</p>
+                <p className="hint">Starte mit einem neuen Memo in Sammeln.</p>
                 <div className="review-empty-cta-actions">
                   <button
                     type="button"
@@ -3721,7 +4317,7 @@ function AppContent() {
                     ref={thinkingCtaButtonRef}
                     style={thinkingActionButtonWidth ? { width: `${thinkingActionButtonWidth}px` } : undefined}
                   >
-                    Gedanken erfassen
+                    Memos erfassen
                   </button>
                 </div>
               </section>
@@ -3729,27 +4325,28 @@ function AppContent() {
             {processCount > 0 && visibleProcessNotes.length === 0 ? (
               <p className="empty-text">
                 {thinkingContextFilter === '__none'
-                  ? 'Keine Gedanken ohne Bereich.'
-                  : 'Keine Gedanken mit diesem Bereich.'}
+                  ? 'Keine Memos ohne Kontext.'
+                  : 'Keine Memos mit diesem Kontext.'}
               </p>
             ) : null}
             {thinkingGroups.map((group) => (
               <section key={group.contextKey} className="note-group">
                 <div className="day-divider">{group.label}</div>
-                <ul className="notes-list" aria-label={`Denken ${group.label}`}>
+                <ul className="notes-list" aria-label={`Memos ${group.label}`}>
                   {group.notes.map((note) => (
                     <ThinkingNoteRow
                       key={note.id}
                       note={note}
+                      contextOptions={allContextOptions}
+                      onSaveEdit={handleThinkingSaveEdit}
                       onArchive={handleThinkingArchive}
                       onTodo={handleThinkingToTodo}
-                      onBack={handleThinkingBackToReview}
                     />
                   ))}
                 </ul>
               </section>
             ))}
-            {hasThinkingArchive ? (
+            {(showArchive || hasVisibleThinkingArchive) ? (
               <div className="archive-toggle-row">
                 <button
                   type="button"
@@ -3794,6 +4391,15 @@ function AppContent() {
                 {thinkingArchiveCount >= 50 ? (
                   <p className="hint">Nur die letzten 50 angezeigt.</p>
                 ) : null}
+                <div className="archive-danger-row">
+                  <button
+                    type="button"
+                    className="review-btn danger-btn danger-btn--critical"
+                    onClick={() => void handleClearThinkingArchive()}
+                  >
+                    Archiv leeren
+                  </button>
+                </div>
               </>
             ) : null}
             </>
@@ -3802,8 +4408,8 @@ function AppContent() {
           {activeTab === 'TODO' ? (
             <>
             <FlowHero
-              title="Deine nächsten Schrite"
-              subtitle=""
+              title="Deine nächsten Schritte"
+              subtitle={reduceMainTabHelpers ? '' : 'Hier behältst du den den Überblick über deine Handlungen.'}
             />
             <div className="todo-filter-row">
               <label className="todo-search-wrap">
@@ -3852,16 +4458,16 @@ function AppContent() {
                 ) : null}
               </label>
               <label className="context-select-wrap">
-                <span className="sr-only">Bereich filtern</span>
+                <span className="sr-only">Kontext filtern</span>
                 <select
                   className="context-select context-select--filter"
-                  value={todoContextFilter === '__none' ? '' : todoContextFilter}
+                  value={todoContextFilter}
                   onChange={(event) => setTodoContextFilter(event.target.value as ContextFilter)}
-                  aria-label="Bereich filtern"
-                  title="Bereich filtern"
+                  aria-label="Kontext filtern"
+                  title="Kontext filtern"
                 >
-                  <option value="">Alle Bereiche</option>
-                  {todoHasNoContextNotes ? <option value="__none">Ohne Bereich</option> : null}
+                  <option value="">Alle Kontexte</option>
+                  <option value="__none">Ohne Kontext</option>
                   {todoContextOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -3902,7 +4508,7 @@ function AppContent() {
             {todoNotes.length === 0 ? (
               <section className="review-empty-cta" aria-label="Machen leer">
                 <p className="empty-text">Keine offenen Handlungen.</p>
-                <p className="hint">Erfasse zuerst einen Gedanken in Sammeln und ordne ihn dann zu Handlungen.</p>
+                <p className="hint">Erfasse zuerst ein Memo in Sammeln und ordne es dann zu Handlungen.</p>
                 <div className="review-empty-cta-actions">
                   <button
                     type="button"
@@ -3911,7 +4517,7 @@ function AppContent() {
                     ref={todoCtaButtonRef}
                     style={todoActionButtonWidth ? { width: `${todoActionButtonWidth}px` } : undefined}
                   >
-                    Gedanken erfassen
+                    Memos erfassen
                   </button>
                 </div>
               </section>
@@ -3929,15 +4535,17 @@ function AppContent() {
                     <TodoNoteRow
                       key={note.id}
                       note={note}
+                      contextOptions={allContextOptions}
+                      onSaveEdit={handleTodoSaveEdit}
                       onToggleStar={handleTodoToggleStar}
                       onDone={handleTodoDone}
-                      onBack={handleTodoBack}
+                      onThinking={handleTodoToThinking}
                     />
                   ))}
                 </ul>
               </section>
             ))}
-            {hasTodoArchive ? (
+            {(showTodoArchive || hasVisibleTodoArchive) ? (
               <div className="archive-toggle-row">
                 <button
                   type="button"
@@ -3982,6 +4590,15 @@ function AppContent() {
                 {todoArchiveCount >= 50 ? (
                   <p className="hint">Nur die letzten 50 angezeigt.</p>
                 ) : null}
+                <div className="archive-danger-row">
+                  <button
+                    type="button"
+                    className="review-btn danger-btn danger-btn--critical"
+                    onClick={() => void handleClearTodoArchive()}
+                  >
+                    Archiv leeren
+                  </button>
+                </div>
               </>
             ) : null}
             </>

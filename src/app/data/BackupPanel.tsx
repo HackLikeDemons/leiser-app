@@ -39,10 +39,10 @@ export function BackupPanel({
       <h3>Backup</h3>
       <p className="hint data-card__intro">Erstelle regelmäßig ein Backup, damit du deine Daten jederzeit wiederherstellen kannst.</p>
       <div className="data-actions">
-        <button type="button" onClick={onExport}>
+        <button type="button" className="review-btn review-btn--cta" onClick={onExport}>
           Backup exportieren
         </button>
-        <button type="button" onClick={onToggleImportPanel}>
+        <button type="button" className="review-btn review-btn--cta" onClick={onToggleImportPanel}>
           {showImportPanel ? 'Import schließen' : 'Backup importieren'}
         </button>
       </div>
@@ -68,7 +68,7 @@ export function BackupPanel({
             />
             <span>Ersetzen (löscht lokale Daten)</span>
           </label>
-          <button type="button" onClick={onImport}>
+          <button type="button" className="review-btn review-btn--cta" onClick={onImport}>
             Import starten
           </button>
         </div>
@@ -79,7 +79,7 @@ export function BackupPanel({
         {backupOverdue ? (
           <div className="backup-reminder">
             <p className="hint">Backup überfällig. Sichere jetzt deine Daten.</p>
-            <button type="button" onClick={onExport}>
+            <button type="button" className="review-btn review-btn--cta" onClick={onExport}>
               Jetzt sichern
             </button>
           </div>

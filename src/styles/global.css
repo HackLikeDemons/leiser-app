@@ -507,9 +507,9 @@ h3 {
 .context-editor-help {
   margin: 0 0 0.9rem;
   padding: 0.56rem 0.62rem;
-  border: 1px solid color-mix(in srgb, var(--warning) 36%, var(--border-default));
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border-default));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-card-soft));
   display: grid;
   gap: 0.22rem;
 }
@@ -518,7 +518,16 @@ h3 {
   margin: 0;
   font-size: 0.8rem;
   line-height: 1.35;
-  color: color-mix(in srgb, var(--text-primary) 88%, var(--warning));
+  color: color-mix(in srgb, var(--text-primary) 92%, var(--text-secondary));
+}
+
+.context-editor-help--warning {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border-default));
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface-card-soft));
+}
+
+.context-editor-help--warning p {
+  color: color-mix(in srgb, var(--text-primary) 86%, var(--warning));
 }
 
 .context-editor-row {
@@ -885,6 +894,125 @@ h3 {
   align-items: center;
 }
 
+.settings-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  color: var(--text-primary);
+}
+
+.settings-option input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border-default));
+  background: color-mix(in srgb, var(--surface-button) 86%, var(--surface-card-soft));
+  position: relative;
+  margin: 0;
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.settings-option input[type='checkbox']::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #ffffff 92%, var(--surface-card-soft));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  transition: transform 180ms ease;
+}
+
+.settings-option input[type='checkbox']:checked {
+  background: linear-gradient(180deg, #5d82e5 0%, #5577d8 55%, #4f70cc 100%);
+  border-color: #4a69c2;
+}
+
+.settings-option input[type='checkbox']:checked::after {
+  transform: translateX(18px);
+}
+
+.settings-option input[type='checkbox']:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.settings-actions {
+  margin-top: 0.8rem;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+}
+
+.settings-subnav {
+  margin: 0 0 0.55rem;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.settings-subnav__back-btn {
+  min-height: 0;
+  padding: 0.18rem 0.28rem;
+  font-size: 0.86rem;
+  font-weight: 520;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  opacity: 0.92;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+}
+
+.settings-subnav__back-btn::before {
+  content: '←';
+  font-size: 0.92em;
+}
+
+.settings-subnav__back-btn:hover,
+.settings-subnav__back-btn:focus-visible {
+  background: color-mix(in srgb, var(--surface-button) 55%, transparent);
+  border-color: color-mix(in srgb, var(--border-default) 70%, transparent);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+.settings-action-item {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.settings-actions > .settings-action-item > .review-btn {
+  width: 100%;
+  min-height: 48px;
+  justify-content: flex-start;
+  padding-inline: 0.9rem;
+  text-align: left;
+}
+
+.settings-tips-list {
+  margin: 0.15rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-secondary);
+  display: grid;
+  gap: 0.35rem;
+}
+
+.settings-tips-list li {
+  line-height: 1.4;
+}
+
+@media (min-width: 980px) {
+  .settings-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .hint {
   margin: 0.55rem 0 0;
   color: var(--text-secondary);
@@ -984,6 +1112,16 @@ button[disabled]:hover {
   content: '·';
   margin: 0 0.34rem 0 0.1rem;
   opacity: 0.7;
+}
+
+.capture-hint--stack {
+  display: grid;
+  gap: 0.1rem;
+  justify-items: start;
+}
+
+.capture-hint--stack::before {
+  content: none;
 }
 
 .capture-context-suggest {
@@ -1219,10 +1357,20 @@ button[disabled]:hover {
 }
 
 .braindump-capture-feedback {
-  margin: 0.5rem 0 0;
+  margin: 0;
   font-size: 0.85rem;
   color: var(--text-secondary);
   animation: braindump-feedback-fade 2s ease-out forwards;
+}
+
+.braindump-capture-feedback-slot {
+  margin-top: 0.5rem;
+  min-height: 1.25rem;
+}
+
+.braindump-capture-feedback--placeholder {
+  animation: none;
+  opacity: 0;
 }
 
 @keyframes braindump-feedback-fade {
@@ -1332,6 +1480,18 @@ button[disabled]:hover {
   font-size: 0.86rem;
   color: var(--text-secondary);
   font-weight: 600;
+}
+
+.archive-danger-row {
+  margin-top: 0.72rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.archive-danger-row .danger-btn {
+  width: fit-content;
+  max-width: 100%;
+  min-width: 170px;
 }
 
 .todo-group {
@@ -1515,6 +1675,55 @@ button[disabled]:hover {
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.note-edit-panel {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.note-edit-textarea {
+  width: 100%;
+  resize: none;
+  min-height: 88px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-default) 92%, transparent);
+  background: color-mix(in srgb, var(--surface-card) 90%, #0f1521);
+  color: var(--text-primary);
+  line-height: 1.45;
+  padding: 0.55rem 0.65rem;
+}
+
+.note-item.note-item--editing {
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+.note-item.note-item--editing .note-edit-panel {
+  grid-column: 1;
+}
+
+.note-item.note-item--editing .todo-actions {
+  grid-column: 1;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+}
+
+.note-item.note-item--editing .todo-actions .review-btn {
+  min-height: 40px;
+  padding-inline: 0.9rem;
+}
+
+.note-item.note-item--editing .context-select-wrap {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  justify-self: end;
+}
+
+.note-item.note-item--editing .context-select {
+  min-height: 40px;
 }
 
 .sr-only {
@@ -1830,6 +2039,30 @@ button[disabled]:hover {
   justify-content: flex-end;
 }
 
+.review-footer-hint {
+  margin: 0.7rem 0 0;
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+}
+
+.text-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-height: 0;
+  color: color-mix(in srgb, var(--accent) 84%, #c9d8ff);
+  font-size: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.text-link-btn:hover {
+  background: none;
+  color: color-mix(in srgb, var(--accent) 94%, #d6e1ff);
+}
+
 .age-badge {
   display: inline-flex;
   align-items: center;
@@ -1919,6 +2152,72 @@ button[disabled]:hover {
 .review-btn--icon svg {
   width: 16px;
   height: 16px;
+}
+
+.review-btn--more {
+  position: relative;
+}
+
+.note-action-menu {
+  position: relative;
+}
+
+.note-action-menu > summary {
+  list-style: none;
+}
+
+.note-action-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.note-action-menu__list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 25;
+  min-width: 210px;
+  display: grid;
+  gap: 0.22rem;
+  padding: 0.35rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-default);
+  background: color-mix(in srgb, var(--surface-card) 94%, #0f1521);
+  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.26);
+}
+
+.note-action-menu__item {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 36px;
+  padding: 0.38rem 0.58rem;
+  border-radius: 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+}
+
+.note-action-menu__item:hover,
+.note-action-menu__item:focus-visible {
+  background: var(--surface-button);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+.note-action-menu__item--todo,
+.note-action-menu__item--done {
+  color: color-mix(in srgb, #e6efff 84%, var(--text-primary));
+}
+
+.note-action-menu__item--process {
+  color: color-mix(in srgb, #cfd9ef 86%, var(--text-primary));
+}
+
+.note-action-menu__item--edit {
+  color: color-mix(in srgb, #d7e3ff 82%, var(--text-primary));
+}
+
+.note-action-menu__item--discard {
+  color: color-mix(in srgb, #f2c2c8 82%, var(--text-primary));
 }
 
 /* De-emphasize list action icons by default; promote on card hover/focus */
@@ -2063,6 +2362,15 @@ button:focus {
     top: 0;
     z-index: 40;
     padding: calc(0.62rem + var(--safe-top)) 0.5rem 0.5rem;
+  }
+
+  .archive-danger-row {
+    justify-content: stretch;
+  }
+
+  .archive-danger-row .danger-btn {
+    width: 100%;
+    min-width: 0;
   }
 
   .app-header-inner {
@@ -2474,5 +2782,10 @@ button:focus {
   .note-item .note-delete--icon,
   .note-item .review-btn--icon {
     opacity: 0.85;
+  }
+
+  .note-action-menu__item {
+    min-height: 42px;
+    font-size: 0.92rem;
   }
 }

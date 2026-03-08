@@ -15,7 +15,8 @@
 - [Deploy auf Netlify](deploy-netlify.md)
 - [Test-Checklisten](testing.md)
 - [Sync Contract](../SYNC_CONTRACT.md)
+- [UX Backlog aus Nutzerfeedback (März 2026)](ux-feedback-backlog-2026-03.md)
 
 ## Änderungshinweis
 
-Diese Dokumentation beschreibt den aktuellen Stand der Notes-App mit den Tabs `Sammeln`, `Ordnen`, `Denken`, `Machen` sowie dem Datenbereich über das Header-Menü.
+Diese Dokumentation beschreibt den aktuellen Stand der Notes-App mit den Tabs `Sammeln`, `Ordnen`, `Memos`, `Machen` sowie dem Datenbereich über das Header-Menü.
