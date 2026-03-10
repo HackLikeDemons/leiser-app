@@ -5,6 +5,7 @@ import type { DevSyncInfo } from './SyncPanel'
 type SupabaseConfigStatus = {
   configured: boolean
   source: 'runtime' | 'vite' | 'none'
+  sourceLabel: string
 }
 
 type DebugPanelProps = {
@@ -54,12 +55,7 @@ export function DebugPanel({
             {syncStatus === 'offline' ? <p className="hint">Sync pausiert (offline).</p> : null}
             {syncStatus === 'error' && syncError ? <p className="error-text">{syncError}</p> : null}
             <p className="hint">
-              Supabase-Konfiguration:{' '}
-              {supabaseConfigStatus.configured
-                ? supabaseConfigStatus.source === 'runtime'
-                  ? 'geladen (runtime.json)'
-                  : 'geladen (VITE)'
-                : 'fehlt'}
+              Supabase-Konfiguration: {supabaseConfigStatus.sourceLabel}
             </p>
             {roomAlias ? <p className="hint">Syncraum: {roomAlias}</p> : null}
             <p className="hint">Letzter Sync: {formatSyncTimeLabel(devSyncInfo?.lastPushedAt ?? null)}</p>

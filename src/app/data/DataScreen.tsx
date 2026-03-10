@@ -8,6 +8,7 @@ import { SyncPanel, type DevSyncInfo } from './SyncPanel'
 type SupabaseConfigStatus = {
   configured: boolean
   source: 'runtime' | 'vite' | 'none'
+  sourceLabel: string
 }
 
 type DataScreenProps = {
