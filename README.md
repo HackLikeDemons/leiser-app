@@ -46,6 +46,7 @@ npm run preview
 - [Sync E2E Matrix](docs/sync-e2e-matrix.md)
 - [Sync Contract](SYNC_CONTRACT.md)
 - [Entwicklung](docs/development.md)
+- [Deploy auf Cloudflare Pages](docs/deploy-cloudflare.md)
 - [Deploy auf Netlify](docs/deploy-netlify.md)
 - [Test-Checklisten](docs/testing.md)
 - [UX Backlog aus Nutzerfeedback (März 2026)](docs/ux-feedback-backlog-2026-03.md)
