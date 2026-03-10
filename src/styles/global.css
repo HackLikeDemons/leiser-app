@@ -1659,10 +1659,6 @@ button[disabled]:hover {
   color: color-mix(in srgb, var(--text-primary) 76%, var(--text-secondary));
 }
 
-.note-item--todo-stale .note-type-badge {
-  opacity: 0.46;
-}
-
 .note-item--todo-stale .review-btn--icon,
 .note-item--todo-stale .note-delete--icon {
   opacity: 0.52;
@@ -1903,19 +1899,6 @@ button[disabled]:hover {
   flex-wrap: wrap;
   gap: 0.45rem;
   min-width: 0;
-}
-
-.note-type-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.08rem 0.35rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--border-default) 80%, transparent);
-  background: color-mix(in srgb, var(--surface-card-soft) 80%, transparent);
-  color: var(--text-muted);
-  font-size: var(--note-badge-size);
-  opacity: var(--note-badge-opacity);
-  white-space: nowrap;
 }
 
 .status-badge {

@@ -35,7 +35,7 @@ import {
 import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO } from './lib/date'
 import { normalizeContextTag } from './lib/types'
-import type { ContextTag, Note, NoteStatus, NoteType } from './lib/types'
+import type { ContextTag, Note, NoteStatus } from './lib/types'
 import { AppShell } from './app/AppShell'
 import { FlowHero } from './app/FlowHero'
 import { FooterProvider } from './app/FooterContext'
@@ -244,13 +244,6 @@ function daysBetween(dateA: Date, dateB: Date) {
   b.setHours(12, 0, 0, 0)
   const diffMs = Math.abs(a.getTime() - b.getTime())
   return Math.floor(diffMs / (1000 * 60 * 60 * 24))
-}
-
-function noteTypeLabel(type: NoteType) {
-  if (type === 'TASK') {
-    return 'Aufgabe'
-  }
-  return null
 }
 
 const DEFAULT_CONTEXT_OPTIONS: ContextOption[] = [
@@ -490,14 +483,6 @@ function groupNotesByContext(
 
   groups.sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
   return groups
-}
-
-function NoteTypeBadge({ note }: { note: Note }) {
-  const label = noteTypeLabel(note.type)
-  if (!label) {
-    return null
-  }
-  return <span className="note-type-badge">{label}</span>
 }
 
 function ExpandableNoteText({ text }: { text: string }) {
@@ -756,7 +741,6 @@ function ReviewNoteRow({
               {ageText}
             </span>
           ) : null}
-          <NoteTypeBadge note={note} />
         </span>
       )}
       <div className="todo-actions">
@@ -924,7 +908,6 @@ function TodoNoteRow({
       ) : (
         <span className="note-content">
           <ExpandableNoteText text={note.text} />
-          <NoteTypeBadge note={note} />
         </span>
       )}
       <div className="todo-actions">
@@ -1093,7 +1076,6 @@ function ThinkingNoteRow({
       ) : (
         <span className="note-content">
           <ExpandableNoteText text={note.text} />
-          <NoteTypeBadge note={note} />
         </span>
       )}
       <div className="todo-actions">
@@ -1145,7 +1127,6 @@ function ArchivedThinkingNoteRow({
     <li className="note-item note-item--todo">
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
-        <NoteTypeBadge note={note} />
       </span>
       <div className="todo-actions">
         <button
@@ -1202,7 +1183,6 @@ function ArchivedTodoNoteRow({
     <li className="note-item note-item--todo">
       <span className="note-content">
         <ExpandableNoteText text={note.text} />
-        <NoteTypeBadge note={note} />
       </span>
       <div className="todo-actions">
         <button
@@ -4177,7 +4157,6 @@ function AppContent() {
                     </div>
                     <div className="review-focus-text">
                       <span className="note-text">{currentStaleNote.text}</span>
-                      <NoteTypeBadge note={currentStaleNote} />
                     </div>
                     <div className="review-actions-inline">
                       <button
