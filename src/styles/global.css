@@ -2417,6 +2417,13 @@ button:focus {
     right: 0;
   }
 
+  .note-action-menu__list {
+    top: auto;
+    bottom: calc(100% + 0.35rem);
+    max-height: min(56vh, 320px);
+    overflow-y: auto;
+  }
+
   .app-main {
     padding-top: calc(var(--header-height, 112px) + 0.35rem);
   }
