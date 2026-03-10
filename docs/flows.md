@@ -11,6 +11,7 @@
 - Mikrofon-Button für Diktat ist verfügbar
 - `#kontext` setzt den Kontext als Metadatum; der Tag wird beim Speichern aus dem Notiztext übernommen
 - `-` am Anfang erstellt direkt eine Handlung (`TODO`) statt eines Inbox-Eintrags
+- `:` am Anfang erstellt direkt ein Memo (`PROCESS`) statt eines Inbox-Eintrags
 
 Darstellung:
 

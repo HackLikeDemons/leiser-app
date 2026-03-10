@@ -77,6 +77,7 @@ Wichtige Indexe (notes/notes_view):
 ## Prefix-Shortcuts beim Erfassen
 
 - `- Aufgabe ...` -> `type=TASK`, `status=TODO`
+- `: Memo ...` -> `type=NOTE`, `status=PROCESS`
 - ohne Präfix -> `type=NOTE`, `status=INBOX`
 
 Der Präfix wird nicht im gespeicherten Text abgelegt.

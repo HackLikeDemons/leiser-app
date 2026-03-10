@@ -1563,6 +1563,7 @@ function BraindumpComposer({
             <small className="capture-hint capture-hint--stack">
               <span>Enter: speichern</span>
               <span>mit - als Präfix direkt in 'Machen' anlegen</span>
+              <span>mit : als Präfix direkt in 'Memos' anlegen</span>
               <span>
                 {selectedContextHint
                   ? `#${selectedContextHint}: als Kontext (Tag wird aus dem Text übernommen)`
@@ -3904,6 +3905,9 @@ function AppContent() {
                       <ul className="settings-tips-list">
                         <li>
                           Mit <code>-</code> am Anfang landet ein Eintrag direkt in <strong>Machen</strong>.
+                        </li>
+                        <li>
+                          Mit <code>:</code> am Anfang landet ein Eintrag direkt in <strong>Memos</strong>.
                         </li>
                         <li>
                           Mit <code>#kontext</code> ordnest du beim Schreiben sofort einen Kontext zu.

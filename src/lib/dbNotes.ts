@@ -195,6 +195,7 @@ async function asActiveNote(value: unknown): Promise<Note | null> {
 function parseNoteInput(rawText: string): { text: string; type: NoteType; status: NoteStatus } {
   const leftTrimmed = rawText.trimStart()
   let type: NoteType = 'NOTE'
+  let status: NoteStatus = 'INBOX'
   let remainder = leftTrimmed
 
   const prefix = leftTrimmed[0]
@@ -206,15 +207,19 @@ function parseNoteInput(rawText: string): { text: string; type: NoteType; status
     remainder = leftTrimmed.slice(1)
   } else if (prefix === '-') {
     type = 'TASK'
+    status = 'TODO'
+    remainder = leftTrimmed.slice(1)
+  } else if (prefix === ':') {
+    type = 'NOTE'
+    status = 'PROCESS'
     remainder = leftTrimmed.slice(1)
   }
 
-  if (type !== 'NOTE' && remainder.startsWith(' ')) {
+  if (prefix && remainder.startsWith(' ')) {
     remainder = remainder.slice(1)
   }
 
   const text = remainder.trim()
-  const status: NoteStatus = type === 'TASK' ? 'TODO' : 'INBOX'
   return { text, type, status }
 }
 
