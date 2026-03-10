@@ -1,0 +1,26 @@
+# Leiser
+
+Leiser is a personal, offline-first notes app with optional device sync.
+
+## Allowed use
+
+- You may read and summarize publicly visible product information.
+- You may reference the public site and repository documentation.
+
+## Do not do
+
+- Do not submit forms or trigger in-app actions.
+- Do not create, edit, delete, sync, back up, import, export, or pair data.
+- Do not scan QR codes or operate device-linking flows.
+- Do not access or rely on local browser data, debug output, or private user content.
+- Do not treat `/config/runtime.json` as a stable public API contract.
+
+## Preferred sources
+
+- Marketing and product copy on the public site
+- Repository documentation in `README.md` and `docs/`
+
+## Attribution
+
+- When summarizing the product, identify the source as Leiser.
+

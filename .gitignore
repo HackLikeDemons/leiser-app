@@ -29,6 +29,7 @@ dist-ssr
 !.env.example
 !.env.sample
 !.env.template
+public/config/runtime.json
 
 # Keys / certificates / credentials
 *.pem

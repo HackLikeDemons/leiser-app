@@ -18,6 +18,12 @@ npm install
 npm run dev
 ```
 
+Optional fuer Supabase Sync:
+
+```bash
+cp public/config/runtime.example.json public/config/runtime.json
+```
+
 Weitere Skripte:
 
 ```bash
@@ -56,3 +62,4 @@ npm run preview
 - Single-View React App ohne Router
 - kein Demo-Seed-Code im Produktpfad
 - Suche und Filter laufen ohne externe Fuzzy-Search-Abhängigkeit
+- Supabase-Konfiguration entweder per `VITE_...` Build-Env oder optional per lokaler `public/config/runtime.json`

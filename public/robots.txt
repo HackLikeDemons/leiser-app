@@ -1,0 +1,8 @@
+# Leiser crawler policy
+# Public pages may be indexed.
+# Runtime config and app internals should not be crawled.
+
+User-agent: *
+Allow: /
+Disallow: /config/
+

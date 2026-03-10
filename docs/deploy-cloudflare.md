@@ -18,7 +18,14 @@ Für Cloudflare Pages ist keine Netlify-`_redirects`-Regel nötig.
 
 ## Runtime-Config
 
-Datei `public/config/runtime.json` wird mit `Cache-Control: no-store` ausgeliefert.
+Bevorzugt Supabase-Werte in Cloudflare Pages als Build-Variablen setzen:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+Optional kann lokal weiterhin eine `public/config/runtime.json` aus dem Template erzeugt werden. Diese Datei ist im Repo ignoriert.
+
+Datei `public/config/runtime.json` wird, falls vorhanden, mit `Cache-Control: no-store` ausgeliefert.
 
 Datei `public/_headers`:
 
@@ -40,3 +47,4 @@ Datei `public/_headers`:
 - Die App ist ein statisches Vite-Build; Wrangler ist dafür nicht erforderlich
 - Falls `leiser.app` als Apex-Domain genutzt wird, ist die Domain-Verwaltung über Cloudflare am einfachsten
 - Für Subdomains reicht in der Regel ein `CNAME` auf `<projekt>.pages.dev`
+- Fuer Cloudflare Pages ist der einfachste Weg, die Supabase-Werte als Environment Variables im Projekt zu hinterlegen

@@ -1,0 +1,7 @@
+Leiser AI agent policy
+
+- Public pages may be read and summarized.
+- Do not perform interactive actions inside the app.
+- Do not attempt sync, pairing, backup, import, export, or debug flows.
+- Do not access local browser data or private user content.
+- See `/llms.txt` for the full guidance.

@@ -46,7 +46,7 @@
 ## Automatisierte Sync-E2E (Playwright)
 
 - Voraussetzungen:
-  - erreichbarer Sync-Backend-Endpunkt (wie in `public/config/runtime.json` / Runtime-Konfiguration genutzt)
+  - erreichbarer Sync-Backend-Endpunkt (wie in der Runtime-Konfiguration genutzt: `VITE_...` oder lokale `public/config/runtime.json`)
   - `E2E_RUN_SYNC=1` gesetzt
 - Ausführen:
   - `E2E_RUN_SYNC=1 npm run test:e2e`

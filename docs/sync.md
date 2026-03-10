@@ -8,12 +8,20 @@ Geräte können optional über Supabase synchronisieren, ohne klassisches Nutzer
 
 ## Konfiguration
 
-Über `.env`:
+Bevorzugt über Build-Umgebungsvariablen:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 
-oder zur Laufzeit per `localStorage`.
+Optional zur Laufzeit über `public/config/runtime.json`.
+
+Beispiel:
+
+```bash
+cp public/config/runtime.example.json public/config/runtime.json
+```
+
+`runtime.json` ist absichtlich in `.gitignore`, damit keine produktiven Werte committed werden.
 
 ## Auth-Modell
 
