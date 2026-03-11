@@ -1288,16 +1288,17 @@ function BraindumpComposer({
   const activeHashtagToken = useMemo(() => {
     const safeCaret = Math.max(0, Math.min(caretPosition, text.length))
     const beforeCaret = text.slice(0, safeCaret)
-    const match = beforeCaret.match(/(^|\s)#([^\s#]*)$/)
+    const match = beforeCaret.match(/(^|\s)([#.])([^\s#.]*)$/)
     if (!match) {
       return null
     }
     const token = match[0]
     const leadingSpace = match[1] ?? ''
-    const query = match[2] ?? ''
+    const marker = match[2] ?? '#'
+    const query = match[3] ?? ''
     const start = safeCaret - token.length + leadingSpace.length
     const end = safeCaret
-    return { query, start, end }
+    return { query, start, end, marker }
   }, [caretPosition, text])
 
   const validContextHashtags = useMemo(() => findValidContextHashtags(text, contextOptions), [text, contextOptions])
@@ -1332,15 +1333,16 @@ function BraindumpComposer({
     const currentText = input?.value ?? text
     const caret = input?.selectionStart ?? caretPosition
     const beforeCaret = currentText.slice(0, caret)
-    const match = beforeCaret.match(/(^|\s)#([^\s#]*)$/)
+    const match = beforeCaret.match(/(^|\s)([#.])([^\s#.]*)$/)
     if (!match) {
       return
     }
     const fullMatch = match[0]
     const leadingSpace = match[1] ?? ''
+    const marker = match[2] ?? '#'
     const replaceStart = caret - fullMatch.length + leadingSpace.length
     const replaceEnd = caret
-    const nextText = `${currentText.slice(0, replaceStart)}#${nextContext} ${currentText.slice(replaceEnd)}`
+    const nextText = `${currentText.slice(0, replaceStart)}${marker}${nextContext} ${currentText.slice(replaceEnd)}`
     const nextCaret = replaceStart + nextContext.length + 2
     latestTextRef.current = nextText
     setText(nextText)
@@ -1550,7 +1552,7 @@ function BraindumpComposer({
                 onClick={() => applyContextSuggestion(option.value)}
                 aria-label={`Kontext ${option.label} einsetzen`}
               >
-                #{option.label}
+                {`${activeHashtagToken.marker}${option.label}`}
               </button>
             ))}
           </div>
