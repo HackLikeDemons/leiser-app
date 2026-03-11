@@ -359,17 +359,17 @@ function contextFilterPhrase(filter: ContextFilter, options: ContextOption[]) {
 
 function findValidContextHashtags(entry: string, options: ContextOption[]): ContextHashtagMatch[] {
   const optionByLowerValue = new Map(options.map((option) => [option.value.toLocaleLowerCase('de-DE'), option.value]))
-  const hashtagPattern = /(^|\s)#([^\s#]+)/g
+  const hashtagPattern = /(^|\s)([#.])([^\s#.]+)/g
   const matches: ContextHashtagMatch[] = []
   let current: RegExpExecArray | null = hashtagPattern.exec(entry)
   while (current) {
-    const [, prefix, rawTag] = current
+    const [, prefix, marker, rawTag] = current
     const normalizedTag = normalizeContextTag(rawTag)
     if (normalizedTag) {
       const context = optionByLowerValue.get(normalizedTag.toLocaleLowerCase('de-DE'))
       if (context) {
         const hashtagStart = current.index + prefix.length
-        const hashtagEnd = hashtagStart + 1 + rawTag.length
+        const hashtagEnd = hashtagStart + marker.length + rawTag.length
         matches.push({ start: hashtagStart, end: hashtagEnd, context })
       }
     }
