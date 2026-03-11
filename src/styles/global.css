@@ -1115,9 +1115,11 @@ button[disabled]:hover {
 }
 
 .capture-hint--stack {
+  grid-area: hint;
   display: grid;
   gap: 0.1rem;
   justify-items: start;
+  min-width: 0;
 }
 
 .capture-hint--stack::before {
@@ -1181,6 +1183,7 @@ button[disabled]:hover {
 .capture-meta-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'hint counter';
   align-items: start;
   gap: 0.5rem;
   width: 100%;
@@ -1197,6 +1200,9 @@ button[disabled]:hover {
 }
 
 .counter {
+  grid-area: counter;
+  justify-self: end;
+  align-self: start;
   color: var(--text-muted);
   white-space: nowrap;
   margin-left: 0;
@@ -2437,12 +2443,14 @@ button:focus {
 
   .capture-meta-row {
     grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
+    grid-template-areas: 'hint counter';
+    align-items: start;
     gap: 0.5rem;
   }
 
   .counter {
     justify-self: end;
+    align-self: start;
   }
 
   .capture-hint {
