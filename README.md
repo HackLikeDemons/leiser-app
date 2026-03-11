@@ -32,6 +32,13 @@ npm run build
 npm run preview
 ```
 
+Optionaler Container-Build aus dem lokalen Repo-Stand:
+
+```bash
+docker build -t leiser-app .
+docker run --rm -p 8080:80 leiser-app
+```
+
 ## Aktueller Produktfluss
 
 - `Erfassen`: Memos schnell notieren
@@ -63,3 +70,5 @@ npm run preview
 - kein Demo-Seed-Code im Produktpfad
 - Suche und Filter laufen ohne externe Fuzzy-Search-Abhängigkeit
 - Supabase-Konfiguration entweder per `VITE_...` Build-Env oder optional per lokaler `public/config/runtime.json`
+- schwere Nebenpfade wie Backup-Import/-Export, QR-Erzeugung, Scanner und Sync-Engine werden erst bei Bedarf geladen
+- der Service Worker precached nur den App-Shell-Kern; große Sync-/CRDT-Chunks werden bewusst nicht eager offline vorgeladen

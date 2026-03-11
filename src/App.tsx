@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react'
-import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
-import QRCode from 'qrcode'
+import type { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import {
   DEFAULT_SYNC_ROOM_ID,
@@ -32,8 +31,13 @@ import {
   updateNoteStarred,
   updateNoteStatus,
 } from './lib/dbNotes'
-import { buildBackupData, importBackupJson, type ImportMode, type ImportReport } from './lib/backup'
 import { getLocalDayISO } from './lib/date'
+import {
+  readStorageItem,
+  readTrimmedStorageItem,
+  removeStorageItem,
+  writeStorageItem,
+} from './lib/storage'
 import { normalizeContextTag } from './lib/types'
 import type { ContextTag, Note, NoteStatus } from './lib/types'
 import { AppShell } from './app/AppShell'
@@ -45,8 +49,9 @@ import { AboutScreen } from './components/AboutScreen'
 import { InboxEmptyState } from './components/InboxEmptyState'
 import { LandingScreen } from './components/LandingScreen'
 import type { DevSyncInfo } from './app/data/SyncPanel'
+import type { ImportMode, ImportReport } from './lib/backup'
 import { getSupabaseRuntimeConfig } from './lib/runtimeConfig'
-import { startSyncEngine, syncNow, type SyncDiagnostics, type SyncUiStatus } from './lib/syncEngine'
+import type { SyncDiagnostics, SyncUiStatus } from './lib/syncEngine'
 
 type TabKey = 'BRAINDUMP' | 'REVIEW' | 'THINKING' | 'TODO' | 'SETTINGS' | 'DATA' | 'BACKUP' | 'ABOUT' | 'CONTEXTS'
 const SOFT_CHAR_LIMIT = 200
@@ -78,6 +83,39 @@ const ONBOARDING_COMPLETED_STORAGE_KEY = 'leiser:onboarding:completed:v1'
 const CONTEXT_OPTIONS_STORAGE_KEY = 'leiser:context-options-v1'
 const REDUCE_MAIN_TAB_HELPERS_STORAGE_KEY = 'leiser:reduce-main-tab-helpers:v1'
 const MAX_CONTEXT_OPTIONS = 8
+
+let backupModulePromise: Promise<typeof import('./lib/backup')> | null = null
+let qrCodeModulePromise: Promise<typeof import('qrcode')> | null = null
+let syncEngineModulePromise: Promise<typeof import('./lib/syncEngine')> | null = null
+let zxingBrowserModulePromise: Promise<typeof import('@zxing/browser')> | null = null
+
+function loadBackupModule() {
+  if (!backupModulePromise) {
+    backupModulePromise = import('./lib/backup')
+  }
+  return backupModulePromise
+}
+
+function loadQrCodeModule() {
+  if (!qrCodeModulePromise) {
+    qrCodeModulePromise = import('qrcode')
+  }
+  return qrCodeModulePromise
+}
+
+function loadSyncEngineModule() {
+  if (!syncEngineModulePromise) {
+    syncEngineModulePromise = import('./lib/syncEngine')
+  }
+  return syncEngineModulePromise
+}
+
+function loadZxingBrowserModule() {
+  if (!zxingBrowserModulePromise) {
+    zxingBrowserModulePromise = import('@zxing/browser')
+  }
+  return zxingBrowserModulePromise
+}
 
 type PairingPayloadV1 = {
   v: 1
@@ -297,14 +335,11 @@ function sanitizeContextOptions(raw: unknown): ContextOption[] {
 }
 
 function readStoredContextOptions() {
-  if (typeof window === 'undefined') {
+  const raw = readStorageItem(CONTEXT_OPTIONS_STORAGE_KEY)
+  if (!raw) {
     return [...DEFAULT_CONTEXT_OPTIONS]
   }
   try {
-    const raw = window.localStorage.getItem(CONTEXT_OPTIONS_STORAGE_KEY)
-    if (!raw) {
-      return [...DEFAULT_CONTEXT_OPTIONS]
-    }
     return sanitizeContextOptions(JSON.parse(raw))
   } catch {
     return [...DEFAULT_CONTEXT_OPTIONS]
@@ -312,14 +347,7 @@ function readStoredContextOptions() {
 }
 
 function persistContextOptions(options: ContextOption[]) {
-  if (typeof window === 'undefined') {
-    return
-  }
-  try {
-    window.localStorage.setItem(CONTEXT_OPTIONS_STORAGE_KEY, JSON.stringify(options))
-  } catch {
-    // Storage can fail in privacy-restricted environments.
-  }
+  writeStorageItem(CONTEXT_OPTIONS_STORAGE_KEY, JSON.stringify(options))
 }
 
 function contextLabel(context: ContextTag, options: ContextOption[]) {
@@ -400,36 +428,15 @@ function parseBraindumpEntryForContext(entry: string, options: ContextOption[]):
 }
 
 function readHasVisitedFlag() {
-  if (typeof window === 'undefined') {
-    return false
-  }
-  try {
-    return window.localStorage.getItem(ONBOARDING_COMPLETED_STORAGE_KEY) === '1'
-  } catch {
-    return false
-  }
+  return readStorageItem(ONBOARDING_COMPLETED_STORAGE_KEY) === '1'
 }
 
 function persistHasVisitedFlag() {
-  if (typeof window === 'undefined') {
-    return
-  }
-  try {
-    window.localStorage.setItem(ONBOARDING_COMPLETED_STORAGE_KEY, '1')
-  } catch {
-    // Storage can fail in privacy-restricted environments.
-  }
+  writeStorageItem(ONBOARDING_COMPLETED_STORAGE_KEY, '1')
 }
 
 function readReduceMainTabHelpersFlag() {
-  if (typeof window === 'undefined') {
-    return false
-  }
-  try {
-    return window.localStorage.getItem(REDUCE_MAIN_TAB_HELPERS_STORAGE_KEY) === '1'
-  } catch {
-    return false
-  }
+  return readStorageItem(REDUCE_MAIN_TAB_HELPERS_STORAGE_KEY) === '1'
 }
 
 function matchesContextFilter(note: Note, filter: ContextFilter) {
@@ -1655,7 +1662,7 @@ function AppContent() {
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
   const [showDebugInfo, setShowDebugInfo] = useState(false)
-  const [lastBackupAt, setLastBackupAt] = useState<string | null>(() => localStorage.getItem(LAST_BACKUP_AT_STORAGE_KEY))
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(() => readStorageItem(LAST_BACKUP_AT_STORAGE_KEY))
   const [devSyncInfo, setDevSyncInfo] = useState<DevSyncInfo | null>(null)
   const [syncEnabled, setSyncEnabledState] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncUiStatus>('disabled')
@@ -1663,9 +1670,7 @@ function AppContent() {
   const [syncDiagnostics, setSyncDiagnostics] = useState<SyncDiagnostics | null>(null)
   const [syncPairCode, setSyncPairCode] = useState<string | null>(null)
   const [syncPairCodeDraft, setSyncPairCodeDraft] = useState('')
-  const [syncRoomId, setSyncRoomId] = useState(
-    () => localStorage.getItem('leiser-sync-id') || DEFAULT_SYNC_ROOM_ID,
-  )
+  const [syncRoomId, setSyncRoomId] = useState(() => readStorageItem(SYNC_ID_STORAGE_KEY) || DEFAULT_SYNC_ROOM_ID)
   const [syncNowBusy, setSyncNowBusy] = useState(false)
   const [showPairQr, setShowPairQr] = useState(false)
   const [pairQrValue, setPairQrValue] = useState<string | null>(null)
@@ -1721,14 +1726,7 @@ function AppContent() {
   }, [contextOptions])
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-    try {
-      window.localStorage.setItem(REDUCE_MAIN_TAB_HELPERS_STORAGE_KEY, reduceMainTabHelpers ? '1' : '0')
-    } catch {
-      // Storage can fail in privacy-restricted environments.
-    }
+    writeStorageItem(REDUCE_MAIN_TAB_HELPERS_STORAGE_KEY, reduceMainTabHelpers ? '1' : '0')
   }, [reduceMainTabHelpers])
 
   useEffect(() => {
@@ -1785,7 +1783,7 @@ function AppContent() {
     try {
       const maintenanceMessages: string[] = []
       const archiveCleanupRunDay = getLocalDayISO()
-      if (localStorage.getItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY) !== archiveCleanupRunDay) {
+      if (readStorageItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY) !== archiveCleanupRunDay) {
         const cutoffDate = new Date()
         cutoffDate.setDate(cutoffDate.getDate() - ARCHIVE_HARD_DELETE_DAYS)
         const cutoffISO = cutoffDate.toISOString()
@@ -1796,7 +1794,7 @@ function AppContent() {
             `Archiv bereinigt: ${hardDeleteCandidates.length} Eintrag${hardDeleteCandidates.length === 1 ? '' : 'e'} endgültig gelöscht.`,
           )
         }
-        localStorage.setItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY, archiveCleanupRunDay)
+        writeStorageItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY, archiveCleanupRunDay)
       }
 
       const todoReturnCutoffDate = new Date(Date.now() - TODO_RETURN_TO_REVIEW_DAYS * MS_PER_DAY)
@@ -1853,26 +1851,46 @@ function AppContent() {
   }, [refreshAll])
 
   useEffect(() => {
-    const stop = startSyncEngine({
-      roomId: syncRoomId,
-      debounceMs: 600,
-      pullIntervalMs: 4000,
-      onStatusChange: (status, errorMessage) => {
-        setSyncStatus(status)
-        setSyncError(errorMessage ?? null)
-      },
-      onDiagnostics: (diagnostics) => {
-        setSyncDiagnostics(diagnostics)
-      },
-      onDataChanged: () => {
-        void refreshAll()
-      },
-    })
-    return stop
+    let cancelled = false
+    let stop: (() => void) | null = null
+
+    void loadSyncEngineModule()
+      .then(({ startSyncEngine }) => {
+        if (cancelled) {
+          return
+        }
+        stop = startSyncEngine({
+          roomId: syncRoomId,
+          debounceMs: 600,
+          pullIntervalMs: 4000,
+          onStatusChange: (status, errorMessage) => {
+            setSyncStatus(status)
+            setSyncError(errorMessage ?? null)
+          },
+          onDiagnostics: (diagnostics) => {
+            setSyncDiagnostics(diagnostics)
+          },
+          onDataChanged: () => {
+            void refreshAll()
+          },
+        })
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+        setSyncStatus('error')
+        setSyncError('Sync konnte nicht initialisiert werden.')
+      })
+
+    return () => {
+      cancelled = true
+      stop?.()
+    }
   }, [refreshAll, syncRoomId])
 
   useEffect(() => {
-    localStorage.setItem(SYNC_ID_STORAGE_KEY, syncRoomId)
+    writeStorageItem(SYNC_ID_STORAGE_KEY, syncRoomId)
   }, [syncRoomId])
 
   useEffect(() => {
@@ -2065,7 +2083,7 @@ function AppContent() {
     setError('')
     try {
       const nextEnabled = !syncEnabled
-      const storedRoomId = localStorage.getItem(SYNC_ID_STORAGE_KEY)?.trim() ?? ''
+      const storedRoomId = readTrimmedStorageItem(SYNC_ID_STORAGE_KEY) ?? ''
       const currentRoomId = syncRoomId.trim()
       const nextRoomId = nextEnabled
         ? storedRoomId && storedRoomId !== DEFAULT_SYNC_ROOM_ID
@@ -2094,7 +2112,7 @@ function AppContent() {
       setError('Sync zuerst deaktivieren, bevor ein neuer Sync-Raum erstellt wird.')
       return
     }
-    const storedRoomId = localStorage.getItem(SYNC_ID_STORAGE_KEY)?.trim() ?? ''
+    const storedRoomId = readTrimmedStorageItem(SYNC_ID_STORAGE_KEY) ?? ''
     const currentRoomId = syncRoomId.trim()
     const existingRoomId =
       storedRoomId && storedRoomId !== DEFAULT_SYNC_ROOM_ID
@@ -2110,7 +2128,7 @@ function AppContent() {
     }
     try {
       const roomId = crypto.randomUUID()
-      localStorage.setItem(SYNC_ID_STORAGE_KEY, roomId)
+      writeStorageItem(SYNC_ID_STORAGE_KEY, roomId)
       setSyncRoomId(roomId)
       await updateSyncState(roomId, { isEnabled: false, lastError: null })
       const next = await setSyncEnabled(roomId, true)
@@ -2139,9 +2157,9 @@ function AppContent() {
         lastPulledSeq: 0,
         lastPushedAt: null,
       })
-      localStorage.removeItem(SYNC_ID_STORAGE_KEY)
-      localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
-      localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+      removeStorageItem(SYNC_ID_STORAGE_KEY)
+      removeStorageItem(SYNC_TOKEN_STORAGE_KEY)
+      removeStorageItem(SYNC_KEY_STORAGE_KEY)
       setShowPairQr(false)
       setShowScanner(false)
       setSyncRoomId(DEFAULT_SYNC_ROOM_ID)
@@ -2150,7 +2168,7 @@ function AppContent() {
       setSyncDiagnostics(null)
       setSyncError(null)
       setInfo('')
-      localStorage.removeItem(ONBOARDING_COMPLETED_STORAGE_KEY)
+      removeStorageItem(ONBOARDING_COMPLETED_STORAGE_KEY)
       window.location.reload()
       return
     } catch {
@@ -2158,12 +2176,11 @@ function AppContent() {
     }
   }, [syncRoomId])
 
-  const handleSyncNow = useCallback(async () => {
-    setSyncNowBusy(true)
-    setError('')
-    try {
+  const performSyncNow = useCallback(
+    async (roomId: string) => {
+      const { syncNow } = await loadSyncEngineModule()
       await syncNow({
-        roomId: syncRoomId,
+        roomId,
         onStatusChange: (status, message) => {
           setSyncStatus(status)
           setSyncError(message ?? null)
@@ -2172,16 +2189,25 @@ function AppContent() {
           setSyncDiagnostics(diagnostics)
         },
         onDataChanged: () => {
-          void refreshAll(syncRoomId)
+          void refreshAll(roomId)
         },
       })
-      await refreshAll(syncRoomId)
+      await refreshAll(roomId)
+    },
+    [refreshAll],
+  )
+
+  const handleSyncNow = useCallback(async () => {
+    setSyncNowBusy(true)
+    setError('')
+    try {
+      await performSyncNow(syncRoomId)
     } catch {
       setError('Sync now fehlgeschlagen.')
     } finally {
       setSyncNowBusy(false)
     }
-  }, [refreshAll, syncRoomId])
+  }, [performSyncNow, syncRoomId])
 
   const handleCopySyncProtocol = useCallback(async () => {
     setError('')
@@ -2236,13 +2262,13 @@ function AppContent() {
           todoFadeAfterDays: TODO_STALE_DAYS,
           todoReturnToReviewAfterDays: TODO_RETURN_TO_REVIEW_DAYS,
           archiveHardDeleteAfterDays: ARCHIVE_HARD_DELETE_DAYS,
-          archiveHardDeleteLastRunDay: localStorage.getItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY),
+          archiveHardDeleteLastRunDay: readStorageItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY),
         },
         localStorage: {
-          syncId: localStorage.getItem(SYNC_ID_STORAGE_KEY),
-          syncTokenMasked: maskSecret(localStorage.getItem(SYNC_TOKEN_STORAGE_KEY)),
-          syncKeyMasked: maskSecret(localStorage.getItem(SYNC_KEY_STORAGE_KEY)),
-          showDebugInfo: localStorage.getItem(SHOW_DEBUG_INFO_STORAGE_KEY),
+          syncId: readStorageItem(SYNC_ID_STORAGE_KEY),
+          syncTokenMasked: maskSecret(readStorageItem(SYNC_TOKEN_STORAGE_KEY)),
+          syncKeyMasked: maskSecret(readStorageItem(SYNC_KEY_STORAGE_KEY)),
+          showDebugInfo: readStorageItem(SHOW_DEBUG_INFO_STORAGE_KEY),
         },
         dataCounts: {
           inbox: inboxNotes.length,
@@ -2299,25 +2325,12 @@ function AppContent() {
     async (roomId: string) => {
       setSyncNowBusy(true)
       try {
-        await syncNow({
-          roomId,
-          onStatusChange: (status, message) => {
-            setSyncStatus(status)
-            setSyncError(message ?? null)
-          },
-          onDiagnostics: (diagnostics) => {
-            setSyncDiagnostics(diagnostics)
-          },
-          onDataChanged: () => {
-            void refreshAll(roomId)
-          },
-        })
-        await refreshAll(roomId)
+        await performSyncNow(roomId)
       } finally {
         setSyncNowBusy(false)
       }
     },
-    [refreshAll],
+    [performSyncNow],
   )
 
   const handleRekeySyncCluster = useCallback(async () => {
@@ -2335,14 +2348,14 @@ function AppContent() {
 
     const previousRoomId = syncRoomId
     const previousStorage = {
-      roomId: localStorage.getItem(SYNC_ID_STORAGE_KEY),
-      token: localStorage.getItem(SYNC_TOKEN_STORAGE_KEY),
-      key: localStorage.getItem(SYNC_KEY_STORAGE_KEY),
+      roomId: readStorageItem(SYNC_ID_STORAGE_KEY),
+      token: readStorageItem(SYNC_TOKEN_STORAGE_KEY),
+      key: readStorageItem(SYNC_KEY_STORAGE_KEY),
     }
     try {
-      localStorage.removeItem(SYNC_ID_STORAGE_KEY)
-      localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
-      localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+      removeStorageItem(SYNC_ID_STORAGE_KEY)
+      removeStorageItem(SYNC_TOKEN_STORAGE_KEY)
+      removeStorageItem(SYNC_KEY_STORAGE_KEY)
       setSyncRoomId(DEFAULT_SYNC_ROOM_ID)
       setSyncEnabledState(false)
       setSyncPairCode(null)
@@ -2360,19 +2373,19 @@ function AppContent() {
     } catch {
       setSyncRoomId(previousRoomId)
       if (previousStorage.roomId) {
-        localStorage.setItem(SYNC_ID_STORAGE_KEY, previousStorage.roomId)
+        writeStorageItem(SYNC_ID_STORAGE_KEY, previousStorage.roomId)
       } else {
-        localStorage.removeItem(SYNC_ID_STORAGE_KEY)
+        removeStorageItem(SYNC_ID_STORAGE_KEY)
       }
       if (previousStorage.token) {
-        localStorage.setItem(SYNC_TOKEN_STORAGE_KEY, previousStorage.token)
+        writeStorageItem(SYNC_TOKEN_STORAGE_KEY, previousStorage.token)
       } else {
-        localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
+        removeStorageItem(SYNC_TOKEN_STORAGE_KEY)
       }
       if (previousStorage.key) {
-        localStorage.setItem(SYNC_KEY_STORAGE_KEY, previousStorage.key)
+        writeStorageItem(SYNC_KEY_STORAGE_KEY, previousStorage.key)
       } else {
-        localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+        removeStorageItem(SYNC_KEY_STORAGE_KEY)
       }
       setError('Client konnte nicht aus dem Verbund entfernt werden.')
       await refreshAll(previousRoomId)
@@ -2383,20 +2396,20 @@ function AppContent() {
     async (payload: PairingPayloadV1) => {
       const previousRoomId = syncRoomId
       const previousStorage = {
-        roomId: localStorage.getItem(SYNC_ID_STORAGE_KEY),
-        token: localStorage.getItem(SYNC_TOKEN_STORAGE_KEY),
-        key: localStorage.getItem(SYNC_KEY_STORAGE_KEY),
+        roomId: readStorageItem(SYNC_ID_STORAGE_KEY),
+        token: readStorageItem(SYNC_TOKEN_STORAGE_KEY),
+        key: readStorageItem(SYNC_KEY_STORAGE_KEY),
       }
       const previousRoomState = await getSyncState(previousRoomId)
       const previousTargetState =
         payload.roomId === previousRoomId ? previousRoomState : await getSyncState(payload.roomId)
 
-      localStorage.setItem(SYNC_ID_STORAGE_KEY, payload.roomId)
-      localStorage.setItem(SYNC_TOKEN_STORAGE_KEY, payload.token)
+      writeStorageItem(SYNC_ID_STORAGE_KEY, payload.roomId)
+      writeStorageItem(SYNC_TOKEN_STORAGE_KEY, payload.token)
       if (payload.key) {
-        localStorage.setItem(SYNC_KEY_STORAGE_KEY, payload.key)
+        writeStorageItem(SYNC_KEY_STORAGE_KEY, payload.key)
       } else {
-        localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+        removeStorageItem(SYNC_KEY_STORAGE_KEY)
       }
 
       setSyncRoomId(payload.roomId)
@@ -2416,16 +2429,16 @@ function AppContent() {
       } catch (error) {
         if (isTokenRejectedError(error)) {
           if (previousStorage.roomId && previousStorage.token) {
-            localStorage.setItem(SYNC_ID_STORAGE_KEY, previousStorage.roomId)
-            localStorage.setItem(SYNC_TOKEN_STORAGE_KEY, previousStorage.token)
+            writeStorageItem(SYNC_ID_STORAGE_KEY, previousStorage.roomId)
+            writeStorageItem(SYNC_TOKEN_STORAGE_KEY, previousStorage.token)
           } else {
-            localStorage.removeItem(SYNC_ID_STORAGE_KEY)
-            localStorage.removeItem(SYNC_TOKEN_STORAGE_KEY)
+            removeStorageItem(SYNC_ID_STORAGE_KEY)
+            removeStorageItem(SYNC_TOKEN_STORAGE_KEY)
           }
           if (previousStorage.key) {
-            localStorage.setItem(SYNC_KEY_STORAGE_KEY, previousStorage.key)
+            writeStorageItem(SYNC_KEY_STORAGE_KEY, previousStorage.key)
           } else {
-            localStorage.removeItem(SYNC_KEY_STORAGE_KEY)
+            removeStorageItem(SYNC_KEY_STORAGE_KEY)
           }
           await updateSyncState(payload.roomId, {
             isEnabled: previousTargetState.isEnabled,
@@ -2459,7 +2472,7 @@ function AppContent() {
         setError('Pair Code ungültig.')
         return
       }
-      const syncKey = localStorage.getItem(SYNC_KEY_STORAGE_KEY)?.trim()
+      const syncKey = readTrimmedStorageItem(SYNC_KEY_STORAGE_KEY)
       const payload: PairingPayloadV1 = {
         v: 1,
         roomId: parsed.roomId.trim(),
@@ -2553,11 +2566,28 @@ function AppContent() {
     if (!showPairQr || !pairQrValue || !qrCanvasRef.current) {
       return
     }
-    void QRCode.toCanvas(qrCanvasRef.current, pairQrValue, {
-      width: 256,
-      margin: 2,
-      errorCorrectionLevel: 'M',
-    })
+    let cancelled = false
+
+    void loadQrCodeModule()
+      .then((QRCode) => {
+        if (cancelled || !qrCanvasRef.current) {
+          return
+        }
+        return QRCode.toCanvas(qrCanvasRef.current, pairQrValue, {
+          width: 256,
+          margin: 2,
+          errorCorrectionLevel: 'M',
+        })
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError('QR-Code konnte nicht erzeugt werden.')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [pairQrValue, showPairQr])
 
   useEffect(() => {
@@ -2588,6 +2618,10 @@ function AppContent() {
         return
       }
       try {
+        const { BrowserMultiFormatReader } = await loadZxingBrowserModule()
+        if (!active) {
+          return
+        }
         const reader = new BrowserMultiFormatReader()
         scannerReaderRef.current = reader
         const controls = await reader.decodeFromVideoDevice(undefined, videoElement, (result) => {
@@ -2851,6 +2885,7 @@ function AppContent() {
     setInfo('')
     setError('')
     try {
+      const { buildBackupData } = await loadBackupModule()
       const backup = await buildBackupData()
       const day = getLocalDayISO()
       const filename = `leiser-backup-${day}.json`
@@ -2894,7 +2929,7 @@ function AppContent() {
       }
       const exportedAt = new Date().toISOString()
       setLastBackupAt(exportedAt)
-      localStorage.setItem(LAST_BACKUP_AT_STORAGE_KEY, exportedAt)
+      writeStorageItem(LAST_BACKUP_AT_STORAGE_KEY, exportedAt)
       showTransientInfo('Backup erzeugt.')
     } catch (exportError) {
       if (exportError instanceof DOMException && exportError.name === 'AbortError') {
@@ -2914,6 +2949,7 @@ function AppContent() {
     setError('')
     setImportReport(null)
     try {
+      const { importBackupJson } = await loadBackupModule()
       const fileText = await importFile.text()
       const report = await importBackupJson(fileText, importMode)
       setImportReport(report)

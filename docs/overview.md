@@ -22,6 +22,13 @@ Die App ist bewusst minimal:
 - Datenbereich für Backup/Sync/Pairing über `...` im Header
 - keine Demo-Daten-Seeding-Funktion im aktiven Produktpfad
 
+## Technische Leitplanken
+
+- Offline-first bleibt der Standard: Notizen und UI-Zustand funktionieren ohne Netzwerk.
+- Persistenzkritische Browser-Zugriffe laufen defensiv, damit Privacy-Modi oder blockiertes Storage nicht sofort zu Laufzeitfehlern führen.
+- Selten genutzte Pfade wie Pairing-QR, Kamera-Scanner, Backup-Import/-Export und die Sync-Engine werden lazy geladen, damit der Erststart klein bleibt.
+- Der Service Worker cached nur den App-Shell-Kern vor; große CRDT-/Sync-Chunks werden zur Laufzeit nachgeladen statt aggressiv precached.
+
 ## Navigationspunkte
 
 - [Flows und Tabs](flows.md)

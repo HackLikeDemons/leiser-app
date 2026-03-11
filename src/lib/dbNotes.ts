@@ -2,6 +2,7 @@ import * as Automerge from '@automerge/automerge/slim'
 import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64'
 import { getLocalDayISO } from './date'
 import { getOrCreateDeviceId } from './device'
+import { readStorageItem, readTrimmedStorageItem, removeStorageItem, writeStorageItem } from './storage'
 import { generateSyncToken } from './syncToken'
 import { signEnvelope } from './syncSigning'
 import { normalizeContextTag } from './types'
@@ -41,10 +42,7 @@ let dbPromise: Promise<IDBDatabase> | null = null
 let automergeInitPromise: Promise<void> | null = null
 
 function getActiveSyncRoomId() {
-  if (typeof window === 'undefined') {
-    return DEFAULT_ROOM_ID
-  }
-  return localStorage.getItem('leiser-sync-id') || DEFAULT_ROOM_ID
+  return readStorageItem('leiser-sync-id') || DEFAULT_ROOM_ID
 }
 
 type CrdtNoteDoc = {
@@ -1552,20 +1550,17 @@ export async function updateSyncState(
 
 export async function setSyncEnabled(roomId: string, enabled: boolean): Promise<SyncStateRow> {
   const current = await getSyncState(roomId)
-  const importedToken =
-    typeof window !== 'undefined' ? localStorage.getItem('leiser-sync-token')?.trim() || null : null
+  const importedToken = readTrimmedStorageItem('leiser-sync-token')
   const syncToken = enabled
     ? current.syncToken ?? importedToken ?? generateSyncToken()
     : current.syncToken
   const next = await updateSyncState(roomId, { isEnabled: enabled, lastError: null, syncToken })
-  if (typeof window !== 'undefined') {
-    // Keep room/token stable across disable/enable cycles so paired clients stay connected.
-    localStorage.setItem('leiser-sync-id', roomId)
-    if (next.syncToken) {
-      localStorage.setItem('leiser-sync-token', next.syncToken)
-    } else {
-      localStorage.removeItem('leiser-sync-token')
-    }
+  // Keep room/token stable across disable/enable cycles so paired clients stay connected.
+  writeStorageItem('leiser-sync-id', roomId)
+  if (next.syncToken) {
+    writeStorageItem('leiser-sync-token', next.syncToken)
+  } else {
+    removeStorageItem('leiser-sync-token')
   }
   return next
 }
@@ -1575,8 +1570,7 @@ export async function getSyncPairCode(roomId = DEFAULT_ROOM_ID): Promise<string 
   if (!state.isEnabled || !state.syncToken) {
     return null
   }
-  const syncKey =
-    typeof window !== 'undefined' ? localStorage.getItem('leiser-sync-key')?.trim() || null : null
+  const syncKey = readTrimmedStorageItem('leiser-sync-key')
   return JSON.stringify({
     roomId,
     token: state.syncToken,

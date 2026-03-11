@@ -4,6 +4,27 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined
+          }
+          if (id.includes('@automerge/automerge')) {
+            return 'vendor-automerge'
+          }
+          if (id.includes('@supabase/supabase-js')) {
+            return 'vendor-supabase'
+          }
+          if (id.includes('react') || id.includes('scheduler')) {
+            return 'vendor-react'
+          }
+          return 'vendor'
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
@@ -46,7 +67,9 @@ export default defineConfig({
         skipWaiting: true,
         navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        globIgnores: ['assets/vendor-automerge-*.js'],
+        // Keep precache focused on the app shell and avoid caching oversized chunks eagerly.
+        maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
       },
     }),
   ],

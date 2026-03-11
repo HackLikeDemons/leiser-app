@@ -1,4 +1,5 @@
 import { getOrCreateDeviceId } from './device'
+import { readStorageItem, writeStorageItem } from './storage'
 import type { ChangeEnvelope } from './types'
 
 const PRIVATE_KEY_STORAGE_KEY = 'leiser:syncSigning:privatePkcs8'
@@ -57,7 +58,7 @@ function getEnvelopeSigningPayload(envelope: ChangeEnvelope) {
 }
 
 function loadTrustedKeysMap(): TrustedKeysMap {
-  const raw = localStorage.getItem(TRUSTED_KEYS_STORAGE_KEY)
+  const raw = readStorageItem(TRUSTED_KEYS_STORAGE_KEY)
   if (!raw) {
     return {}
   }
@@ -73,7 +74,7 @@ function loadTrustedKeysMap(): TrustedKeysMap {
 }
 
 function saveTrustedKeysMap(map: TrustedKeysMap) {
-  localStorage.setItem(TRUSTED_KEYS_STORAGE_KEY, JSON.stringify(map))
+  writeStorageItem(TRUSTED_KEYS_STORAGE_KEY, JSON.stringify(map))
 }
 
 function setTrustedPublicKey(deviceId: string, publicKeyBase64: string) {
@@ -116,8 +117,8 @@ export async function getOrCreateSigningIdentity(): Promise<{
   }
 
   const deviceId = getOrCreateDeviceId()
-  const storedPrivate = localStorage.getItem(PRIVATE_KEY_STORAGE_KEY)
-  const storedPublic = localStorage.getItem(PUBLIC_KEY_STORAGE_KEY)
+  const storedPrivate = readStorageItem(PRIVATE_KEY_STORAGE_KEY)
+  const storedPublic = readStorageItem(PUBLIC_KEY_STORAGE_KEY)
   if (storedPrivate && storedPublic) {
     setTrustedPublicKey(deviceId, storedPublic)
     return { deviceId, publicKeyBase64: storedPublic }
@@ -129,8 +130,8 @@ export async function getOrCreateSigningIdentity(): Promise<{
   const privateBase64 = bytesToBase64(privatePkcs8)
   const publicBase64 = bytesToBase64(publicRaw)
 
-  localStorage.setItem(PRIVATE_KEY_STORAGE_KEY, privateBase64)
-  localStorage.setItem(PUBLIC_KEY_STORAGE_KEY, publicBase64)
+  writeStorageItem(PRIVATE_KEY_STORAGE_KEY, privateBase64)
+  writeStorageItem(PUBLIC_KEY_STORAGE_KEY, publicBase64)
   setTrustedPublicKey(deviceId, publicBase64)
   return { deviceId, publicKeyBase64: publicBase64 }
 }
@@ -141,7 +142,7 @@ export async function signEnvelope(envelope: ChangeEnvelope): Promise<ChangeEnve
     return envelope
   }
 
-  const privateBase64 = localStorage.getItem(PRIVATE_KEY_STORAGE_KEY)
+  const privateBase64 = readStorageItem(PRIVATE_KEY_STORAGE_KEY)
   if (!privateBase64) {
     return envelope
   }

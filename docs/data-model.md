@@ -74,6 +74,12 @@ Wichtige Indexe (notes/notes_view):
 - `status_createdAt`
 - `status_updatedAt`
 
+## Browser-Persistenz ausserhalb von IndexedDB
+
+- `localStorage` speichert nur kleine clientseitige Metadaten, z. B. Sync-Raum, Sync-Token, Kontextoptionen, Onboarding-Flag und Backup-Zeitpunkt.
+- Zugriffe auf `localStorage` laufen zentral defensiv ueber [`src/lib/storage.ts`](../src/lib/storage.ts), damit fehlende Berechtigungen oder Privacy-Restriktionen nicht unkontrolliert durch die UI laufen.
+- Ausfall von `localStorage` darf vorhandene Notizen in IndexedDB nicht unlesbar machen; es betrifft nur Zusatzkomfort wie gemerkte UI-Flags oder Pairing-Metadaten.
+
 ## Prefix-Shortcuts beim Erfassen
 
 - `- Aufgabe ...` -> `type=TASK`, `status=TODO`
