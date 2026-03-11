@@ -18,7 +18,7 @@ const ABOUT_COPY = {
     'Mehr über die technischen Hintergründe findest du auf GitHub:',
   techLinkLabel: 'github.com/HackLikeDemons/leiser-app',
   techLinkHref: 'https://github.com/HackLikeDemons/leiser-app',
-  cta: 'Memos erfassen',
+  cta: 'Gedanken erfassen',
 } as const
 
 export function AboutScreen({ onBackToCapture }: AboutScreenProps) {

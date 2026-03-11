@@ -4313,7 +4313,7 @@ function AppContent() {
                     ref={thinkingCtaButtonRef}
                     style={thinkingActionButtonWidth ? { width: `${thinkingActionButtonWidth}px` } : undefined}
                   >
-                    Memos erfassen
+                    Gedanken erfassen
                   </button>
                 </div>
               </section>
@@ -4513,7 +4513,7 @@ function AppContent() {
                     ref={todoCtaButtonRef}
                     style={todoActionButtonWidth ? { width: `${todoActionButtonWidth}px` } : undefined}
                   >
-                    Memos erfassen
+                    Gedanken erfassen
                   </button>
                 </div>
               </section>
