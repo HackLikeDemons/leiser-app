@@ -21,6 +21,10 @@ export type ImportReport = {
   invalid: number
 }
 
+export type BuildBackupOptions = {
+  includeArchived?: boolean
+}
+
 const ALLOWED_STATUSES: NoteStatus[] = ['INBOX', 'TODO', 'PROCESS', 'DISCARD', 'ARCHIVE']
 const ALLOWED_TYPES: NoteType[] = ['NOTE', 'QUESTION', 'IDEA', 'TASK']
 const ALLOWED_ARCHIVE_BUCKETS: ArchiveBucket[] = ['THINKING', 'TODO']
@@ -116,10 +120,11 @@ function importedWins(imported: Note, local: Note) {
   return false
 }
 
-export async function buildBackupData(): Promise<BackupFileV1> {
+export async function buildBackupData(options: BuildBackupOptions = {}): Promise<BackupFileV1> {
   const notes = await listAllNotes()
+  const includeArchived = options.includeArchived === true
   const activeNotes = notes.filter(
-    (note) => note.deletedAt == null && note.status !== 'ARCHIVE' && note.status !== 'DISCARD',
+    (note) => note.deletedAt == null && note.status !== 'DISCARD' && (includeArchived || note.status !== 'ARCHIVE'),
   )
   return {
     app: 'Leiser',

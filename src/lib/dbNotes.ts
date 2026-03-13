@@ -1144,8 +1144,9 @@ export async function listTodoReturnToInboxCandidates(cutoffISO: string, limit =
   })
 }
 
-export async function listNotesByStatus(status: NoteStatus, limit = 200): Promise<Note[]> {
+export async function listNotesByStatus(status: NoteStatus, limit?: number): Promise<Note[]> {
   const db = await openDb()
+  const hasLimit = typeof limit === 'number' && Number.isFinite(limit) && limit >= 0
 
   return new Promise<Note[]>((resolve, reject) => {
     const notePromises: Array<Promise<Note | null>> = []
@@ -1162,7 +1163,7 @@ export async function listNotesByStatus(status: NoteStatus, limit = 200): Promis
       void (async () => {
         try {
           const notes = (await Promise.all(notePromises)).filter((note): note is Note => note !== null)
-          resolve(notes.slice(0, limit))
+          resolve(hasLimit ? notes.slice(0, limit) : notes)
         } catch (error) {
           reject(error)
         }
@@ -1172,7 +1173,7 @@ export async function listNotesByStatus(status: NoteStatus, limit = 200): Promis
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
       const cursor = request.result
-      if (!cursor || notePromises.length >= limit) {
+      if (!cursor || (hasLimit && notePromises.length >= limit)) {
         return
       }
       notePromises.push(asActiveNote(cursor.value))

@@ -16,6 +16,8 @@ type BackupScreenProps = {
   importReport: ImportReport | null
   info: string
   offlineReady: boolean
+  includeArchivedInExport: boolean
+  onToggleIncludeArchivedInExport: (nextValue: boolean) => void
 }
 
 export function BackupScreen({
@@ -32,6 +34,8 @@ export function BackupScreen({
   importReport,
   info,
   offlineReady,
+  includeArchivedInExport,
+  onToggleIncludeArchivedInExport,
 }: BackupScreenProps) {
   return (
     <section className="data-section" aria-label="Backup">
@@ -63,6 +67,8 @@ export function BackupScreen({
             importReport={importReport}
             info={info}
             offlineReady={offlineReady}
+            includeArchivedInExport={includeArchivedInExport}
+            onToggleIncludeArchivedInExport={onToggleIncludeArchivedInExport}
           />
         </div>
       </div>

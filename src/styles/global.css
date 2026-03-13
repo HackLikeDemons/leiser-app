@@ -735,6 +735,10 @@ h3 {
   margin-top: 0.45rem;
 }
 
+.settings-option--compact {
+  margin-top: 0.7rem;
+}
+
 .sync-status-slot {
   min-height: 1.9rem;
   display: flex;
@@ -825,6 +829,59 @@ h3 {
   font-size: 0.85rem;
   padding: 0.45rem 0.55rem;
   resize: none;
+}
+
+.retention-block + .retention-block {
+  margin-top: 0.95rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-default) 72%, transparent);
+}
+
+.retention-block h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+}
+
+.retention-warning-summary,
+.retention-inline-warning {
+  color: color-mix(in srgb, var(--warning) 92%, var(--text-primary));
+}
+
+.retention-list,
+.retention-log {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.retention-list__item,
+.retention-log__item {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--border-default) 76%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-card-soft) 82%, transparent);
+}
+
+.retention-list__title,
+.retention-log__time {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.retention-list__meta {
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--warning) 92%, var(--text-primary));
+}
+
+.retention-list__text,
+.retention-log__message {
+  color: var(--text-primary);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .pairing-modal-backdrop {

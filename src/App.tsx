@@ -45,6 +45,7 @@ import { FlowHero } from './app/FlowHero'
 import { FooterProvider } from './app/FooterContext'
 import { BackupScreen } from './app/data/BackupScreen'
 import { DataScreen } from './app/data/DataScreen'
+import type { ArchiveWarningEntry, MaintenanceLogEntry } from './app/data/RetentionPanel'
 import { AboutScreen } from './components/AboutScreen'
 import { InboxEmptyState } from './components/InboxEmptyState'
 import { LandingScreen } from './components/LandingScreen'
@@ -64,9 +65,12 @@ const OVERDUE_DAYS = 3
 const AUTOSCROLL_NEAR_BOTTOM_PX = 80
 const BRAINDUMP_FETCH_LIMIT = 300
 const ARCHIVE_HARD_DELETE_DAYS = 30
+const ARCHIVE_WARNING_DAYS = 7
 const ARCHIVE_HARD_DELETE_BATCH_LIMIT = 200
 const ARCHIVE_CLEAR_FETCH_LIMIT = 5000
+const MAINTENANCE_LOG_LIMIT = 12
 const ARCHIVE_HARD_DELETE_LAST_RUN_KEY = 'leiser:archive-hard-delete-last-run-day'
+const MAINTENANCE_LOG_STORAGE_KEY = 'leiser:maintenance-log-v1'
 const MS_PER_HOUR = 60 * 60 * 1000
 const MS_PER_DAY = 24 * MS_PER_HOUR
 const SYNC_ID_STORAGE_KEY = 'leiser-sync-id'
@@ -136,6 +140,30 @@ type LastAction = {
 type CaptureFeedback = {
   id: number
   text: string
+}
+
+function readStoredMaintenanceLog(): MaintenanceLogEntry[] {
+  const raw = readStorageItem(MAINTENANCE_LOG_STORAGE_KEY)
+  if (!raw) {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+    return parsed
+      .filter((entry): entry is MaintenanceLogEntry => {
+        if (!entry || typeof entry !== 'object') {
+          return false
+        }
+        const candidate = entry as Record<string, unknown>
+        return typeof candidate.id === 'string' && typeof candidate.at === 'string' && typeof candidate.message === 'string'
+      })
+      .slice(0, MAINTENANCE_LOG_LIMIT)
+  } catch {
+    return []
+  }
 }
 
 type ContextFilter = '' | '__none' | ContextTag
@@ -263,6 +291,23 @@ function toBackupTimeLabel(isoTimestamp: string | null) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date)
+}
+
+function daysUntilArchiveHardDelete(note: Note, nowMs = Date.now()) {
+  const updatedMs = Date.parse(note.updatedAt)
+  if (!Number.isFinite(updatedMs)) {
+    return null
+  }
+  const ageDays = Math.floor(Math.max(0, nowMs - updatedMs) / MS_PER_DAY)
+  return Math.max(0, ARCHIVE_HARD_DELETE_DAYS - ageDays)
+}
+
+function trimPreviewText(text: string, maxLength = 84) {
+  const compact = text.replace(/\s+/g, ' ').trim()
+  if (compact.length <= maxLength) {
+    return compact || 'Ohne Text'
+  }
+  return `${compact.slice(0, maxLength - 1).trimEnd()}…`
 }
 
 function maskSecret(value: string | null) {
@@ -1661,8 +1706,10 @@ function AppContent() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState<ImportMode>('MERGE')
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
+  const [includeArchivedInExport, setIncludeArchivedInExport] = useState(true)
   const [showDebugInfo, setShowDebugInfo] = useState(false)
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(() => readStorageItem(LAST_BACKUP_AT_STORAGE_KEY))
+  const [maintenanceLog, setMaintenanceLog] = useState<MaintenanceLogEntry[]>(() => readStoredMaintenanceLog())
   const [devSyncInfo, setDevSyncInfo] = useState<DevSyncInfo | null>(null)
   const [syncEnabled, setSyncEnabledState] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncUiStatus>('disabled')
@@ -1730,6 +1777,10 @@ function AppContent() {
   }, [reduceMainTabHelpers])
 
   useEffect(() => {
+    writeStorageItem(MAINTENANCE_LOG_STORAGE_KEY, JSON.stringify(maintenanceLog.slice(0, MAINTENANCE_LOG_LIMIT)))
+  }, [maintenanceLog])
+
+  useEffect(() => {
     setContextDraftLabels((prev) => {
       const next: Record<string, string> = {}
       for (const option of contextOptions) {
@@ -1782,6 +1833,7 @@ function AppContent() {
     const runSeq = ++refreshRunSeqRef.current
     try {
       const maintenanceMessages: string[] = []
+      const maintenanceEntries: MaintenanceLogEntry[] = []
       const archiveCleanupRunDay = getLocalDayISO()
       if (readStorageItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY) !== archiveCleanupRunDay) {
         const cutoffDate = new Date()
@@ -1790,9 +1842,13 @@ function AppContent() {
         const hardDeleteCandidates = await listArchiveHardDeleteCandidates(cutoffISO, ARCHIVE_HARD_DELETE_BATCH_LIMIT)
         if (hardDeleteCandidates.length > 0) {
           await hardDeleteNotes(hardDeleteCandidates.map((note) => note.id))
-          maintenanceMessages.push(
-            `Archiv bereinigt: ${hardDeleteCandidates.length} Eintrag${hardDeleteCandidates.length === 1 ? '' : 'e'} endgültig gelöscht.`,
-          )
+          const message = `Archiv bereinigt: ${hardDeleteCandidates.length} Eintrag${hardDeleteCandidates.length === 1 ? '' : 'e'} endgültig gelöscht.`
+          maintenanceMessages.push(message)
+          maintenanceEntries.push({
+            id: `archive-delete:${Date.now()}:${hardDeleteCandidates.length}`,
+            at: new Date().toISOString(),
+            message,
+          })
         }
         writeStorageItem(ARCHIVE_HARD_DELETE_LAST_RUN_KEY, archiveCleanupRunDay)
       }
@@ -1804,12 +1860,17 @@ function AppContent() {
       )
       if (todoReturnCandidates.length > 0) {
         await Promise.all(todoReturnCandidates.map((note) => updateNoteStatus(note.id, 'INBOX')))
-        maintenanceMessages.push(
-          `Wiedervorlage: ${todoReturnCandidates.length} alte Handlung${todoReturnCandidates.length === 1 ? '' : 'en'} zurück in die Inbox verschoben.`,
-        )
+        const message = `Wiedervorlage: ${todoReturnCandidates.length} alte Handlung${todoReturnCandidates.length === 1 ? '' : 'en'} zurück in die Inbox verschoben.`
+        maintenanceMessages.push(message)
+        maintenanceEntries.push({
+          id: `todo-return:${Date.now()}:${todoReturnCandidates.length}`,
+          at: new Date().toISOString(),
+          message,
+        })
       }
 
       if (maintenanceMessages.length > 0) {
+        setMaintenanceLog((current) => [...maintenanceEntries.reverse(), ...current].slice(0, MAINTENANCE_LOG_LIMIT))
         showTransientInfo(maintenanceMessages.join(' '))
       }
 
@@ -1820,7 +1881,7 @@ function AppContent() {
         listNotesByStatus('PROCESS', 200),
         countNotesByStatus('PROCESS'),
         listTodoNotes(200),
-        listNotesByStatus('ARCHIVE', 50),
+        listNotesByStatus('ARCHIVE'),
       ])
       if (runSeq !== refreshRunSeqRef.current) {
         return
@@ -2886,9 +2947,9 @@ function AppContent() {
     setError('')
     try {
       const { buildBackupData } = await loadBackupModule()
-      const backup = await buildBackupData()
+      const backup = await buildBackupData({ includeArchived: includeArchivedInExport })
       const day = getLocalDayISO()
-      const filename = `leiser-backup-${day}.json`
+      const filename = includeArchivedInExport ? `leiser-backup-mit-archiv-${day}.json` : `leiser-backup-${day}.json`
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
       const file = new File([blob], filename, { type: 'application/json' })
       let canShareFiles = false
@@ -2930,7 +2991,7 @@ function AppContent() {
       const exportedAt = new Date().toISOString()
       setLastBackupAt(exportedAt)
       writeStorageItem(LAST_BACKUP_AT_STORAGE_KEY, exportedAt)
-      showTransientInfo('Backup erzeugt.')
+      showTransientInfo(includeArchivedInExport ? 'Backup mit Archiv erzeugt.' : 'Backup erzeugt.')
     } catch (exportError) {
       if (exportError instanceof DOMException && exportError.name === 'AbortError') {
         return
@@ -3030,6 +3091,38 @@ function AppContent() {
   const todoArchivedNotes = useMemo(
     () => archivedNotes.filter((note) => isTodoArchiveNote(note)),
     [archivedNotes],
+  )
+  const archiveWarnings = useMemo<ArchiveWarningEntry[]>(() => {
+    const nowMs = Date.now()
+    return archivedNotes
+      .map((note) => {
+        const daysLeft = daysUntilArchiveHardDelete(note, nowMs)
+        if (daysLeft === null || daysLeft < 1 || daysLeft > ARCHIVE_WARNING_DAYS) {
+          return null
+        }
+        return {
+          id: note.id,
+          text: trimPreviewText(note.text),
+          daysLeft,
+          scopeLabel: isTodoArchiveNote(note) ? 'Handlung im Archiv' : 'Memo im Archiv',
+        }
+      })
+      .filter((entry): entry is ArchiveWarningEntry => entry !== null)
+      .sort((a, b) => a.daysLeft - b.daysLeft || a.text.localeCompare(b.text, 'de-DE'))
+  }, [archivedNotes])
+  const thinkingArchiveWarnings = useMemo(
+    () => archiveWarnings.filter((entry) => {
+      const note = archivedNotes.find((candidate) => candidate.id === entry.id)
+      return note ? isThinkingArchiveNote(note) : false
+    }),
+    [archiveWarnings, archivedNotes],
+  )
+  const todoArchiveWarnings = useMemo(
+    () => archiveWarnings.filter((entry) => {
+      const note = archivedNotes.find((candidate) => candidate.id === entry.id)
+      return note ? isTodoArchiveNote(note) : false
+    }),
+    [archiveWarnings, archivedNotes],
   )
   const hasTodoArchive = todoArchivedNotes.length > 0
   const normalizedTodoSearchQuery = useMemo(() => todoSearchQuery.trim().toLocaleLowerCase('de-DE'), [todoSearchQuery])
@@ -3997,6 +4090,8 @@ function AppContent() {
                 showScanner={showScanner}
                 onCancelScanner={handleScannerCancel}
                 scannerVideoRef={scannerVideoRef}
+                maintenanceLog={maintenanceLog}
+                archiveWarnings={archiveWarnings}
               />
             ) : null}
             {activeTab === 'BACKUP' ? (
@@ -4014,6 +4109,8 @@ function AppContent() {
                 importReport={importReport}
                 info={info}
                 offlineReady={offlineReady}
+                includeArchivedInExport={includeArchivedInExport}
+                onToggleIncludeArchivedInExport={setIncludeArchivedInExport}
               />
             ) : null}
             {activeTab === 'CONTEXTS' ? (
@@ -4420,8 +4517,10 @@ function AppContent() {
                     </ul>
                   </section>
                 ))}
-                {thinkingArchiveCount >= 50 ? (
-                  <p className="hint">Nur die letzten 50 angezeigt.</p>
+                {thinkingArchiveWarnings.length > 0 ? (
+                  <p className="hint retention-inline-warning">
+                    Achtung: {thinkingArchiveWarnings.length} Archiv-Eintrag{thinkingArchiveWarnings.length === 1 ? '' : 'e'} werden innerhalb der nächsten 7 Tage endgültig gelöscht.
+                  </p>
                 ) : null}
                 <div className="archive-danger-row">
                   <button
@@ -4619,8 +4718,10 @@ function AppContent() {
                     </ul>
                   </section>
                 ))}
-                {todoArchiveCount >= 50 ? (
-                  <p className="hint">Nur die letzten 50 angezeigt.</p>
+                {todoArchiveWarnings.length > 0 ? (
+                  <p className="hint retention-inline-warning">
+                    Achtung: {todoArchiveWarnings.length} Archiv-Eintrag{todoArchiveWarnings.length === 1 ? '' : 'e'} werden innerhalb der nächsten 7 Tage endgültig gelöscht.
+                  </p>
                 ) : null}
                 <div className="archive-danger-row">
                   <button

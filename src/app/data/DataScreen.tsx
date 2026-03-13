@@ -3,7 +3,9 @@ import type { SyncDiagnostics, SyncUiStatus } from '../../lib/syncEngine'
 import { FlowHero } from '../FlowHero'
 import { DebugPanel } from './DebugPanel'
 import { PairingPanel } from './PairingPanel'
+import { RetentionPanel } from './RetentionPanel'
 import { SyncPanel, type DevSyncInfo } from './SyncPanel'
+import type { ArchiveWarningEntry, MaintenanceLogEntry } from './RetentionPanel'
 
 type SupabaseConfigStatus = {
   configured: boolean
@@ -45,6 +47,8 @@ type DataScreenProps = {
   showScanner: boolean
   onCancelScanner: () => void
   scannerVideoRef: RefObject<HTMLVideoElement | null>
+  maintenanceLog: MaintenanceLogEntry[]
+  archiveWarnings: ArchiveWarningEntry[]
 }
 
 export function DataScreen({
@@ -81,6 +85,8 @@ export function DataScreen({
   showScanner,
   onCancelScanner,
   scannerVideoRef,
+  maintenanceLog,
+  archiveWarnings,
 }: DataScreenProps) {
   return (
     <section className="data-section" aria-label="Daten">
@@ -133,6 +139,7 @@ export function DataScreen({
             syncDiagnostics={syncDiagnostics}
             formatSyncTimeLabel={formatSyncTimeLabel}
           />
+          <RetentionPanel maintenanceLog={maintenanceLog} archiveWarnings={archiveWarnings} />
         </div>
 
         {showPairQr ? (

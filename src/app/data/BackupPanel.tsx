@@ -14,6 +14,8 @@ type BackupPanelProps = {
   importReport: ImportReport | null
   info: string
   offlineReady: boolean
+  includeArchivedInExport: boolean
+  onToggleIncludeArchivedInExport: (nextValue: boolean) => void
 }
 
 export function BackupPanel({
@@ -29,6 +31,8 @@ export function BackupPanel({
   importReport,
   info,
   offlineReady,
+  includeArchivedInExport,
+  onToggleIncludeArchivedInExport,
 }: BackupPanelProps) {
   const handleImportFile = (event: ChangeEvent<HTMLInputElement>) => {
     onImportFileChange(event.target.files?.[0] ?? null)
@@ -46,6 +50,16 @@ export function BackupPanel({
           {showImportPanel ? 'Import schließen' : 'Backup importieren'}
         </button>
       </div>
+
+      <label className="settings-option settings-option--compact">
+        <input
+          type="checkbox"
+          checked={includeArchivedInExport}
+          onChange={(event) => onToggleIncludeArchivedInExport(event.target.checked)}
+        />
+        <span>Archivierte Einträge im Export einschließen</span>
+      </label>
+      <p className="hint">Aktive Einträge sind immer enthalten. Gelöschte Einträge bleiben ausgeschlossen.</p>
 
       {showImportPanel ? (
         <div className="import-panel">
@@ -90,6 +104,7 @@ export function BackupPanel({
             {importReport.skipped} · Ungültig: {importReport.invalid}
           </p>
         ) : null}
+        {includeArchivedInExport ? <p className="hint">Der nächste Export enthält auch dein Archiv.</p> : null}
         {info ? <p className="hint">{info}</p> : null}
         {offlineReady ? <p className="hint">Offline bereit.</p> : null}
       </div>
