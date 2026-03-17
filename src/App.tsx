@@ -3326,7 +3326,6 @@ function AppContent() {
       setError('')
       try {
         await updateNoteArchiveBucket(id, 'TODO')
-        setShowTodoArchive(true)
         startTodoUndoWindow({
           noteId: sourceNote.id,
           prevStatus: sourceNote.status,
