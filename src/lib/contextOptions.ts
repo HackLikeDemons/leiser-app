@@ -81,7 +81,7 @@ function normalizeUpdatedAt(value: unknown, fallback = DEFAULT_CONTEXT_OPTIONS_U
 function normalizeContextOptionsState(raw: unknown, fallbackUpdatedAt: string): ContextOptionsState {
   if (Array.isArray(raw)) {
     return {
-      updatedAt: normalizeUpdatedAt(fallbackUpdatedAt, new Date().toISOString()),
+      updatedAt: normalizeUpdatedAt(fallbackUpdatedAt),
       options: sanitizeContextOptions(raw),
     }
   }
@@ -136,7 +136,7 @@ export function readStoredContextOptionsState(): ContextOptionsState {
   }
 
   try {
-    return normalizeContextOptionsState(JSON.parse(raw), new Date().toISOString())
+    return normalizeContextOptionsState(JSON.parse(raw), DEFAULT_CONTEXT_OPTIONS_UPDATED_AT)
   } catch {
     return {
       updatedAt: DEFAULT_CONTEXT_OPTIONS_UPDATED_AT,
