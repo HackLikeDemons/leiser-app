@@ -95,6 +95,7 @@ Darstellung:
 ## Kontexte (`Einstellungen` -> `Kontexte bearbeiten`)
 
 - Kontextliste anzeigen, umbenennen, entfernen, neu anlegen
+- Auf gekoppelten Geräten wird dieselbe Kontextliste synchron gehalten
 - Beim Entfernen eines Kontexts werden vorhandene Einträge auf `Ohne Kontext` gesetzt
 - Nach Backup-Import werden Einträge mit unbekannten Kontexten auf `Ohne Kontext` gesetzt
 

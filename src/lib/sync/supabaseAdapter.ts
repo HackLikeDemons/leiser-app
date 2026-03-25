@@ -4,6 +4,7 @@ import { sha256Hex } from './tokenHash'
 export type SyncBlob = {
   version: 1
   changes: unknown[]
+  contextOptionsState?: unknown
 }
 
 export type PulledSyncState = {

@@ -57,6 +57,24 @@ export async function createTodoFromCapture(page: Page, text: string) {
   await noteRow.getByTitle('Als Handlung markieren').click()
 }
 
+export async function openContextSettings(page: Page) {
+  await page.getByRole('button', { name: 'Einstellungen öffnen' }).click()
+  await page.getByRole('button', { name: 'Kontexte bearbeiten' }).click()
+  await expect(page.getByRole('heading', { name: 'Kontexte verwalten' })).toBeVisible()
+}
+
+export async function addContextOption(page: Page, label: string) {
+  await openContextSettings(page)
+  await page.getByRole('button', { name: 'Bearbeiten' }).click()
+  await page.getByLabel('Neuer Kontext').fill(label)
+  await page.getByRole('button', { name: 'Hinzufügen' }).click()
+}
+
+export async function expectContextOptionVisible(page: Page, label: string) {
+  await openContextSettings(page)
+  await expect(page.getByText(label, { exact: true })).toBeVisible()
+}
+
 export async function expectTodoVisible(page: Page, text: string) {
   await openTab(page, 'Handeln')
   await expect(page.locator('li.note-item', { hasText: text }).first()).toBeVisible()

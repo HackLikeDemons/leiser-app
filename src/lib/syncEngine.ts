@@ -1,4 +1,12 @@
 import {
+  areContextOptionsStatesEqual,
+  pickLatestContextOptionsState,
+  readStoredContextOptionsState,
+  sanitizeContextOptions,
+  writeStoredContextOptionsState,
+  type ContextOptionsState,
+} from './contextOptions'
+import {
   DEFAULT_SYNC_ROOM_ID,
   applyRemoteChanges,
   bumpOutboxAttempt,
@@ -54,6 +62,7 @@ type MergeResult = {
   remoteSeen: number
   snapshotsApplied: number
   changesApplied: number
+  contextOptionsApplied: boolean
   signatureRejected: number
 }
 
@@ -142,7 +151,36 @@ function asSyncBlob(value: unknown): SyncBlob | null {
   if (blob.version !== 1 || !Array.isArray(blob.changes)) {
     return null
   }
-  return { version: 1, changes: blob.changes }
+  return {
+    version: 1,
+    changes: blob.changes,
+    contextOptionsState: blob.contextOptionsState,
+  }
+}
+
+function normalizeUpdatedAt(value: unknown): string | null {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return null
+  }
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null
+}
+
+function asContextOptionsState(value: unknown): ContextOptionsState | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const candidate = value as Partial<ContextOptionsState>
+  const updatedAt = normalizeUpdatedAt(candidate.updatedAt)
+  if (!updatedAt) {
+    return null
+  }
+
+  return {
+    updatedAt,
+    options: sanitizeContextOptions(candidate.options),
+  }
 }
 
 function createEmptyMergeResult(): MergeResult {
@@ -152,6 +190,7 @@ function createEmptyMergeResult(): MergeResult {
     remoteSeen: 0,
     snapshotsApplied: 0,
     changesApplied: 0,
+    contextOptionsApplied: false,
     signatureRejected: 0,
   }
 }
@@ -269,10 +308,28 @@ async function normalizeRemoteEnvelopes(blob: SyncBlob | null): Promise<{ envelo
 async function mergeRemoteSnapshots(blob: SyncBlob | null): Promise<MergeResult> {
   const nowMs = Date.now()
   const normalized = await normalizeRemoteEnvelopes(blob)
+  const remoteContextOptionsState = asContextOptionsState(blob?.contextOptionsState ?? null)
+  let contextOptionsApplied = false
+
+  if (remoteContextOptionsState) {
+    const localContextOptionsState = readStoredContextOptionsState()
+    const latestContextOptionsState = pickLatestContextOptionsState(remoteContextOptionsState, localContextOptionsState)
+    if (
+      latestContextOptionsState
+      && areContextOptionsStatesEqual(latestContextOptionsState, remoteContextOptionsState)
+      && !areContextOptionsStatesEqual(localContextOptionsState, remoteContextOptionsState)
+    ) {
+      writeStoredContextOptionsState(remoteContextOptionsState)
+      contextOptionsApplied = true
+    }
+  }
+
   if (normalized.envelopes.length === 0) {
     return {
       ...createEmptyMergeResult(),
+      applied: contextOptionsApplied,
       remoteSeen: normalized.seen,
+      contextOptionsApplied,
       signatureRejected: normalized.signatureRejected,
     }
   }
@@ -303,11 +360,12 @@ async function mergeRemoteSnapshots(blob: SyncBlob | null): Promise<MergeResult>
   }
 
   return {
-    applied: snapshotsApplied > 0 || changesApplied > 0,
+    applied: snapshotsApplied > 0 || changesApplied > 0 || contextOptionsApplied,
     remoteEnvelopes: normalized.envelopes,
     remoteSeen: normalized.seen,
     snapshotsApplied,
     changesApplied,
+    contextOptionsApplied,
     signatureRejected: normalized.signatureRejected,
   }
 }
@@ -666,7 +724,13 @@ export async function syncNow(options: SyncNowOptions = {}) {
         }
 
         const combined = mergeEnvelopeSets(merged.remoteEnvelopes, pending.envelopes)
-        if (combined.changes.length === 0 && combined.droppedExpiredArchives === 0) {
+        const remoteContextOptionsState = asContextOptionsState(remoteState?.blob?.contextOptionsState ?? null)
+        const localContextOptionsState = readStoredContextOptionsState()
+        const mergedContextOptionsState = pickLatestContextOptionsState(remoteContextOptionsState, localContextOptionsState)
+        const shouldPushContextOptions =
+          mergedContextOptionsState != null && !areContextOptionsStatesEqual(remoteContextOptionsState, mergedContextOptionsState)
+
+        if (combined.changes.length === 0 && combined.droppedExpiredArchives === 0 && !shouldPushContextOptions) {
           synced = true
           break
         }
@@ -674,6 +738,7 @@ export async function syncNow(options: SyncNowOptions = {}) {
         const blob: SyncBlob = {
           version: 1,
           changes: combined.changes,
+          ...(mergedContextOptionsState ? { contextOptionsState: mergedContextOptionsState } : {}),
         }
 
         try {

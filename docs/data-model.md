@@ -32,6 +32,7 @@ Hinweis zu `context`:
 - Gespeichert wird derselbe Name, der auch in der UI angezeigt wird.
 - Beim Löschen eines Kontexts werden bestehende Zuordnungen auf `Ohne Kontext` gesetzt.
 - Nach Backup-Import werden unbekannte/nicht konfigurierte Kontexte auf `Ohne Kontext` gesetzt.
+- Die konfigurierte Kontextliste wird zwischen gekoppelten Clients als gemeinsame Sync-Metadaten abgeglichen; die zuletzt geänderte Liste gewinnt.
 
 ## IndexedDB
 
@@ -76,7 +77,8 @@ Wichtige Indexe (notes/notes_view):
 
 ## Browser-Persistenz ausserhalb von IndexedDB
 
-- `localStorage` speichert nur kleine clientseitige Metadaten, z. B. Sync-Raum, Sync-Token, Kontextoptionen, Onboarding-Flag und Backup-Zeitpunkt.
+- `localStorage` speichert nur kleine clientseitige Metadaten, z. B. Sync-Raum, Sync-Token, Onboarding-Flag und Backup-Zeitpunkt.
+- Die konfigurierte Kontextliste wird lokal zwischengespeichert und zusätzlich über den Sync-Raum mitgeführt.
 - Zugriffe auf `localStorage` laufen zentral defensiv ueber [`src/lib/storage.ts`](../src/lib/storage.ts), damit fehlende Berechtigungen oder Privacy-Restriktionen nicht unkontrolliert durch die UI laufen.
 - Ausfall von `localStorage` darf vorhandene Notizen in IndexedDB nicht unlesbar machen; es betrifft nur Zusatzkomfort wie gemerkte UI-Flags oder Pairing-Metadaten.
 

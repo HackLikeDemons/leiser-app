@@ -38,8 +38,14 @@ import {
   removeStorageItem,
   writeStorageItem,
 } from './lib/storage'
+import {
+  normalizeContextLabel,
+  persistContextOptions,
+  readStoredContextOptions,
+} from './lib/contextOptions'
 import { normalizeContextTag } from './lib/types'
 import type { ContextTag, Note, NoteStatus } from './lib/types'
+import type { ContextOption } from './lib/contextOptions'
 import { AppShell } from './app/AppShell'
 import { FlowHero } from './app/FlowHero'
 import { FooterProvider } from './app/FooterContext'
@@ -84,7 +90,6 @@ const TRANSIENT_INFO_FADE_OUT_MS = 260
 const SW_UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000
 const BACKUP_OVERDUE_DAYS = 7
 const ONBOARDING_COMPLETED_STORAGE_KEY = 'leiser:onboarding:completed:v1'
-const CONTEXT_OPTIONS_STORAGE_KEY = 'leiser:context-options-v1'
 const REDUCE_MAIN_TAB_HELPERS_STORAGE_KEY = 'leiser:reduce-main-tab-helpers:v1'
 const MAX_CONTEXT_OPTIONS = 8
 
@@ -172,11 +177,6 @@ type ContextGroup = {
   label: string
   notes: Note[]
 }
-type ContextOption = {
-  value: ContextTag
-  label: string
-}
-
 type ParsedBraindumpEntry = {
   text: string
   context?: ContextTag
@@ -329,70 +329,8 @@ function daysBetween(dateA: Date, dateB: Date) {
   return Math.floor(diffMs / (1000 * 60 * 60 * 24))
 }
 
-const DEFAULT_CONTEXT_OPTIONS: ContextOption[] = [
-  { value: 'arbeit', label: 'Arbeit' },
-  { value: 'familie', label: 'Familie' },
-  { value: 'finanzen', label: 'Finanzen' },
-  { value: 'freunde', label: 'Freunde' },
-  { value: 'gesundheit', label: 'Gesundheit' },
-  { value: 'haushalt', label: 'Haushalt' },
-  { value: 'privat', label: 'Privat' },
-  { value: 'projekt', label: 'Projekt' },
-]
-
 function fallbackContextLabel(context: ContextTag) {
   return context
-}
-
-function normalizeContextLabel(value: unknown) {
-  if (typeof value !== 'string') {
-    return undefined
-  }
-  const compact = value.trim().replace(/\s+/g, ' ')
-  if (!compact) {
-    return undefined
-  }
-  return compact.slice(0, 28)
-}
-
-function sanitizeContextOptions(raw: unknown): ContextOption[] {
-  if (!Array.isArray(raw)) {
-    return [...DEFAULT_CONTEXT_OPTIONS]
-  }
-  const deduped = new Map<ContextTag, string>()
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') {
-      continue
-    }
-    const candidate = item as Partial<ContextOption>
-    const name = normalizeContextLabel(candidate.label ?? candidate.value)
-    const value = normalizeContextTag(name)
-    if (!value || deduped.has(value)) {
-      continue
-    }
-    const label = normalizeContextLabel(candidate.label) ?? capitalizeFirstCharacter(value)
-    deduped.set(value, capitalizeFirstCharacter(label))
-  }
-  if (deduped.size === 0) {
-    return [...DEFAULT_CONTEXT_OPTIONS]
-  }
-  return Array.from(deduped.entries()).map(([value, label]) => ({ value, label }))
-}
-
-function readStoredContextOptions() {
-  const raw = readStorageItem(CONTEXT_OPTIONS_STORAGE_KEY)
-  if (!raw) {
-    return [...DEFAULT_CONTEXT_OPTIONS]
-  }
-  try {
-    return sanitizeContextOptions(JSON.parse(raw))
-  } catch {
-    return [...DEFAULT_CONTEXT_OPTIONS]
-  }
-}
-
-function persistContextOptions(options: ContextOption[]) {
-  writeStorageItem(CONTEXT_OPTIONS_STORAGE_KEY, JSON.stringify(options))
 }
 
 function contextLabel(context: ContextTag, options: ContextOption[]) {
@@ -1769,10 +1707,6 @@ function AppContent() {
   const refreshRunSeqRef = useRef(0)
 
   useEffect(() => {
-    persistContextOptions(contextOptions)
-  }, [contextOptions])
-
-  useEffect(() => {
     writeStorageItem(REDUCE_MAIN_TAB_HELPERS_STORAGE_KEY, reduceMainTabHelpers ? '1' : '0')
   }, [reduceMainTabHelpers])
 
@@ -1886,6 +1820,7 @@ function AppContent() {
       if (runSeq !== refreshRunSeqRef.current) {
         return
       }
+      setContextOptions(readStoredContextOptions())
       setBraindumpNotes(braindump)
       setInboxNotes(inbox)
       setProcessNotes(process)
@@ -3428,11 +3363,11 @@ function AppContent() {
 
     try {
       await replaceContextAcrossNotes(value, nextValue)
-      setContextOptions((prev) =>
-        prev
-          .map((option) => (option.value === value ? { value: nextValue, label: capitalizeFirstCharacter(draft) } : option))
-          .sort((a, b) => a.label.localeCompare(b.label, 'de-DE')),
-      )
+      const nextOptions = contextOptions
+        .map((option) => (option.value === value ? { value: nextValue, label: capitalizeFirstCharacter(draft) } : option))
+        .sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
+      persistContextOptions(nextOptions)
+      setContextOptions(nextOptions)
       showTransientInfo('Kontext aktualisiert.')
       await refreshAll()
     } catch {
@@ -3455,7 +3390,9 @@ function AppContent() {
     setError('')
     try {
       const changed = await replaceContextAcrossNotes(value, undefined)
-      setContextOptions((prev) => prev.filter((option) => option.value !== value))
+      const nextOptions = contextOptions.filter((option) => option.value !== value)
+      persistContextOptions(nextOptions)
+      setContextOptions(nextOptions)
       showTransientInfo(
         changed > 0
           ? `Kontext entfernt. ${changed} Eintrag${changed === 1 ? '' : 'e'} jetzt ohne Kontext.`
@@ -3482,16 +3419,17 @@ function AppContent() {
       setError('Kontext konnte nicht erstellt werden.')
       return
     }
-    setContextOptions((prev) => {
-      if (prev.some((option) => normalizeContextTag(option.value) === value)) {
-        setError('Kontext existiert bereits.')
-        return prev
-      }
-      return [...prev, { value, label: capitalizeFirstCharacter(label) }].sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
-    })
+    if (contextOptions.some((option) => normalizeContextTag(option.value) === value)) {
+      setError('Kontext existiert bereits.')
+      return
+    }
+    const nextOptions = [...contextOptions, { value, label: capitalizeFirstCharacter(label) }]
+      .sort((a, b) => a.label.localeCompare(b.label, 'de-DE'))
+    persistContextOptions(nextOptions)
+    setContextOptions(nextOptions)
     setNewContextLabel('')
     showTransientInfo('Kontext hinzugefügt.')
-  }, [contextOptions.length, newContextLabel, showTransientInfo])
+  }, [contextOptions, newContextLabel, showTransientInfo])
 
   const handleUndoLastTodoAction = async () => {
     if (!lastTodoAction || todoUndoBusy) {

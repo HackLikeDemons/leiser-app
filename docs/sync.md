@@ -65,6 +65,13 @@ Wichtig: Wenn Schritt 5 übersprungen wird, können frisch importierte Bestandsd
 
 Ergebnis: Dieser Client synchronisiert nur mit Geräten, die exakt denselben Pair-Code erhalten.
 
+## Was gemeinsam synchronisiert wird
+
+- Notes inklusive Kontext-Zuordnung
+- Die in `Einstellungen` gepflegte Kontextliste als gemeinsame Metadaten pro Sync-Raum
+
+Für die Kontextliste gilt: Die zuletzt geänderte Liste gewinnt und wird auf die gekoppelten Clients übernommen.
+
 ### Fall B: Neuen Client mit bestehenden Clients synchronisieren
 
 1. Auf einem bereits gekoppelten Gerät im Datenbereich den Pair-Code öffnen (`Pair Code kopieren`, `QR anzeigen`).
