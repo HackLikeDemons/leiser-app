@@ -320,15 +320,6 @@ function maskSecret(value: string | null) {
   return `${value.slice(0, 4)}***${value.slice(-4)}`
 }
 
-function daysBetween(dateA: Date, dateB: Date) {
-  const a = new Date(dateA)
-  const b = new Date(dateB)
-  a.setHours(12, 0, 0, 0)
-  b.setHours(12, 0, 0, 0)
-  const diffMs = Math.abs(a.getTime() - b.getTime())
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24))
-}
-
 function fallbackContextLabel(context: ContextTag) {
   return context
 }
@@ -1904,7 +1895,7 @@ function AppContent() {
         return
       }
       const hasReviewEntries =
-        inboxNotes.length > 0 || todoNotes.some((todo) => daysBetween(new Date(), new Date(todo.createdAt)) > 14)
+        inboxNotes.length > 0 || todoNotes.some((todo) => isTodoStale(todo))
       const hasThinkingEntries = processNotes.length > 0
       const hasTodoEntries = todoNotes.length > 0
       if (event.key === '1') {
@@ -3161,10 +3152,9 @@ function AppContent() {
   }, [activeTab, todoContextFilter, todoContextOptions, todoHasNoContextNotes])
 
   const staleTodos = useMemo(() => {
-    const today = new Date()
     return todoNotes
-      .filter((todo) => daysBetween(today, new Date(todo.createdAt)) > 14)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .filter((todo) => isTodoStale(todo))
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
   }, [todoNotes])
   const staleTodosById = useMemo(() => {
     const map = new Map<string, Note>()

@@ -30,7 +30,7 @@ Darstellung:
   - Memos (`PROCESS`)
   - Verwerfen (`DISCARD`)
 - Leere Inbox zeigt direkte Weiterleitungen zu `Memos` und `Machen`
-- zusätzlicher Stale-Review-Bereich für alte Handlungen (>14 Tage)
+- zusätzlicher Stale-Review-Bereich für alte Handlungen (>14 Tage, gemessen an `updatedAt`, damit ein geprüftes TODO nicht sofort wieder auftaucht)
 
 ## Memos
 
